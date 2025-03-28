@@ -1,0 +1,138 @@
+name: Build and Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: false  # Disabling cache to avoid tar extraction errors
+
+      - name: Run tests
+        run: go test -v ./...
+
+  build-and-publish:
+    name: Build and Publish
+    needs: test
+    # Only run this job for tag pushes, not branch pushes or PRs
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+          cache: false  # Disabling cache to avoid tar extraction errors
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/${{ github.repository }}-manager
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push manager image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./build/manager/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build CLI for multiple platforms
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          # PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+          PLATFORMS=("linux/amd64")
+
+          for platform in "${PLATFORMS[@]}"; do
+            IFS="/" read -r -a parts <<< "$platform"
+            GOOS="${parts[0]}"
+            GOARCH="${parts[1]}"
+
+            # Set the output filename based on OS
+            if [ "$GOOS" == "windows" ]; then
+              OUTPUT="dist/haloy-${GOOS}-${GOARCH}.exe"
+            else
+              OUTPUT="dist/haloy-${GOOS}-${GOARCH}"
+            fi
+
+            echo "Building for $GOOS/$GOARCH..."
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" -o "$OUTPUT" ./cmd/cli
+          done
+
+          # Create checksums
+          cd dist
+          sha256sum * > checksums.txt
+          cd ..
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: haloy-binaries
+          path: dist/
+
+  release:
+    name: Create Release
+    needs: build-and-publish
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: haloy-binaries
+          path: dist/
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/haloy-linux-amd64
+            # dist/haloy-linux-arm64
+            # dist/haloy-darwin-amd64
+            # dist/haloy-darwin-arm64
+            # dist/haloy-windows-amd64.exe
+            dist/checksums.txt
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

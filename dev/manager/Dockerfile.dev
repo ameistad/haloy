@@ -1,0 +1,36 @@
+# Build the development image
+# docker build -t haloy-manager-dev -f ./dev/manager/Dockerfile.dev .
+
+FROM golang:1.24-alpine
+
+# Install development tools and runtime dependencies
+RUN apk add --no-cache \
+    git \
+    curl \
+    bash \
+    && go install github.com/air-verse/air@latest
+
+# Set environment variables
+ENV HOME=/root
+ENV DRY_RUN=true
+
+# Debug: Print environment variable to verify it's set
+RUN echo "DRY_RUN environment variable is: $DRY_RUN"
+
+# Expose any ports that might be needed
+EXPOSE 9999
+
+# Create air config file without trying to pass command line arguments
+RUN echo '[build]' > /root/.air.toml && \
+    echo 'cmd = "go build -o ./tmp/app ./cmd/manager"' >> /root/.air.toml && \
+    echo 'bin = "./tmp/app"' >> /root/.air.toml && \
+    echo 'include_ext = ["go", "yaml"]' >> /root/.air.toml && \
+    echo 'exclude_dir = ["tmp", "vendor"]' >> /root/.air.toml
+
+# Working directory will be mounted from host
+WORKDIR /src
+
+LABEL haloy.ignore=true
+
+# Use air for hot reload during development
+CMD ["air", "-c", "/root/.air.toml"]

@@ -1,0 +1,47 @@
+services:
+  haloy-haproxy:
+    image: haproxy:3.1.5
+    labels:
+      - "haloy.ignore=true"
+    # This need to be set to haloy-haproxy so the manager can find it.
+    container_name: haloy-haproxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./haproxy-config:/usr/local/etc/haproxy/config:ro
+      - ./cert-storage:/usr/local/etc/haproxy/certs:rw
+      - ./entrypoint.sh:/entrypoint.sh:ro
+      - ./error-pages:/usr/local/etc/haproxy/errors:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    user: root
+    restart: unless-stopped
+    networks:
+      - haloy-network
+
+  haloy-manager:
+    image: ghcr.io/ameistad/haloy-manager:latest
+    labels:
+      - "haloy.ignore=true"
+    container_name: haloy-manager
+    # Add group_add to allow Docker socket access for the golang docker client.
+    group_add:
+      - "${DOCKER_GID:-999}"  # Default to 999 if not set
+    volumes:
+      - ./haproxy-config:/haproxy-config:rw
+      - ./cert-storage:/cert-storage:rw
+      # Enable Docker socket access for the golang docker client
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    user: root
+    restart: unless-stopped
+    networks:
+      - haloy-network
+    depends_on:
+      - haloy-haproxy
+
+networks:
+  haloy-network:
+    name: haloy-public
+    external: true
