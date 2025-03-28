@@ -56,7 +56,7 @@ func InitCmd() *cobra.Command {
 
 			// Ensure default Docker network exists.
 			if err := docker.EnsureNetwork(dockerClient, ctx); err != nil {
-				ui.Warning("Failed to ensire Docker network exists: %v\n", err)
+				ui.Warning("Failed to ensure Docker network exists: %v\n", err)
 				ui.Warning("You can manually create it with:\n")
 				ui.Warning("docker network create --driver bridge %s", config.DockerNetwork)
 			}
