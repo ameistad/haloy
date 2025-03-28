@@ -1,42 +1,51 @@
 package deploy
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/ui"
+	"github.com/docker/docker/client"
 )
-
-// TODO: use golang docker client library instead of exec.Command.
 
 // DeployApp builds the Docker image, runs a new container (with volumes), checks its health,
 // stops any old containers, and prunes extras.
-func DeployApp(appConfig *config.AppConfig) error {
+func DeployApp(appConfig *config.AppConfig) {
+	dockerClient, ctx, err := docker.NewClient()
+	if err != nil {
+		ui.Error("%v", err)
+		return
+	}
+	defer dockerClient.Close()
 
 	imageName := appConfig.Name + ":latest"
 
-	// Build the new image.
-	if err := buildImage(appConfig.Dockerfile, appConfig.BuildContext, imageName, appConfig.Env); err != nil {
-		return fmt.Errorf("failed to build image: %w", err)
+	if err := docker.BuildImage(imageName, dockerClient, ctx, appConfig); err != nil {
+		ui.Error("Failed to build image: %w", err)
+		return
 	}
 
-	// Run a new container and obtain its ID and deployment ID.
-	containerID, deploymentID, err := runContainer(imageName, appConfig)
+	containerID, deploymentID, err := runContainer(imageName, dockerClient, ctx, appConfig)
 	if err != nil {
-		return fmt.Errorf("failed to run new container: %w", err)
+		ui.Error("Failed to run new container: %w", err)
+		return
 	}
 
 	// Stop any old containers so that the reverse proxy routes traffic only to the new container.
 	if err := StopOldContainers(appConfig.Name, containerID, deploymentID); err != nil {
-		return fmt.Errorf("failed to stop old containers: %w", err)
+		ui.Error("Failed to stop old containers: %w", err)
+		return
 	}
 
 	// Prune old containers based on configuration.
 	if err := PruneOldContainers(appConfig.Name, containerID, appConfig.KeepOldContainers); err != nil {
-		return fmt.Errorf("failed to prune old containers: %w", err)
+		ui.Error("Failed to prune old containers: %w", err)
+		return
 	}
 
 	// Clean up old dangling images
@@ -46,24 +55,9 @@ func DeployApp(appConfig *config.AppConfig) error {
 	}
 
 	fmt.Printf("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, deploymentID)
-	return nil
 }
 
-func buildImage(dockerfile, buildContext, imageName string, buildArgs map[string]string) error {
-	args := []string{"build", "-t", imageName, "-f", dockerfile}
-	for k, v := range buildArgs {
-		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
-	}
-	args = append(args, buildContext)
-
-	cmd := exec.Command("docker", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	fmt.Printf("Building image '%s'...\n", imageName)
-	return cmd.Run()
-}
-
-func runContainer(imageName string, appConfig *config.AppConfig) (string, string, error) {
+func runContainer(imageName string, dockerClient *client.Client, ctx context.Context, appConfig *config.AppConfig) (string, string, error) {
 	// deploymentID doesn't need to be a timestamp, but it needs to be incremented from the previous deployment.
 	deploymentID := time.Now().Format("20060102150405")
 	containerName := fmt.Sprintf("%s-haloy-%s", appConfig.Name, deploymentID)
@@ -98,15 +92,12 @@ func runContainer(imageName string, appConfig *config.AppConfig) (string, string
 		args = append(args, "-v", vol)
 	}
 
-	// Ensure the network exists before attaching the container
-	ensureNetworkCmd := exec.Command("docker", "network", "inspect", config.DockerNetwork)
-	if err := ensureNetworkCmd.Run(); err != nil {
-		// Network doesn't exist, create it
-		fmt.Printf("Network %s doesn't exist. Creating it...\n", config.DockerNetwork)
-		createNetworkCmd := exec.Command("docker", "network", "create", config.DockerNetwork)
-		if err := createNetworkCmd.Run(); err != nil {
-			return "", "", fmt.Errorf("failed to create network %s: %w", config.DockerNetwork, err)
-		}
+	if err := docker.EnsureNetwork(dockerClient, ctx); err != nil {
+		return "", "", fmt.Errorf("failed to ensure Docker network exists: %w", err)
+	}
+
+	if err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
+		return "", "", fmt.Errorf("Failed to to start haproxy and haloy-manager: %w\n", err)
 	}
 
 	// Attach the container to the network.

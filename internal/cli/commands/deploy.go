@@ -5,6 +5,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -19,14 +20,15 @@ func DeployAppCmd() *cobra.Command {
 			}
 			return nil
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Run: func(cmd *cobra.Command, args []string) {
 			appName := args[0]
 			appConfig, err := config.AppConfigByName(appName)
 			if err != nil {
-				return fmt.Errorf("failed to get configuration for %q: %w", appName, err)
+				ui.Error("Failed to get configuration for %q: %v\n", appName, err)
+				return
 			}
 
-			return deploy.DeployApp(appConfig)
+			deploy.DeployApp(appConfig)
 		},
 	}
 	return deployAppCmd
@@ -38,29 +40,23 @@ func DeployAllCmd() *cobra.Command {
 		Short: "Deploy all applications",
 		Long:  `Deploy all applications defined in the configuration file.`,
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Run: func(cmd *cobra.Command, args []string) {
 			configFilePath, err := config.ConfigFilePath()
 			if err != nil {
-				return err
+				ui.Error("Failed to determine config file path: %v\n", err)
+				return
 			}
 			configFile, err := config.LoadAndValidateConfig(configFilePath)
 			if err != nil {
-				return fmt.Errorf("configuration error: %w", err)
+				ui.Error("Failed to load configuration file: %v\n", err)
+				return
 			}
 
-			// Iterate over all apps using indices to take a pointer reference.
 			for i := range configFile.Apps {
-				// Create a copy of the app config
 				app := configFile.Apps[i]
 				appConfig := &app
-				fmt.Printf("Deploying app '%s'...\n", appConfig.Name)
-				if err := deploy.DeployApp(appConfig); err != nil {
-					fmt.Printf("Failed to deploy app '%s': %v\n", appConfig.Name, err)
-				} else {
-					fmt.Printf("Successfully deployed app '%s'.\n", appConfig.Name)
-				}
+				deploy.DeployApp(appConfig)
 			}
-			return nil
 		},
 	}
 	return deployAllCmd

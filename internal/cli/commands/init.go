@@ -9,23 +9,34 @@ import (
 	"text/template"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 func InitCmd() *cobra.Command {
+	var skipServices bool
+
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize configuration files and prepare HAProxy for production",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Run: func(cmd *cobra.Command, args []string) {
 			configDir, err := config.ConfigDirPath()
 			if err != nil {
-				return fmt.Errorf("failed to determine config directory: %w", err)
+				ui.Error("Failed to determine config directory: %v\n", err)
+				return
 			}
 
+			dockerClient, ctx, err := docker.NewClient()
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+			defer dockerClient.Close()
+
 			if _, err := os.Stat(configDir); err == nil {
-				fmt.Println("Warning: Configuration directory already exists. Files may be overwritten.")
+				ui.Warning("Configuration directory already exists. Files may be overwritten.\n")
 			}
 
 			var emptyDirs = []string{
@@ -33,21 +44,41 @@ func InitCmd() *cobra.Command {
 				"containers/haproxy-config",
 			}
 			if err := copyConfigFiles(configDir, emptyDirs); err != nil {
-				return err
+				ui.Error("Failed to create configuration files: %v\n", err)
+				return
 			}
 
 			// Prompt the user for email and update apps.yml.
 			if err := copyConfigTemplateFiles(); err != nil {
-				return err
+				ui.Error("Failed to update configuration files: %v\n", err)
+				return
+			}
+
+			// Ensure default Docker network exists.
+			if err := docker.EnsureNetwork(dockerClient, ctx); err != nil {
+				ui.Warning("Failed to ensire Docker network exists: %v\n", err)
+				ui.Warning("You can manually create it with:\n")
+				ui.Warning("docker network create --driver bridge %s", config.DockerNetwork)
+			}
+
+			if !skipServices {
+				if err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
+					ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
+					return
+				}
+
 			}
 
 			ui.Success("Configuration files created successfully in %s\n", configDir)
-			ui.Info("Add your applications to apps.yml and run:.\n")
+			if !skipServices {
+				ui.Success("HAProxy and haloy-manager services are running.\n")
+			}
+			ui.Success("Add your applications to apps.yml and run:.\n")
 			ui.Command("haloy deploy <app-name>")
-			return nil
 		},
 	}
 
+	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Initialize configuration files without starting Docker services")
 	return cmd
 }
 

@@ -66,6 +66,14 @@ func ConfigContainersPath() (string, error) {
 	return filepath.Join(configDirPath, "containers"), nil
 }
 
+func ServicesDockerComposeFilePath() (string, error) {
+	containersPath, err := ConfigContainersPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(containersPath, "docker-compose.yml"), nil
+}
+
 func HAProxyConfigFilePath() (string, error) {
 	containersPath, err := ConfigContainersPath()
 	if err != nil {

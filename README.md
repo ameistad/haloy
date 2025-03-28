@@ -1,6 +1,6 @@
 # Haloy
 
-Self-hostable deployments with zero downtime using Docker and HAproxy.
+Self-hostable deployments with zero downtime using Docker and HAProxy.
 
 ## Features
 
