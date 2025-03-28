@@ -2,17 +2,23 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"text/template"
+	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
+)
+
+const (
+	initTimeout = 5 * time.Minute
 )
 
 func InitCmd() *cobra.Command {
@@ -28,7 +34,10 @@ func InitCmd() *cobra.Command {
 				return
 			}
 
-			dockerClient, ctx, err := docker.NewClient()
+			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+			defer cancel()
+
+			dockerClient, err := docker.NewClient(ctx)
 			if err != nil {
 				ui.Error("%v", err)
 				return

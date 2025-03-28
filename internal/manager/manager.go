@@ -57,6 +57,9 @@ func RunManager(dryRun bool) {
 	eventsChan := make(chan ContainerEvent)
 	errorsChan := make(chan error)
 
+	// Create deployment manager
+	deploymentManager := NewDeploymentManager(dockerClient)
+
 	// Create and start the certifications manager
 	certManagerConfig := certificates.Config{
 		CertDir:          CertificatesDir,
@@ -106,44 +109,27 @@ func RunManager(dryRun bool) {
 				// Execute in a goroutine to avoid blocking the event loop
 				go func() {
 					// Create a child context for the deployment process.
-					_, cancelDeployment := context.WithCancel(ctx)
+					deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 					defer cancelDeployment()
 
 					log.Printf("Starting deployment for %s\n", labels.AppName)
 
-					deployments, err := CreateDeployments(ctx, dockerClient)
-					if err != nil {
-						log.Printf("Failed to create deployments: %v", err)
+					if err := deploymentManager.BuildDeployments(deploymentCtx); err != nil {
+						log.Printf("Failed to build deployments: %v", err)
 						return
 					}
 
-					certDomains := make([]certificates.DomainEmail, 0)
-
-					for _, deployment := range deployments {
-						for _, domain := range deployment.Labels.Domains {
-							// Append the canonical domain.
-							certDomains = append(certDomains, certificates.DomainEmail{
-								Domain: domain.Canonical,
-								Email:  deployment.Labels.ACMEEmail,
-							})
-
-							// Append all alias domains.
-							for _, alias := range domain.Aliases {
-								certDomains = append(certDomains, certificates.DomainEmail{
-									Domain: alias,
-									Email:  deployment.Labels.ACMEEmail,
-								})
-							}
-						}
+					if !deploymentManager.HasChanged() {
+						log.Println("Deployment configuration unchanged, skipping HAProxy update")
+						return
 					}
 
-					log.Printf("Adding domains %d to certificate manager...", len(certDomains))
+					certDomains := deploymentManager.GetCertificateDomains()
 					certManager.AddDomains(certDomains)
-					log.Print("Refreshing certificates...")
 					certManager.Refresh()
-					log.Print("Certificate refresh completed successfully")
 
-					log.Printf("Generating HAProxy config for %s\n", labels.AppName)
+					log.Printf("Generating HAProxy config with for %s\n", labels.AppName)
+					deployments := deploymentManager.Deployments()
 					buf, err := CreateHAProxyConfig(deployments)
 					if err != nil {
 						log.Printf("Failed to create config %v", err)
@@ -162,12 +148,12 @@ func RunManager(dryRun bool) {
 							return
 						}
 						log.Printf("Sending SIGUSR2 command to haproxy...")
-						haproxyID, err := getHaproxyContainerID(ctx, dockerClient)
+						haproxyID, err := getHaproxyContainerID(deploymentCtx, dockerClient)
 						if err != nil {
 							log.Fatalf("Error locating HAProxy container: %v", err)
 						}
 
-						err = dockerClient.ContainerKill(ctx, haproxyID, "SIGUSR2")
+						err = dockerClient.ContainerKill(deploymentCtx, haproxyID, "SIGUSR2")
 						if err != nil {
 							log.Printf("Failed to send SIGUSR2: %v", err)
 						} else {

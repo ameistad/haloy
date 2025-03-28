@@ -1,23 +1,19 @@
 package manager
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"sort"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/docker/docker/api/types"
+	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 )
-
-// TODO:
-// - create a DeploymentManager struct with a DockerClient field
-// - add a BuildDeployments method to the DeploymentManager struct
-// - create a calculateHash method on the DeploymentManager struct
-// - create a previousHash field on the DeploymentManager struct
-// - create a HasChanged method on the DeploymentManager struct
-// - creat a GetCertificateDomains method on the DeploymentManager struct which returns a slice of certificates.DomainEmail
 
 type DeploymentInstance struct {
 	IP   string
@@ -29,15 +25,29 @@ type Deployment struct {
 	Instances []DeploymentInstance
 }
 
-func CreateDeployments(ctx context.Context, dockerClient *client.Client) ([]Deployment, error) {
+type DeploymentManager struct {
+	DockerClient *client.Client
+	// Store the previous hash so we can compare it with the new hash to see if anything has changed.
+	previousHash string
+	deployments  []Deployment
+}
+
+func NewDeploymentManager(dockerClient *client.Client) *DeploymentManager {
+	return &DeploymentManager{
+		DockerClient: dockerClient,
+		deployments:  []Deployment{},
+	}
+}
+
+func (dm *DeploymentManager) BuildDeployments(ctx context.Context) error {
 	deploymentsMap := make(map[string]Deployment)
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{})
+	containers, err := dm.DockerClient.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, containerSummary := range containers {
-		container, err := dockerClient.ContainerInspect(ctx, containerSummary.ID)
+		container, err := dm.DockerClient.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
 			log.Printf("Failed to inspect container %s: %v", containerSummary.ID, err)
 			continue
@@ -48,9 +58,9 @@ func CreateDeployments(ctx context.Context, dockerClient *client.Client) ([]Depl
 			continue
 		}
 
-		ip, err := ContainerNetworkIP(container, config.DockerNetwork)
+		ip, err := containerNetworkIP(container, config.DockerNetwork)
 		if err != nil {
-			log.Printf("Failed to get IP address IP for container %s: %v", container.ID, err)
+			log.Printf("Failed to get IP address for container %s: %v", container.ID, err)
 			continue
 		}
 
@@ -69,7 +79,7 @@ func CreateDeployments(ctx context.Context, dockerClient *client.Client) ([]Depl
 				deployment.Instances = append(deployment.Instances, instance)
 				deploymentsMap[labels.AppName] = deployment
 			} else {
-				// Replace the deployment if the new one has a higher deployment ID indicating a newer deployment.
+				// Replace the deployment if the new one has a higher deployment ID
 				if deployment.Labels.DeploymentID < labels.DeploymentID {
 					deploymentsMap[labels.AppName] = Deployment{Labels: labels, Instances: []DeploymentInstance{instance}}
 				}
@@ -78,16 +88,100 @@ func CreateDeployments(ctx context.Context, dockerClient *client.Client) ([]Depl
 			deploymentsMap[labels.AppName] = Deployment{Labels: labels, Instances: []DeploymentInstance{instance}}
 		}
 	}
+
+	// Convert map to slice
 	var deployments []Deployment
 	for _, deployment := range deploymentsMap {
 		deployments = append(deployments, deployment)
 	}
-	return deployments, nil
+
+	dm.deployments = deployments
+	return nil
+}
+
+func (dm *DeploymentManager) Deployments() []Deployment {
+	return dm.deployments
+}
+
+func (dm *DeploymentManager) calculateHash() string {
+	var b bytes.Buffer
+
+	// Sort deployments by app name for consistency
+	sort.Slice(dm.deployments, func(i, j int) bool {
+		return dm.deployments[i].Labels.AppName < dm.deployments[j].Labels.AppName
+	})
+
+	for _, d := range dm.deployments {
+		// Write app name and deployment ID
+		b.WriteString(d.Labels.AppName)
+		b.WriteString(d.Labels.DeploymentID)
+
+		// Sort instances for consistency
+		sort.Slice(d.Instances, func(i, j int) bool {
+			if d.Instances[i].IP != d.Instances[j].IP {
+				return d.Instances[i].IP < d.Instances[j].IP
+			}
+			return d.Instances[i].Port < d.Instances[j].Port
+		})
+
+		// Write instance information
+		for _, i := range d.Instances {
+			b.WriteString(i.IP)
+			b.WriteString(i.Port)
+		}
+
+		// Write domains information
+		for _, domain := range d.Labels.Domains {
+			b.WriteString(domain.Canonical)
+			for _, alias := range domain.Aliases {
+				b.WriteString(alias)
+			}
+		}
+	}
+
+	// Calculate hash
+	hash := sha256.Sum256(b.Bytes())
+	return hex.EncodeToString(hash[:])
+}
+
+func (dm *DeploymentManager) HasChanged() bool {
+	currentHash := dm.calculateHash()
+	changed := currentHash != dm.previousHash
+
+	// Update the hash if changed
+	if changed {
+		dm.previousHash = currentHash
+	}
+
+	return changed
+}
+
+func (dm *DeploymentManager) GetCertificateDomains() []certificates.DomainEmail {
+	domains := make([]certificates.DomainEmail, 0)
+
+	for _, deployment := range dm.deployments {
+		for _, domain := range deployment.Labels.Domains {
+			// Add canonical domain
+			domains = append(domains, certificates.DomainEmail{
+				Domain: domain.Canonical,
+				Email:  deployment.Labels.ACMEEmail,
+			})
+
+			// Add all aliases
+			for _, alias := range domain.Aliases {
+				domains = append(domains, certificates.DomainEmail{
+					Domain: alias,
+					Email:  deployment.Labels.ACMEEmail,
+				})
+			}
+		}
+	}
+
+	return domains
 }
 
 // ContainerNetworkInfo extracts the container's IP address and exposed ports
-func ContainerNetworkIP(container types.ContainerJSON, networkName string) (string, error) {
-	// Check if the network exists
+func containerNetworkIP(container container.InspectResponse, networkName string) (string, error) {
 	if _, exists := container.NetworkSettings.Networks[networkName]; !exists {
 		return "", fmt.Errorf("specified network not found: %s", networkName)
 	}

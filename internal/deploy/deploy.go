@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -13,10 +14,15 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// DeployApp builds the Docker image, runs a new container (with volumes), checks its health,
-// stops any old containers, and prunes extras.
+const (
+	deployTimeout = 5 * time.Minute
+)
+
 func DeployApp(appConfig *config.AppConfig) {
-	dockerClient, ctx, err := docker.NewClient()
+
+	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
+	defer cancel()
+	dockerClient, err := docker.NewClient(ctx)
 	if err != nil {
 		ui.Error("%v", err)
 		return
@@ -25,16 +31,31 @@ func DeployApp(appConfig *config.AppConfig) {
 
 	imageName := appConfig.Name + ":latest"
 
-	if err := docker.BuildImage(imageName, dockerClient, ctx, appConfig); err != nil {
-		ui.Error("Failed to build image: %w", err)
+	if err := docker.BuildImage(ctx, dockerClient, imageName, appConfig); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			ui.Error("Failed to build image: operation timed out (%v)", err)
+		} else if errors.Is(err, context.Canceled) {
+			ui.Error("Failed to build image: operation canceled (%v)", err)
+		} else {
+			ui.Error("Failed to build image: %v", err)
+		}
 		return
 	}
+	ui.Info("Image '%s' built successfully.", imageName)
 
-	containerID, deploymentID, err := runContainer(imageName, dockerClient, ctx, appConfig)
+	containerID, deploymentID, err := runContainer(ctx, dockerClient, imageName, appConfig)
 	if err != nil {
-		ui.Error("Failed to run new container: %w", err)
+		// Check for context errors
+		if errors.Is(err, context.DeadlineExceeded) {
+			ui.Error("Failed to run new container: operation timed out (%v)", err)
+		} else if errors.Is(err, context.Canceled) {
+			ui.Error("Failed to run new container: operation canceled (%v)", err)
+		} else {
+			ui.Error("Failed to run new container: %v", err)
+		}
 		return
 	}
+	ui.Info("New container '%s' started successfully.", containerID[:12])
 
 	// Stop any old containers so that the reverse proxy routes traffic only to the new container.
 	if err := StopOldContainers(appConfig.Name, containerID, deploymentID); err != nil {
@@ -57,7 +78,7 @@ func DeployApp(appConfig *config.AppConfig) {
 	fmt.Printf("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, deploymentID)
 }
 
-func runContainer(imageName string, dockerClient *client.Client, ctx context.Context, appConfig *config.AppConfig) (string, string, error) {
+func runContainer(ctx context.Context, dockerClient *client.Client, imageName string, appConfig *config.AppConfig) (string, string, error) {
 	// deploymentID doesn't need to be a timestamp, but it needs to be incremented from the previous deployment.
 	deploymentID := time.Now().Format("20060102150405")
 	containerName := fmt.Sprintf("%s-haloy-%s", appConfig.Name, deploymentID)
