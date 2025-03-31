@@ -31,7 +31,7 @@ func DeployApp(appConfig *config.AppConfig) {
 
 	imageName := appConfig.Name + ":latest"
 
-	if err := docker.BuildImage(ctx, dockerClient, imageName, appConfig); err != nil {
+	if err := docker.BuildImage(ctx, dockerClient, imageName, appConfig.Source.Dockerfile); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			ui.Error("Failed to build image: operation timed out (%v)", err)
 		} else if errors.Is(err, context.Canceled) {

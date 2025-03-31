@@ -39,6 +39,74 @@ func ValidateHealthCheckPath(path string) error {
 	return nil
 }
 
+func ValidateSource(source Source) error {
+	sourceIsDefined := false
+
+	// Check Dockerfile Source
+	if source.Dockerfile != nil {
+		sourceIsDefined = true
+		dfSource := source.Dockerfile
+		if dfSource.Path == "" {
+			return fmt.Errorf("source.dockerfile.path is required")
+		}
+		if dfSource.BuildContext == "" {
+			return fmt.Errorf("source.dockerfile.buildContext is required")
+		}
+
+		// Check Dockerfile Path existence and type (should be a file)
+		// Consider making paths absolute before checking, or resolving relative to config file?
+		// For now, assuming paths are relative to where the app runs or absolute.
+		fileInfo, err := os.Stat(dfSource.Path)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("source.dockerfile.path '%s' does not exist", dfSource.Path)
+		} else if err != nil {
+			return fmt.Errorf("unable to check source.dockerfile.path '%s': %w", dfSource.Path, err)
+		}
+		if fileInfo.IsDir() {
+			return fmt.Errorf("source.dockerfile.path '%s' is a directory, not a file", dfSource.Path)
+		}
+
+		// Check BuildContext existence and type (should be a directory)
+		ctxInfo, err := os.Stat(dfSource.BuildContext)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("source.dockerfile.buildContext '%s' does not exist", dfSource.BuildContext)
+		} else if err != nil {
+			return fmt.Errorf("unable to check source.dockerfile.buildContext '%s': %w", dfSource.BuildContext, err)
+		}
+		if !ctxInfo.IsDir() {
+			return fmt.Errorf("source.dockerfile.buildContext '%s' is not a directory", dfSource.BuildContext)
+		}
+	}
+
+	// Check Image Source
+	if source.Image != nil {
+		// Check if Dockerfile source was *also* defined (mutual exclusivity)
+		if sourceIsDefined {
+			return fmt.Errorf("cannot define both source.dockerfile and source.image")
+		}
+		sourceIsDefined = true
+		imgSource := source.Image
+		// Validate Image source fields
+		if imgSource.Repository == "" {
+			return fmt.Errorf("source.image.repository is required")
+		}
+		// Optional: Add regex validation for imgSource.Repository and imgSource.Tag if needed.
+		// Example simple check: prevent whitespace
+		if strings.ContainsAny(imgSource.Repository, " \t\n\r") {
+			return fmt.Errorf("source.image.repository '%s' contains whitespace", imgSource.Repository)
+		}
+		if strings.ContainsAny(imgSource.Tag, " \t\n\r") {
+			return fmt.Errorf("source.image.tag '%s' contains whitespace", imgSource.Tag)
+		}
+	}
+
+	// Check if *at least one* source type was defined
+	if !sourceIsDefined {
+		return fmt.Errorf("source must contain either 'dockerfile' or 'image'")
+	}
+	return nil
+}
+
 // ValidateConfigFile checks that the Config is well-formed.
 func ValidateConfigFile(conf *Config) error {
 	// Validate apps.
@@ -68,32 +136,10 @@ func ValidateConfigFile(conf *Config) error {
 		if !helpers.IsValidEmail(app.ACMEEmail) {
 			return fmt.Errorf("app '%s': invalid ACME email '%s'", app.Name, app.ACMEEmail)
 		}
-		if app.Dockerfile == "" {
-			return fmt.Errorf("app '%s': missing dockerfile path", app.Name)
-		}
-		if app.BuildContext == "" {
-			return fmt.Errorf("app '%s': missing build context path", app.Name)
-		}
-		// Check Dockerfile.
-		fileInfo, err := os.Stat(app.Dockerfile)
-		if os.IsNotExist(err) {
-			return fmt.Errorf("app '%s': dockerfile '%s' does not exist", app.Name, app.Dockerfile)
-		} else if err != nil {
-			return fmt.Errorf("app '%s': unable to check dockerfile '%s': %w", app.Name, app.Dockerfile, err)
-		}
-		if fileInfo.IsDir() {
-			return fmt.Errorf("app '%s': dockerfile '%s' is a directory, not a file", app.Name, app.Dockerfile)
-		}
 
-		// Check BuildContext.
-		ctxInfo, err := os.Stat(app.BuildContext)
-		if os.IsNotExist(err) {
-			return fmt.Errorf("app '%s': build context '%s' does not exist", app.Name, app.BuildContext)
-		} else if err != nil {
-			return fmt.Errorf("app '%s': unable to check build context '%s': %w", app.Name, app.BuildContext, err)
-		}
-		if !ctxInfo.IsDir() {
-			return fmt.Errorf("app '%s': build context '%s' is not a directory", app.Name, app.BuildContext)
+		// Validate sources.
+		if err := ValidateSource(app.Source); err != nil {
+			return fmt.Errorf("app '%s': %w", app.Name, err)
 		}
 
 		// Validate volumes.

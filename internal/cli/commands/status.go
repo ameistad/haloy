@@ -114,8 +114,6 @@ func showAppStatus(app *config.AppConfig) error {
 	fmt.Printf("%s: %s\n", label("Status"), success(status))
 	fmt.Printf("%s:\n%s\n", label("Domains"), domainsStr)
 	fmt.Printf("%s: %s\n", label("Container ID"), containerID)
-	fmt.Printf("%s: %s\n", label("Dockerfile"), app.Dockerfile)
-	fmt.Printf("%s: %s\n", label("Build Context"), app.BuildContext)
 	if envStr != "" {
 		fmt.Printf("%s:\n%s\n", label("Environment Variables"), envStr)
 	}

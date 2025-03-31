@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -21,13 +20,13 @@ import (
 	"github.com/moby/term" // For terminal detection in output streaming
 )
 
-func BuildImage(ctx context.Context, dockerClient *client.Client, imageName string, appConfig *config.AppConfig) error {
+func BuildImage(ctx context.Context, dockerClient *client.Client, imageName string, source *config.DockerfileSource) error {
 	ui.Info("Preparing to build image '%s'...", imageName)
 
 	// TODO: Consider adding appConfig fields for NoCache, PullParent, Platform if needed
 	buildOpts := types.ImageBuildOptions{
 		Tags:       []string{imageName},
-		Dockerfile: filepath.Base(appConfig.Dockerfile), // Path relative to context root
+		Dockerfile: filepath.Base(source.Path), // Path relative to context root
 		BuildArgs:  make(map[string]*string),
 		Remove:     true, // Remove intermediate containers after a successful build
 		// NoCache:    appConfig.NoCache,    // Example: Add if appConfig has NoCache field
@@ -35,23 +34,21 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, imageName stri
 		// Platform:   appConfig.Platform,   // Example: Add if appConfig has Platform field (e.g., "linux/amd64")
 	}
 
-	// Build Args from Env (Source of build args - clarify if separate from runtime Env needed)
-	// Assuming appConfig.Env is intended for build args here.
-	// If separate build args are needed, add e.g., appConfig.BuildArgs map[string]string
-	if len(appConfig.Env) > 0 {
-		for k, v := range appConfig.Env {
+	// Set build args from the source
+	if len(source.BuildArgs) > 0 {
+		for k, v := range source.BuildArgs {
 			value := v // Create new variable for pointer capture in loop
 			buildOpts.BuildArgs[k] = &value
 		}
 	}
 
-	absContext, err := filepath.Abs(appConfig.BuildContext)
+	absContext, err := filepath.Abs(source.BuildContext)
 	if err != nil {
-		return fmt.Errorf("failed to resolve absolute path for build context '%s': %w", appConfig.BuildContext, err)
+		return fmt.Errorf("failed to resolve absolute path for build context '%s': %w", source.BuildContext, err)
 	}
-	absDockerfile, err := filepath.Abs(appConfig.Dockerfile)
+	absDockerfile, err := filepath.Abs(source.Path)
 	if err != nil {
-		return fmt.Errorf("failed to resolve absolute path for Dockerfile '%s': %w", appConfig.Dockerfile, err)
+		return fmt.Errorf("failed to resolve absolute path for Dockerfile '%s': %w", source.Path, err)
 	}
 
 	// Get ignore patterns from the *original* build context directory, regardless of where Dockerfile is.
@@ -294,21 +291,4 @@ func copyFile(src, dst string) error {
 	}
 
 	return nil
-}
-
-// Note: The legacy BuildImageDockerCLI function has been removed as requested.
-// Legacy build with docker CLI
-func BuildImageDockerCLI(imageName string, appConfig *config.AppConfig) error {
-
-	args := []string{"build", "-t", imageName, "-f", appConfig.Dockerfile}
-	for k, v := range appConfig.Env {
-		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
-	}
-	args = append(args, appConfig.BuildContext)
-
-	cmd := exec.Command("docker", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	fmt.Printf("Building image '%s'...\n", imageName)
-	return cmd.Run()
 }

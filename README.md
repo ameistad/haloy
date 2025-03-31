@@ -59,23 +59,29 @@ This will:
 
 Edit the configuration file at `~/.config/haloy/apps.yml`:
 
+Example configuration with all options:
 ```yaml
 apps:
   - name: "example-app"
+    source:
+      dockerfile:
+         path: "/path/to/your/Dockerfile"
+         buildContext: "/path/to/your/app"
+         buildArgs:
+           - "ARG1=value1"
+           - "ARG2=value2"
     domains:
       - domain: "example.com"
         aliases:
           - "www.example.com"
       - domain: "api.example.com"
     port: 8080 # Optional: Default is 80
-    dockerfile: "/path/to/your/Dockerfile"
-    buildContext: "/path/to/your/app"
     env:
       NODE_ENV: "production"
-    keepOldContainers: 5 # Optional: Default is 3
-    volumes: # Optional
-      - "/host/path:/container/path"
-    healthCheckPath: "/health" # Optional: Default is "/"
+      keepOldContainers: 5 # Optional: Default is 3
+      volumes: # Optional
+         - "/host/path:/container/path"
+      healthCheckPath: "/health" # Optional: Default is "/"
 ```
 
 ### Deploy Your Apps

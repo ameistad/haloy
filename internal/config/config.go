@@ -120,13 +120,29 @@ func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
 	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
 }
 
+type Source struct {
+	Dockerfile *DockerfileSource `yaml:"dockerfile,omitempty"`
+	Image      *ImageSource      `yaml:"image,omitempty"`
+}
+
+type DockerfileSource struct {
+	Path         string            `yaml:"path"`
+	BuildContext string            `yaml:"buildContext"`
+	BuildArgs    map[string]string `yaml:"buildArgs,omitempty"`
+}
+
+// TODO: implement this
+type ImageSource struct {
+	Repository string `yaml:"repository"`
+	Tag        string `yaml:"tag, omitempty"`
+}
+
 // AppConfig defines the configuration for an application.
 type AppConfig struct {
 	Name              string            `yaml:"name"`
+	Source            Source            `yaml:"source"`
 	Domains           []Domain          `yaml:"domains"`
 	ACMEEmail         string            `yaml:"acmeEmail"`
-	Dockerfile        string            `yaml:"dockerfile"`
-	BuildContext      string            `yaml:"buildContext"`
 	Env               map[string]string `yaml:"env"`
 	KeepOldContainers int               `yaml:"keepOldContainers,omitempty"`
 	Volumes           []string          `yaml:"volumes,omitempty"`
