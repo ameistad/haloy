@@ -29,16 +29,31 @@ const (
 	// LabelPreix = "haloy"
 )
 
+func CheckConfigDirExists(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("directory %s does not exist", path)
+		}
+		return fmt.Errorf("failed to access directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("path %s is not a directory", path)
+	}
+	return nil
+}
+
 // Defaults to ~/.config/haloy
 // If HALOY_CONFIG_PATH is set, it will use that instead.
 func ConfigDirPath() (string, error) {
+
 	// First check if HALOY_CONFIG_PATH is set.
 	if envPath, ok := os.LookupEnv("HALOY_CONFIG_PATH"); ok && envPath != "" {
-		// Validate that the path exists and is a directory.
-		if info, err := os.Stat(envPath); err == nil && info.IsDir() {
-			return envPath, nil
+		if err := CheckConfigDirExists(envPath); err != nil {
+			return "", fmt.Errorf("HALOY_CONFIG_PATH is set to '%s' but it is not a valid directory: %w", envPath, err)
 		}
-		return "", fmt.Errorf("HALOY_CONFIG_PATH is set to '%s' but it is not a valid directory", envPath)
+		return envPath, nil
+
 	}
 
 	// Fallback to the default path.
@@ -46,7 +61,11 @@ func ConfigDirPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "haloy"), nil
+	defaultPath := filepath.Join(home, ".config", "haloy")
+	if err := CheckConfigDirExists(defaultPath); err != nil {
+		return "", fmt.Errorf("default config directory '%s' does not exist: %w", defaultPath, err)
+	}
+	return defaultPath, nil
 }
 
 // ConfigFilePath returns "~/.config/haloy/apps.yml".
@@ -120,34 +139,16 @@ func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
 	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
 }
 
-type Source struct {
-	Dockerfile *DockerfileSource `yaml:"dockerfile,omitempty"`
-	Image      *ImageSource      `yaml:"image,omitempty"`
-}
-
-type DockerfileSource struct {
-	Path         string            `yaml:"path"`
-	BuildContext string            `yaml:"buildContext"`
-	BuildArgs    map[string]string `yaml:"buildArgs,omitempty"`
-}
-
-// TODO: implement this
-type ImageSource struct {
-	Repository string `yaml:"repository"`
-	Tag        string `yaml:"tag, omitempty"`
-}
-
-// AppConfig defines the configuration for an application.
 type AppConfig struct {
-	Name              string            `yaml:"name"`
-	Source            Source            `yaml:"source"`
-	Domains           []Domain          `yaml:"domains"`
-	ACMEEmail         string            `yaml:"acmeEmail"`
-	Env               map[string]string `yaml:"env"`
-	KeepOldContainers int               `yaml:"keepOldContainers,omitempty"`
-	Volumes           []string          `yaml:"volumes,omitempty"`
-	HealthCheckPath   string            `yaml:"healthCheckPath,omitempty"`
-	Port              string            `yaml:"port,omitempty"`
+	Name              string   `yaml:"name"`
+	Source            Source   `yaml:"source"`
+	Domains           []Domain `yaml:"domains"`
+	ACMEEmail         string   `yaml:"acmeEmail"`
+	Env               []EnvVar `yaml:"env,omitempty"`
+	KeepOldContainers int      `yaml:"keepOldContainers,omitempty"`
+	Volumes           []string `yaml:"volumes,omitempty"`
+	HealthCheckPath   string   `yaml:"healthCheckPath,omitempty"`
+	Port              string   `yaml:"port,omitempty"`
 }
 
 // Config represents the overall configuration.
@@ -198,7 +199,7 @@ func LoadAndValidateConfig(path string) (*Config, error) {
 	}
 	normalizedConfig := NormalizeConfig(config)
 
-	if err := ValidateConfigFile(normalizedConfig); err != nil {
+	if err := normalizedConfig.Validate(); err != nil {
 		return nil, err
 	}
 	return normalizedConfig, nil

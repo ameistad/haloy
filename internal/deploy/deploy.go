@@ -104,9 +104,26 @@ func runContainer(ctx context.Context, dockerClient *client.Client, imageName st
 	}
 
 	// Add environment variables.
-	for k, v := range appConfig.Env {
-		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+	err := config.DecryptEnvVars(appConfig.Env)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to decrypt environment variables: %w", err)
 	}
+	for _, v := range appConfig.Env {
+		value, err := v.GetValue()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
+		}
+		args = append(args, "-e", fmt.Sprintf("%s=%s", v.Name, value))
+	}
+	fmt.Println("Environment variables:")
+	for _, v := range appConfig.Env {
+		value, err := v.GetValue()
+		if err != nil {
+			return "", "", fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
+		}
+		fmt.Printf("  %s=%s\n", v.Name, value)
+	}
+	// Add ports.
 
 	// Add volumes.
 	for _, vol := range appConfig.Volumes {
@@ -118,7 +135,7 @@ func runContainer(ctx context.Context, dockerClient *client.Client, imageName st
 	}
 
 	if err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
-		return "", "", fmt.Errorf("Failed to to start haproxy and haloy-manager: %w\n", err)
+		return "", "", fmt.Errorf("failed to to start haproxy and haloy-manager: %w", err)
 	}
 
 	// Attach the container to the network.

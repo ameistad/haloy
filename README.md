@@ -76,12 +76,15 @@ apps:
           - "www.example.com"
       - domain: "api.example.com"
     port: 8080 # Optional: Default is 80
-    env:
-      NODE_ENV: "production"
-      keepOldContainers: 5 # Optional: Default is 3
-      volumes: # Optional
-         - "/host/path:/container/path"
-      healthCheckPath: "/health" # Optional: Default is "/"
+    env: # Optional
+      - name: "NODE_ENV"
+        value: "production"
+      - name: "API_KEY"
+        encryptedValue: "encrypted_value" # Use haloy encrypt value   
+   keepOldContainers: 5 # Optional: Default is 3
+   volumes: # Optional
+      - "/host/path:/container/path"
+   healthCheckPath: "/health" # Optional: Default is "/"
 ```
 
 ### Deploy Your Apps

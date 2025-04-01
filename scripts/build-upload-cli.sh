@@ -26,7 +26,7 @@ echo "Building version: $version"
 GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $BINARY_NAME ../cmd/cli
 
 # Upload the binary via scp using the current username
-scp $BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/$BINARY_NAME
+scp $BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/.local/bin/$BINARY_NAME
 
 # Remove binary after copying
 if [ -f $BINARY_NAME ]; then

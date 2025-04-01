@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -39,84 +38,24 @@ func ValidateHealthCheckPath(path string) error {
 	return nil
 }
 
-func ValidateSource(source Source) error {
-	sourceIsDefined := false
-
-	// Check Dockerfile Source
-	if source.Dockerfile != nil {
-		sourceIsDefined = true
-		dfSource := source.Dockerfile
-		if dfSource.Path == "" {
-			return fmt.Errorf("source.dockerfile.path is required")
-		}
-		if dfSource.BuildContext == "" {
-			return fmt.Errorf("source.dockerfile.buildContext is required")
-		}
-
-		// Check Dockerfile Path existence and type (should be a file)
-		// Consider making paths absolute before checking, or resolving relative to config file?
-		// For now, assuming paths are relative to where the app runs or absolute.
-		fileInfo, err := os.Stat(dfSource.Path)
-		if os.IsNotExist(err) {
-			return fmt.Errorf("source.dockerfile.path '%s' does not exist", dfSource.Path)
-		} else if err != nil {
-			return fmt.Errorf("unable to check source.dockerfile.path '%s': %w", dfSource.Path, err)
-		}
-		if fileInfo.IsDir() {
-			return fmt.Errorf("source.dockerfile.path '%s' is a directory, not a file", dfSource.Path)
-		}
-
-		// Check BuildContext existence and type (should be a directory)
-		ctxInfo, err := os.Stat(dfSource.BuildContext)
-		if os.IsNotExist(err) {
-			return fmt.Errorf("source.dockerfile.buildContext '%s' does not exist", dfSource.BuildContext)
-		} else if err != nil {
-			return fmt.Errorf("unable to check source.dockerfile.buildContext '%s': %w", dfSource.BuildContext, err)
-		}
-		if !ctxInfo.IsDir() {
-			return fmt.Errorf("source.dockerfile.buildContext '%s' is not a directory", dfSource.BuildContext)
-		}
-	}
-
-	// Check Image Source
-	if source.Image != nil {
-		// Check if Dockerfile source was *also* defined (mutual exclusivity)
-		if sourceIsDefined {
-			return fmt.Errorf("cannot define both source.dockerfile and source.image")
-		}
-		sourceIsDefined = true
-		imgSource := source.Image
-		// Validate Image source fields
-		if imgSource.Repository == "" {
-			return fmt.Errorf("source.image.repository is required")
-		}
-		// Optional: Add regex validation for imgSource.Repository and imgSource.Tag if needed.
-		// Example simple check: prevent whitespace
-		if strings.ContainsAny(imgSource.Repository, " \t\n\r") {
-			return fmt.Errorf("source.image.repository '%s' contains whitespace", imgSource.Repository)
-		}
-		if strings.ContainsAny(imgSource.Tag, " \t\n\r") {
-			return fmt.Errorf("source.image.tag '%s' contains whitespace", imgSource.Tag)
-		}
-	}
-
-	// Check if *at least one* source type was defined
-	if !sourceIsDefined {
-		return fmt.Errorf("source must contain either 'dockerfile' or 'image'")
-	}
-	return nil
-}
-
 // ValidateConfigFile checks that the Config is well-formed.
-func ValidateConfigFile(conf *Config) error {
-	// Validate apps.
-	if len(conf.Apps) == 0 {
-		return errors.New("no apps defined in config")
+func (c *Config) Validate() error {
+	// Check that at least one app is defined.
+	if len(c.Apps) == 0 {
+		return errors.New("config: no apps defined")
 	}
-	for _, app := range conf.Apps {
+	for _, app := range c.Apps {
+		// Enforce a non-empty app name.
 		if app.Name == "" {
-			return errors.New("found an app with an empty name")
+			return errors.New("app '': name cannot be empty")
 		}
+
+		// Validate source with app name in error message.
+		if err := app.Source.Validate(); err != nil {
+			return fmt.Errorf("app '%s': invalid source: %w", app.Name, err)
+		}
+
+		// Validate domains.
 		if len(app.Domains) == 0 {
 			return fmt.Errorf("app '%s': no domains defined", app.Name)
 		}
@@ -130,16 +69,20 @@ func ValidateConfigFile(conf *Config) error {
 				}
 			}
 		}
-		if len(app.ACMEEmail) == 0 {
+
+		// Validate ACME email.
+		if app.ACMEEmail == "" {
 			return fmt.Errorf("app '%s': missing ACME email used to get TLS certificates", app.Name)
 		}
 		if !helpers.IsValidEmail(app.ACMEEmail) {
 			return fmt.Errorf("app '%s': invalid ACME email '%s'", app.Name, app.ACMEEmail)
 		}
 
-		// Validate sources.
-		if err := ValidateSource(app.Source); err != nil {
-			return fmt.Errorf("app '%s': %w", app.Name, err)
+		// Validate environment variables.
+		for j, envVar := range app.Env {
+			if err := envVar.Validate(); err != nil {
+				return fmt.Errorf("app '%s', env[%d]: %w", app.Name, j, err)
+			}
 		}
 
 		// Validate volumes.
@@ -149,17 +92,17 @@ func ValidateConfigFile(conf *Config) error {
 			if len(parts) < 2 || len(parts) > 3 {
 				return fmt.Errorf("app '%s': invalid volume mapping '%s'; expected '/host/path:/container/path[:options]'", app.Name, volume)
 			}
-			// Validate host path (first element).
+			// Validate host path.
 			if !filepath.IsAbs(parts[0]) {
 				return fmt.Errorf("app '%s': volume host path '%s' in '%s' is not an absolute path", app.Name, parts[0], volume)
 			}
-			// Validate container path (second element).
+			// Validate container path.
 			if !filepath.IsAbs(parts[1]) {
 				return fmt.Errorf("app '%s': volume container path '%s' in '%s' is not an absolute path", app.Name, parts[1], volume)
 			}
 		}
 
-		// Check that the health check path is a valid URL path.
+		// Validate health check path.
 		if err := ValidateHealthCheckPath(app.HealthCheckPath); err != nil {
 			return fmt.Errorf("app '%s': %w", app.Name, err)
 		}

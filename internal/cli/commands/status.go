@@ -98,8 +98,20 @@ func showAppStatus(app *config.AppConfig) error {
 
 	// Build environment variables output.
 	var envLines []string
-	for k, v := range app.Env {
-		envLines = append(envLines, fmt.Sprintf("  %s: %s", k, v))
+	for _, ev := range app.Env {
+		var val string
+		if ev.Value != nil {
+			val = *ev.Value
+		} else if ev.SecretName != nil {
+			// If there's a secret reference, simulate the "SECRET:" prefix.
+			val = "SECRET:" + *ev.SecretName
+		}
+		if strings.HasPrefix(val, "SECRET:") {
+			secretName := strings.TrimPrefix(val, "SECRET:")
+			envLines = append(envLines, fmt.Sprintf("  %s: loaded from secret (%s)", ev.Name, secretName))
+		} else {
+			envLines = append(envLines, fmt.Sprintf("  %s: %s", ev.Name, val))
+		}
 	}
 	envStr := strings.Join(envLines, "\n")
 
