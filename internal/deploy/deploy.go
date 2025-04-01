@@ -115,15 +115,6 @@ func runContainer(ctx context.Context, dockerClient *client.Client, imageName st
 		}
 		args = append(args, "-e", fmt.Sprintf("%s=%s", v.Name, value))
 	}
-	fmt.Println("Environment variables:")
-	for _, v := range appConfig.Env {
-		value, err := v.GetValue()
-		if err != nil {
-			return "", "", fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
-		}
-		fmt.Printf("  %s=%s\n", v.Name, value)
-	}
-	// Add ports.
 
 	// Add volumes.
 	for _, vol := range appConfig.Volumes {
