@@ -79,8 +79,8 @@ apps:
     env: # Optional
       - name: "NODE_ENV"
         value: "production"
-      - name: "API_KEY"
-        encryptedValue: "encrypted_value" # Use haloy encrypt value   
+      - name: "API_KEY" 
+        secretName: "api-key" # Reference to a secret stored with 'haloy secrets set'
    keepOldContainers: 5 # Optional: Default is 3
    volumes: # Optional
       - "/host/path:/container/path"
@@ -117,9 +117,41 @@ Each app in the `apps` array can have the following properties:
 - `dockerfile`: Path to your Dockerfile (required)
 - `buildContext`: Build context directory for Docker (required)
 - `env`: Environment variables for the container
+  - Plain values: `{ name: "NODE_ENV", value: "production" }`
+  - Secret values: `{ name: "API_KEY", secretName: "api-key" }` (references a stored secret)
 - `keepOldContainers`: Number of old containers to keep after deployment (default: 3)
 - `volumes`: Docker volumes to mount
 - `healthCheckPath`: HTTP path for health checks (default: "/")
+
+### Secrets Management
+
+Haloy provides a secure way to manage sensitive environment variables using the `secrets` command:
+
+```bash
+# Initialize the secrets system (generates encryption keys)
+haloy secrets init
+
+# Store a secret
+haloy secrets set api-key "your-secret-api-key"
+
+# List all stored secrets
+haloy secrets list
+
+# Delete a secret
+haloy secrets delete api-key
+```
+
+To use a secret in your app configuration:
+
+1. Store the secret using `haloy secrets set <secret-name> <value>`
+2. Reference it in your `apps.yml` file:
+   ```yaml
+   env:
+     - name: "API_KEY"
+       secretName: "api-key"  # References the stored secret named "api-key"
+   ```
+
+Secrets are securely encrypted at rest using [age encryption](https://age-encryption.org) and are only decrypted when needed for deployments.
 
 ## Development
 

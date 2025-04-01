@@ -98,7 +98,8 @@ func SaveSecrets(secrets map[string]SecretRecord) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode secrets as JSON: %w", err)
 	}
-	if err := os.WriteFile(secretsPath, data, 0644); err != nil {
+	// Write with restricted permissions (0600 - read/write for owner only)
+	if err := os.WriteFile(secretsPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write secrets file: %w", err)
 	}
 	return nil

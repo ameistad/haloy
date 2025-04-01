@@ -33,7 +33,8 @@ func SecretsInitCommand() *cobra.Command {
 				return fmt.Errorf("failed to get config directory: %w", err)
 			}
 			identityPath := filepath.Join(configDir, config.IdentityFileName)
-			f, err := os.Create(identityPath)
+			// Create the identity file with restricted permissions (0600 - read/write for owner only)
+				f, err := os.OpenFile(identityPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 			if err != nil {
 				return fmt.Errorf("failed to create identity file: %w", err)
 			}
