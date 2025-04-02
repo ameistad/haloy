@@ -37,7 +37,7 @@ func DeployApp(appConfig *config.AppConfig) {
 		}
 		return
 	}
-	ui.Info("Image '%s' built successfully.", imageName)
+	ui.Info("Image '%s' built successfully.\n", imageName)
 
 	// containerID, deploymentID, err := runContainer(ctx, dockerClient, imageName, appConfig)
 	runResult, err := docker.RunContainer(ctx, dockerClient, imageName, appConfig)
@@ -53,26 +53,26 @@ func DeployApp(appConfig *config.AppConfig) {
 		return
 	}
 
-	ui.Info("New container '%s' started successfully.", runResult.ContainerID[:12])
+	ui.Info("New container '%s' started successfully.\n", runResult.ContainerID[:12])
 
-	ui.Info("Stopping old containers...")
+	ui.Info("Stopping old containers...\n")
 	if err := docker.StopContainers(ctx, dockerClient, appConfig.Name, runResult.DeploymentID); err != nil {
 		ui.Error("Failed to stop old containers: %v", err)
 		return
 	}
 
-	ui.Info("Keeping %d old containers", appConfig.MaxContainersToKeep)
+	ui.Info("Before remove: MaxContainersToKeep: %d \n", *appConfig.MaxContainersToKeep)
 	if err := docker.RemoveContainers(docker.RemoveContainersParams{
 		Context:             ctx,
 		DockerClient:        dockerClient,
 		AppName:             appConfig.Name,
 		IgnoreDeploymentID:  runResult.DeploymentID,
-		MaxContainersToKeep: appConfig.MaxContainersToKeep,
+		MaxContainersToKeep: *appConfig.MaxContainersToKeep,
 	}); err != nil {
 		ui.Error("Failed to remove old containers: %v", err)
 		return
 	}
-	ui.Info("Old containers stopped and removed successfully.")
+	ui.Info("Old containers stopped and removed successfully.\n")
 
 	// // Prune old containers based on configuration.
 	// if err := PruneOldContainers(appConfig.Name, runResult.ContainerID, appConfig.MaxContainersToKeep); err != nil {

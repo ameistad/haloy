@@ -21,17 +21,38 @@ import (
 )
 
 func BuildImage(ctx context.Context, dockerClient *client.Client, imageName string, source *config.DockerfileSource) error {
-	ui.Info("Preparing to build image '%s'...", imageName)
+	// Get absolute paths first to correctly determine relative paths later
+	absContext, err := filepath.Abs(source.BuildContext)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path for build context '%s': %w", source.BuildContext, err)
+	}
+	absDockerfile, err := filepath.Abs(source.Path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path for Dockerfile '%s': %w", source.Path, err)
+	}
 
-	// TODO: Consider adding appConfig fields for NoCache, PullParent, Platform if needed
+	// Check if the resolved Dockerfile path is within the resolved build context path
+	isDockerfileInContext := strings.HasPrefix(absDockerfile, absContext+string(filepath.Separator)) || absDockerfile == absContext
+
+	// Calculate the correct Dockerfile path to use in Docker API
+	var dockerfilePath string
+	if isDockerfileInContext {
+		// If Dockerfile is inside context, use path relative to context
+		relPath, err := filepath.Rel(absContext, absDockerfile)
+		if err != nil {
+			return fmt.Errorf("failed to calculate relative Dockerfile path: %w", err)
+		}
+		dockerfilePath = relPath
+	} else {
+		// If Dockerfile is outside context, we'll place it at root of temp context
+		dockerfilePath = filepath.Base(absDockerfile)
+	}
+
 	buildOpts := types.ImageBuildOptions{
 		Tags:       []string{imageName},
-		Dockerfile: filepath.Base(source.Path), // Path relative to context root
+		Dockerfile: dockerfilePath, // Now correctly set for both cases
 		BuildArgs:  make(map[string]*string),
 		Remove:     true, // Remove intermediate containers after a successful build
-		// NoCache:    appConfig.NoCache,    // Example: Add if appConfig has NoCache field
-		// PullParent: appConfig.PullParent, // Example: Add if appConfig has PullParent field
-		// Platform:   appConfig.Platform,   // Example: Add if appConfig has Platform field (e.g., "linux/amd64")
 	}
 
 	// Set build args from the source
@@ -42,29 +63,14 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, imageName stri
 		}
 	}
 
-	absContext, err := filepath.Abs(source.BuildContext)
-	if err != nil {
-		return fmt.Errorf("failed to resolve absolute path for build context '%s': %w", source.BuildContext, err)
-	}
-	absDockerfile, err := filepath.Abs(source.Path)
-	if err != nil {
-		return fmt.Errorf("failed to resolve absolute path for Dockerfile '%s': %w", source.Path, err)
-	}
-
 	// Get ignore patterns from the *original* build context directory, regardless of where Dockerfile is.
 	ignorePatterns := getDockerIgnorePatterns(absContext)
 
 	var buildContextTar io.ReadCloser // This will be the tar stream sent to the daemon
 	var cleanupFunc func()            // Function to clean up temp resources if needed
 
-	// Check if the resolved Dockerfile path is within the resolved build context path.
-	// Need to handle separators correctly, especially if context is "/path/to/context" and dockerfile is "/path/to/context/Dockerfile".
-	// Also handle the case where the context *is* the Dockerfile (less common).
-	isDockerfileInContext := strings.HasPrefix(absDockerfile, absContext+string(filepath.Separator)) || absDockerfile == absContext
-
 	if isDockerfileInContext {
 		// Case 1: Dockerfile is inside the build context directory.
-		ui.Info("Dockerfile found within build context. Archiving context: %s", absContext)
 		buildContextTar, err = archive.TarWithOptions(absContext, &archive.TarOptions{
 			// Compression: archive.Gzip, // Optional: Can add compression
 			ExcludePatterns: ignorePatterns,
@@ -74,12 +80,6 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, imageName stri
 		}
 	} else {
 		// Case 2: Dockerfile is outside the context directory.
-		// We need to create a temporary directory, copy the original context into it,
-		// copy the external Dockerfile into the root of the temp dir, and then archive the temp dir.
-		// This is necessary because the Docker API's ImageBuild expects the Dockerfile path
-		// (in ImageBuildOptions) to be relative to the root of the *streamed* build context tarball.
-		ui.Warning("Dockerfile '%s' is outside build context '%s'. Creating temporary merged context.", absDockerfile, absContext)
-
 		tmpDir, err := os.MkdirTemp("", "haloy-docker-build-")
 		if err != nil {
 			return fmt.Errorf("failed to create temporary build context directory: %w", err)
@@ -104,10 +104,6 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, imageName stri
 			return fmt.Errorf("failed to copy Dockerfile from '%s' to '%s': %w", absDockerfile, tmpDockerfilePath, err)
 		}
 
-		// Crucially, update buildOpts.Dockerfile to point to the basename
-		// within the *temporary* context directory.
-		buildOpts.Dockerfile = dockerfileBaseName
-
 		// Archive the *temporary* directory, applying the ignore patterns
 		// that were read from the *original* build context.
 		buildContextTar, err = archive.TarWithOptions(tmpDir, &archive.TarOptions{
@@ -131,8 +127,6 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, imageName stri
 		}
 	}()
 
-	// --- Execute Build ---
-	ui.Info("Starting image build for '%s' via Docker API...", imageName)
 	resp, err := dockerClient.ImageBuild(ctx, buildContextTar, buildOpts)
 	if err != nil {
 		// Check for context cancellation or deadline first
@@ -149,21 +143,14 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, imageName stri
 	defer resp.Body.Close()
 
 	// --- Stream Output ---
-	// Use DisplayJSONMessagesStream for nice CLI-like output to Stdout.
 	termFd, isTerm := term.GetFdInfo(os.Stdout)
 	err = jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stdout, termFd, isTerm, nil)
 	if err != nil {
-		// DisplayJSONMessagesStream returns an error if the stream contains an error message from the daemon
-		// or if there's an issue reading/parsing the stream itself.
 		if jsonErr, ok := err.(*jsonmessage.JSONError); ok {
-			// This was an error message reported by the Docker daemon during the build.
 			return fmt.Errorf("build failed with error from Docker daemon: %s", jsonErr.Message)
 		}
-		// This was likely an issue reading or parsing the stream.
 		return fmt.Errorf("failed to stream build output: %w", err)
 	}
-
-	ui.Success("Successfully built image '%s'", imageName)
 	return nil
 }
 

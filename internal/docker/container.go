@@ -169,7 +169,7 @@ func RemoveContainers(params RemoveContainersParams) error {
 	for _, c := range containerList {
 		deploymentID := c.Labels[config.LabelDeploymentID]
 		if deploymentID == params.IgnoreDeploymentID {
-			ui.Info("Skipping container with ignored deployment ID: %s", deploymentID)
+			ui.Info("Skipping container with ignored deployment ID: %s\n", deploymentID)
 			continue
 		}
 		containers = append(containers, containerInfo{
@@ -178,7 +178,7 @@ func RemoveContainers(params RemoveContainersParams) error {
 		})
 	}
 
-	ui.Info("Found %d containers matching app name %s", len(containers), params.AppName)
+	ui.Info("Found %d containers matching app name %s\n", len(containers), params.AppName)
 
 	// Sort containers by deploymentID (newest/largest timestamp first)
 	sort.Slice(containers, func(i, j int) bool {
@@ -186,24 +186,21 @@ func RemoveContainers(params RemoveContainersParams) error {
 	})
 
 	// Debug the sorting order
-	for i, c := range containers {
-		ui.Info("Container %d: ID=%s, DeploymentID=%s", i, c.id[:12], c.deploymentID)
-	}
+	// for i, c := range containers {
+	// 	ui.Info("Container %d: ID=%s, DeploymentID=%s", i, c.id[:12], c.deploymentID)
+	// }
 
 	// Skip newest containers according to NumberOfContainersToSkip
-	containersToKeep := containers
-	var containersToRemove []containerInfo
-
-	if params.MaxContainersToKeep > 0 && len(containers) > params.MaxContainersToKeep {
-		containersToKeep = containers[:params.MaxContainersToKeep]
+	containersToRemove := []containerInfo{}
+	if params.MaxContainersToKeep == 0 {
+		// Remove all containers except the one with IgnoreDeploymentID
+		containersToRemove = containers
+	} else if params.MaxContainersToKeep > 0 && len(containers) > params.MaxContainersToKeep {
+		containersToKeep := containers[:params.MaxContainersToKeep]
 		containersToRemove = containers[params.MaxContainersToKeep:]
-	} else {
-		// If we have fewer containers than the skip count, don't remove any
-		containersToRemove = []containerInfo{}
-	}
 
-	ui.Info("Keeping %d newest containers, removing %d older containers",
-		len(containersToKeep), len(containersToRemove))
+		_ = containersToKeep // just to avoid linter error
+	}
 
 	// Remove the remaining containers
 	for _, c := range containersToRemove {

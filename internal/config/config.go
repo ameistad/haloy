@@ -58,12 +58,13 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type AppConfig struct {
-	Name                string   `yaml:"name"`
-	Source              Source   `yaml:"source"`
-	Domains             []Domain `yaml:"domains"`
-	ACMEEmail           string   `yaml:"acmeEmail"`
-	Env                 []EnvVar `yaml:"env,omitempty"`
-	MaxContainersToKeep int      `yaml:"maxContainersToKeep,omitempty"`
+	Name      string   `yaml:"name"`
+	Source    Source   `yaml:"source"`
+	Domains   []Domain `yaml:"domains"`
+	ACMEEmail string   `yaml:"acmeEmail"`
+	Env       []EnvVar `yaml:"env,omitempty"`
+	// Using pointer to allow nil value
+	MaxContainersToKeep *int     `yaml:"maxContainersToKeep,omitempty"`
 	Volumes             []string `yaml:"volumes,omitempty"`
 	HealthCheckPath     string   `yaml:"healthCheckPath,omitempty"`
 	Port                string   `yaml:"port,omitempty"`
@@ -192,8 +193,9 @@ func NormalizeConfig(conf *Config) *Config {
 		normalized.Apps[i] = app
 
 		// Default MaxContainersToKeep to 3 if not set.
-		if app.MaxContainersToKeep == 0 {
-			normalized.Apps[i].MaxContainersToKeep = DefaultMaxContainersToKeep
+		if app.MaxContainersToKeep == nil {
+			defaultMax := DefaultMaxContainersToKeep
+			normalized.Apps[i].MaxContainersToKeep = &defaultMax
 		}
 
 		if app.HealthCheckPath == "" {
