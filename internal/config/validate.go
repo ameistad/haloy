@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/helpers"
+	"gopkg.in/yaml.v3"
 )
 
 // ValidateDomain checks that a domain string is not empty and has a basic valid structure.
@@ -107,5 +109,48 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("app '%s': %w", app.Name, err)
 		}
 	}
+	return nil
+}
+
+// This is used in unmarshalling to check for unknown fields in the YAML file.
+// extractYAMLFieldNames returns a map of field names from YAML struct tags
+func ExtractYAMLFieldNames(t reflect.Type) map[string]bool {
+	fields := make(map[string]bool)
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		tag := field.Tag.Get("yaml")
+		if tag == "" || tag == "-" {
+			continue
+		}
+
+		// Split on comma to handle tags like `yaml:"name,omitempty"`
+		parts := strings.Split(tag, ",")
+		fields[parts[0]] = true
+	}
+	return fields
+}
+
+// checkUnknownFields verifies no unknown fields exist in the YAML node
+func CheckUnknownFields(node *yaml.Node, expectedFields map[string]bool, context string) error {
+	if node.Kind != yaml.MappingNode {
+		return nil
+	}
+
+	// YAML mapping nodes have key-value pairs in sequence
+	for i := 0; i < len(node.Content); i += 2 {
+		// Skip if we somehow have an odd number of items
+		if i+1 >= len(node.Content) {
+			continue
+		}
+
+		// Get the key name
+		key := node.Content[i].Value
+
+		// Check if it's a known field
+		if !expectedFields[key] {
+			return fmt.Errorf("%sunknown field: %s", context, key)
+		}
+	}
+
 	return nil
 }

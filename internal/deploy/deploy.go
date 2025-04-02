@@ -3,15 +3,11 @@ package deploy
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
-	"github.com/docker/docker/client"
 )
 
 const (
@@ -43,7 +39,8 @@ func DeployApp(appConfig *config.AppConfig) {
 	}
 	ui.Info("Image '%s' built successfully.", imageName)
 
-	containerID, deploymentID, err := runContainer(ctx, dockerClient, imageName, appConfig)
+	// containerID, deploymentID, err := runContainer(ctx, dockerClient, imageName, appConfig)
+	runResult, err := docker.RunContainer(ctx, dockerClient, imageName, appConfig)
 	if err != nil {
 		// Check for context errors
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -55,92 +52,39 @@ func DeployApp(appConfig *config.AppConfig) {
 		}
 		return
 	}
-	ui.Info("New container '%s' started successfully.", containerID[:12])
 
-	// Stop any old containers so that the reverse proxy routes traffic only to the new container.
-	if err := StopOldContainers(appConfig.Name, containerID, deploymentID); err != nil {
-		ui.Error("Failed to stop old containers: %w", err)
+	ui.Info("New container '%s' started successfully.", runResult.ContainerID[:12])
+
+	ui.Info("Stopping old containers...")
+	if err := docker.StopContainers(ctx, dockerClient, appConfig.Name, runResult.DeploymentID); err != nil {
+		ui.Error("Failed to stop old containers: %v", err)
 		return
 	}
 
-	// Prune old containers based on configuration.
-	if err := PruneOldContainers(appConfig.Name, containerID, appConfig.KeepOldContainers); err != nil {
-		ui.Error("Failed to prune old containers: %w", err)
+	ui.Info("Keeping %d old containers", appConfig.MaxContainersToKeep)
+	if err := docker.RemoveContainers(docker.RemoveContainersParams{
+		Context:             ctx,
+		DockerClient:        dockerClient,
+		AppName:             appConfig.Name,
+		IgnoreDeploymentID:  runResult.DeploymentID,
+		MaxContainersToKeep: appConfig.MaxContainersToKeep,
+	}); err != nil {
+		ui.Error("Failed to remove old containers: %v", err)
 		return
 	}
+	ui.Info("Old containers stopped and removed successfully.")
 
-	// Clean up old dangling images
-	if err := PruneOldImages(appConfig.Name); err != nil {
-		fmt.Printf("Warning: failed to prune old images: %v\n", err)
-		// We don't return the error here as this is a non-critical step
-	}
+	// // Prune old containers based on configuration.
+	// if err := PruneOldContainers(appConfig.Name, runResult.ContainerID, appConfig.MaxContainersToKeep); err != nil {
+	// 	ui.Error("Failed to prune old containers: %w", err)
+	// 	return
+	// }
 
-	fmt.Printf("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, deploymentID)
-}
+	// // Clean up old dangling images
+	// if err := PruneOldImages(appConfig.Name); err != nil {
+	// 	ui.Warning("Warning: failed to prune old images: %v\n", err)
+	// 	// We don't return the error here as this is a non-critical step
+	// }
 
-func runContainer(ctx context.Context, dockerClient *client.Client, imageName string, appConfig *config.AppConfig) (string, string, error) {
-	// deploymentID doesn't need to be a timestamp, but it needs to be incremented from the previous deployment.
-	deploymentID := time.Now().Format("20060102150405")
-	containerName := fmt.Sprintf("%s-haloy-%s", appConfig.Name, deploymentID)
-
-	args := []string{"run", "-d", "--name", containerName, "--restart", "unless-stopped"}
-
-	// Convert AppConfig to ContainerLabels
-	cl := config.ContainerLabels{
-		AppName:         appConfig.Name,
-		DeploymentID:    deploymentID,
-		Ignore:          false,
-		ACMEEmail:       appConfig.ACMEEmail,
-		Port:            appConfig.Port,
-		HealthCheckPath: appConfig.HealthCheckPath,
-		Domains:         appConfig.Domains,
-	}
-	// Add all labels at once by merging maps
-	labels := cl.ToLabels()
-
-	// Convert all labels to docker command arguments
-	for k, v := range labels {
-		args = append(args, "-l", fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Add environment variables.
-	err := config.DecryptEnvVars(appConfig.Env)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to decrypt environment variables: %w", err)
-	}
-	for _, v := range appConfig.Env {
-		value, err := v.GetValue()
-		if err != nil {
-			return "", "", fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
-		}
-		args = append(args, "-e", fmt.Sprintf("%s=%s", v.Name, value))
-	}
-
-	// Add volumes.
-	for _, vol := range appConfig.Volumes {
-		args = append(args, "-v", vol)
-	}
-
-	if err := docker.EnsureNetwork(dockerClient, ctx); err != nil {
-		return "", "", fmt.Errorf("failed to ensure Docker network exists: %w", err)
-	}
-
-	if err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
-		return "", "", fmt.Errorf("failed to to start haproxy and haloy-manager: %w", err)
-	}
-
-	// Attach the container to the network.
-	args = append(args, "--network", config.DockerNetwork)
-
-	// Finally, set the image to run.
-	args = append(args, imageName)
-
-	cmd := exec.Command("docker", args...)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", "", err
-	}
-	containerID := strings.TrimSpace(string(out))
-	fmt.Printf("New container started with ID '%s' and name '%s'\n", containerID, containerName)
-	return containerID, deploymentID, nil
+	ui.Success("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, runResult.DeploymentID)
 }

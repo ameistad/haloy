@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,8 +12,8 @@ const (
 	// DockerNetwork is the network name to which containers are attached.
 	DockerNetwork = "haloy-public"
 
-	// DefaultKeepOldContainers is the default number of old containers to keep.
-	DefaultKeepOldContainers = 3
+	// DefaultMaxContainersToKeep is the default number of old containers to keep.
+	DefaultMaxContainersToKeep = 3
 
 	// DefaultHealthCheckPath is the path to which the health check endpoint is bound.
 	DefaultHealthCheckPath = "/"
@@ -29,80 +29,88 @@ const (
 	// LabelPreix = "haloy"
 )
 
-func CheckConfigDirExists(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("directory %s does not exist", path)
-		}
-		return fmt.Errorf("failed to access directory: %w", err)
+type Config struct {
+	Apps []AppConfig `yaml:"apps"`
+}
+
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
+	// Get expected field names from struct tags
+	expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*c))
+
+	// Check for unknown fields
+	if err := CheckUnknownFields(value, expectedFields, ""); err != nil {
+		return err
 	}
-	if !info.IsDir() {
-		return fmt.Errorf("path %s is not a directory", path)
+
+	// Use type alias to avoid infinite recursion
+	type ConfigAlias Config
+	var alias ConfigAlias
+
+	// Unmarshal to the alias type
+	if err := value.Decode(&alias); err != nil {
+		return err
 	}
+
+	// Copy data back to original struct
+	*c = Config(alias)
+
 	return nil
 }
 
-// Defaults to ~/.config/haloy
-// If HALOY_CONFIG_PATH is set, it will use that instead.
-func ConfigDirPath() (string, error) {
+type AppConfig struct {
+	Name                string   `yaml:"name"`
+	Source              Source   `yaml:"source"`
+	Domains             []Domain `yaml:"domains"`
+	ACMEEmail           string   `yaml:"acmeEmail"`
+	Env                 []EnvVar `yaml:"env,omitempty"`
+	MaxContainersToKeep int      `yaml:"maxContainersToKeep,omitempty"`
+	Volumes             []string `yaml:"volumes,omitempty"`
+	HealthCheckPath     string   `yaml:"healthCheckPath,omitempty"`
+	Port                string   `yaml:"port,omitempty"`
+}
 
-	// First check if HALOY_CONFIG_PATH is set.
-	if envPath, ok := os.LookupEnv("HALOY_CONFIG_PATH"); ok && envPath != "" {
-		if err := CheckConfigDirExists(envPath); err != nil {
-			return "", fmt.Errorf("HALOY_CONFIG_PATH is set to '%s' but it is not a valid directory: %w", envPath, err)
+func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
+	// Get expected field names
+	expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*a))
+
+	// Find the app name for better error messages
+	var appName string
+	for i := 0; i < len(value.Content); i += 2 {
+		if i+1 >= len(value.Content) {
+			continue
 		}
-		return envPath, nil
-
+		if value.Content[i].Value == "name" {
+			appName = value.Content[i+1].Value
+			break
+		}
 	}
 
-	// Fallback to the default path.
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
+	// Set default context
+	context := "app: "
+	if appName != "" {
+		context = fmt.Sprintf("app '%s': ", appName)
 	}
-	defaultPath := filepath.Join(home, ".config", "haloy")
-	if err := CheckConfigDirExists(defaultPath); err != nil {
-		return "", fmt.Errorf("default config directory '%s' does not exist: %w", defaultPath, err)
+
+	// Check for unknown fields
+	if err := CheckUnknownFields(value, expectedFields, context); err != nil {
+		return err
 	}
-	return defaultPath, nil
+
+	// Use type alias to avoid infinite recursion
+	type AppConfigAlias AppConfig
+	var alias AppConfigAlias
+
+	// Unmarshal to the alias type
+	if err := value.Decode(&alias); err != nil {
+		return err
+	}
+
+	// Copy data back to original struct
+	*a = AppConfig(alias)
+
+	return nil
 }
 
-// ConfigFilePath returns "~/.config/haloy/apps.yml".
-func ConfigFilePath() (string, error) {
-	configDirPath, err := ConfigDirPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(configDirPath, ConfigFileName), nil
-}
-
-func ConfigContainersPath() (string, error) {
-	configDirPath, err := ConfigDirPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(configDirPath, "containers"), nil
-}
-
-func ServicesDockerComposeFilePath() (string, error) {
-	containersPath, err := ConfigContainersPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(containersPath, "docker-compose.yml"), nil
-}
-
-func HAProxyConfigFilePath() (string, error) {
-	containersPath, err := ConfigContainersPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(containersPath, "haproxy-config", HAProxyConfigFileName), nil
-}
-
-// Domain represents either a simple canonical domain or a mapping that includes aliases.
-// When decoding a scalar, the value is assigned to the Domain field and Aliases will be empty.
 type Domain struct {
 	Canonical string   `yaml:"domain"`
 	Aliases   []string `yaml:"aliases,omitempty"`
@@ -111,8 +119,6 @@ type Domain struct {
 func (d *Domain) ToSlice() []string {
 	return append([]string{d.Canonical}, d.Aliases...)
 }
-
-// UnmarshalYAML handles decoding a Domain from either a plain scalar or a mapping.
 func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
 	// If the YAML node is a scalar, treat it as a simple canonical domain.
 	if value.Kind == yaml.ScalarNode {
@@ -121,40 +127,62 @@ func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
 		return nil
 	}
 
-	// If the node is a mapping, decode it normally.
+	// If the node is a mapping, check for unknown fields
 	if value.Kind == yaml.MappingNode {
-		type domainAlias Domain // alias to avoid recursion
-		var da domainAlias
-		if err := value.Decode(&da); err != nil {
+		expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*d))
+
+		if err := CheckUnknownFields(value, expectedFields, "domain: "); err != nil {
 			return err
 		}
-		*d = Domain(da)
-		// Ensure Aliases is not nil.
+
+		// Use type alias to avoid infinite recursion
+		type DomainAlias Domain
+		var alias DomainAlias
+
+		// Unmarshal to the alias type
+		if err := value.Decode(&alias); err != nil {
+			return err
+		}
+
+		// Copy data back to original struct
+		*d = Domain(alias)
+
+		// Ensure Aliases is not nil
 		if d.Aliases == nil {
 			d.Aliases = []string{}
 		}
+
 		return nil
 	}
 
 	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
 }
 
-type AppConfig struct {
-	Name              string   `yaml:"name"`
-	Source            Source   `yaml:"source"`
-	Domains           []Domain `yaml:"domains"`
-	ACMEEmail         string   `yaml:"acmeEmail"`
-	Env               []EnvVar `yaml:"env,omitempty"`
-	KeepOldContainers int      `yaml:"keepOldContainers,omitempty"`
-	Volumes           []string `yaml:"volumes,omitempty"`
-	HealthCheckPath   string   `yaml:"healthCheckPath,omitempty"`
-	Port              string   `yaml:"port,omitempty"`
-}
+// func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
+// 	// If the YAML node is a scalar, treat it as a simple canonical domain.
+// 	if value.Kind == yaml.ScalarNode {
+// 		d.Canonical = value.Value
+// 		d.Aliases = []string{}
+// 		return nil
+// 	}
 
-// Config represents the overall configuration.
-type Config struct {
-	Apps []AppConfig `yaml:"apps"`
-}
+// 	// If the node is a mapping, decode it normally.
+// 	if value.Kind == yaml.MappingNode {
+// 		type domainAlias Domain // alias to avoid recursion
+// 		var da domainAlias
+// 		if err := value.Decode(&da); err != nil {
+// 			return err
+// 		}
+// 		*d = Domain(da)
+// 		// Ensure Aliases is not nil.
+// 		if d.Aliases == nil {
+// 			d.Aliases = []string{}
+// 		}
+// 		return nil
+// 	}
+
+// 	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
+// }
 
 // NormalizeConfig sets default values for the loaded configuration.
 func NormalizeConfig(conf *Config) *Config {
@@ -163,9 +191,9 @@ func NormalizeConfig(conf *Config) *Config {
 	for i, app := range conf.Apps {
 		normalized.Apps[i] = app
 
-		// Default KeepOldContainers to 3 if not set.
-		if app.KeepOldContainers == 0 {
-			normalized.Apps[i].KeepOldContainers = DefaultKeepOldContainers
+		// Default MaxContainersToKeep to 3 if not set.
+		if app.MaxContainersToKeep == 0 {
+			normalized.Apps[i].MaxContainersToKeep = DefaultMaxContainersToKeep
 		}
 
 		if app.HealthCheckPath == "" {

@@ -10,5 +10,5 @@ apps:
           - "www.example.com"
       - domain: "test.example.com"
     acmeEmail: "tls@example.com"
-    keepOldContainers: 3
+    maxContainersToKeep: 3
     healthCheckPath: "/health.html"

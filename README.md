@@ -59,7 +59,7 @@ This will:
 
 Edit the configuration file at `~/.config/haloy/apps.yml`:
 
-Example configuration with all options:
+Example configuration:
 ```yaml
 apps:
   - name: "example-app"
@@ -81,7 +81,7 @@ apps:
         value: "production"
       - name: "API_KEY" 
         secretName: "api-key" # Reference to a secret stored with 'haloy secrets set'
-   keepOldContainers: 5 # Optional: Default is 3
+   maxContainersToKeep: 5 # Optional: Default is 3
    volumes: # Optional
       - "/host/path:/container/path"
    healthCheckPath: "/health" # Optional: Default is "/"
@@ -119,7 +119,7 @@ Each app in the `apps` array can have the following properties:
 - `env`: Environment variables for the container
   - Plain values: `{ name: "NODE_ENV", value: "production" }`
   - Secret values: `{ name: "API_KEY", secretName: "api-key" }` (references a stored secret)
-- `keepOldContainers`: Number of old containers to keep after deployment (default: 3)
+- `maxContainersToKeep`: Number of old containers to keep after deployment (default: 3)
 - `volumes`: Docker volumes to mount
 - `healthCheckPath`: HTTP path for health checks (default: "/")
 

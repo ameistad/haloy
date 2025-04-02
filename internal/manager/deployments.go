@@ -5,11 +5,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"log"
 	"sort"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -58,7 +58,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) error {
 			continue
 		}
 
-		ip, err := containerNetworkIP(container, config.DockerNetwork)
+		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
 		if err != nil {
 			log.Printf("Failed to get IP address for container %s: %v", container.ID, err)
 			continue
@@ -178,19 +178,4 @@ func (dm *DeploymentManager) GetCertificateDomains() []certificates.DomainEmail 
 	}
 
 	return domains
-}
-
-// ContainerNetworkInfo extracts the container's IP address and exposed ports
-func containerNetworkIP(container container.InspectResponse, networkName string) (string, error) {
-	if _, exists := container.NetworkSettings.Networks[networkName]; !exists {
-		return "", fmt.Errorf("specified network not found: %s", networkName)
-	}
-
-	// Get IP address from the specified network
-	ipAddress := container.NetworkSettings.Networks[networkName].IPAddress
-	if ipAddress == "" {
-		return "", fmt.Errorf("container has no IP address on the specified network: %s", networkName)
-	}
-
-	return ipAddress, nil
 }

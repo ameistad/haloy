@@ -8,35 +8,6 @@ import (
 	"strings"
 )
 
-func StopOldContainers(appName, newContainerID, newDeploymentID string) error {
-	out, err := exec.Command("docker", "ps", "--filter", fmt.Sprintf("label=haloy.appName=%s", appName), "--format", "{{.ID}}").Output()
-	if err != nil {
-		return err
-	}
-	containers := strings.Split(strings.TrimSpace(string(out)), "\n")
-	for _, id := range containers {
-		// Skip if the container ID is empty or matches the new container.
-		if id == "" || strings.HasPrefix(newContainerID, id) || strings.HasPrefix(id, newContainerID) {
-			continue
-		}
-
-		// Inspect the container's deployment label.
-		labelOut, err := exec.Command("docker", "inspect", "--format", "{{ index .Config.Labels \"haloy.deployment\" }}", id).Output()
-		if err != nil {
-			fmt.Printf("Error reading deployment label for container %s: %v. Skipping container...\n", id, err)
-			continue
-		}
-		containerDeploymentID := strings.TrimSpace(string(labelOut))
-		if containerDeploymentID != newDeploymentID {
-			fmt.Printf("Stopping old container: %s (deployment: %s)\n", id, containerDeploymentID)
-			if err := exec.Command("docker", "stop", id).Run(); err != nil {
-				fmt.Printf("Error stopping container %s: %v\n", id, err)
-			}
-		}
-	}
-	return nil
-}
-
 func PruneOldContainers(appName, newContainerID string, keepCount int) error {
 	out, err := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("label=haloy.appName=%s", appName), "--format", "{{.ID}}").CombinedOutput()
 	if err != nil {

@@ -3,7 +3,10 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Source struct {
@@ -22,6 +25,30 @@ type DockerfileSource struct {
 type ImageSource struct {
 	Repository string `yaml:"repository"`
 	Tag        string `yaml:"tag, omitempty"`
+}
+
+func (s *Source) UnmarshalYAML(value *yaml.Node) error {
+	// Get expected field names
+	expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*s))
+
+	// Check for unknown fields
+	if err := CheckUnknownFields(value, expectedFields, "source: "); err != nil {
+		return err
+	}
+
+	// Use type alias to avoid infinite recursion
+	type SourceAlias Source
+	var alias SourceAlias
+
+	// Unmarshal to the alias type
+	if err := value.Decode(&alias); err != nil {
+		return err
+	}
+
+	// Copy data back to original struct
+	*s = Source(alias)
+
+	return nil
 }
 
 func (s *Source) Validate() error {

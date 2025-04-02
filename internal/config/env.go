@@ -3,6 +3,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"reflect"
+
+	"gopkg.in/yaml.v3"
 )
 
 // EnvVar represents an environment variable that can either have a plaintext value or be backed by a secret.
@@ -16,22 +19,46 @@ type EnvVar struct {
 	decryptedValue *string `yaml:"-"`
 }
 
+func (e *EnvVar) UnmarshalYAML(value *yaml.Node) error {
+	// Get expected field names
+	expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*e))
+
+	// Check for unknown fields
+	if err := CheckUnknownFields(value, expectedFields, "env var: "); err != nil {
+		return err
+	}
+
+	// Use type alias to avoid infinite recursion
+	type EnvVarAlias EnvVar
+	var alias EnvVarAlias
+
+	// Unmarshal to the alias type
+	if err := value.Decode(&alias); err != nil {
+		return err
+	}
+
+	// Copy data back to original struct
+	*e = EnvVar(alias)
+
+	return nil
+}
+
 // DecryptEnvVars iterates over the provided environment variables and, when a SecretName is set,
 // looks up the corresponding encrypted secret, decrypts it using the age identity, and updates the variable.
-func DecryptEnvVars(envVars []EnvVar) error {
-	// Load secrets from the secrets store.
+func DecryptEnvVars(initialEnvVars []EnvVar) ([]EnvVar, error) {
 	secrets, err := LoadSecrets()
 	if err != nil {
-		return fmt.Errorf("failed to load secrets: %w", err)
+		return nil, fmt.Errorf("failed to load secrets: %w", err)
 	}
 
 	// Load the full age identity (private key) — needed for decryption.
 	identity, err := GetAgeIdentity()
 	if err != nil {
-		return fmt.Errorf("failed to get age identity: %w", err)
+		return nil, fmt.Errorf("failed to get age identity: %w", err)
 	}
 
-	// Iterate through envVars.
+	envVars := make([]EnvVar, len(initialEnvVars))
+	copy(envVars, initialEnvVars)
 	for i, ev := range envVars {
 		if ev.SecretName != nil {
 			record, exists := secrets[*ev.SecretName]
@@ -41,13 +68,13 @@ func DecryptEnvVars(envVars []EnvVar) error {
 			// DecryptSecret will use the full identity to decrypt the stored encrypted value.
 			decrypted, err := DecryptSecret(record.Encrypted, identity)
 			if err != nil {
-				return fmt.Errorf("failed to decrypt value for '%s': %w", ev.Name, err)
+				return nil, fmt.Errorf("failed to decrypt value for '%s': %w", ev.Name, err)
 			}
 			// Write back to the underlying slice element.
 			envVars[i].decryptedValue = &decrypted
 		}
 	}
-	return nil
+	return envVars, nil
 }
 
 // GetValue returns the final value of the environment variable. It returns the decrypted value if available;

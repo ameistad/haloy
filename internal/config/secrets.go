@@ -105,6 +105,8 @@ func SaveSecrets(secrets map[string]SecretRecord) error {
 	return nil
 }
 
+// DecryptSecret decrypts a base64-encoded secret using the provided age identity.
+// It returns the decrypted secret as a string.
 func DecryptSecret(secret string, identity age.Identity) (string, error) {
 	// Decode the stored encrypted value from its base64 representation.
 	encryptedBytes, err := base64.StdEncoding.DecodeString(secret)

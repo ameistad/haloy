@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
@@ -47,13 +47,14 @@ func EnsureNetwork(dockerClient *client.Client, ctx context.Context) error {
 	return nil
 }
 
-func ContainerNetworkIP(container types.ContainerJSON, networkName string) (string, error) {
-	// Check if the network exists
+// ContainerNetworkInfo extracts the container's IP address
+func ContainerNetworkIP(container container.InspectResponse, networkName string) (string, error) {
 	if _, exists := container.NetworkSettings.Networks[networkName]; !exists {
 		return "", fmt.Errorf("specified network not found: %s", networkName)
 	}
-
-	// Get IP address from the specified network
+	if container.State == nil || !container.State.Running {
+		return "", fmt.Errorf("container is not running")
+	}
 	ipAddress := container.NetworkSettings.Networks[networkName].IPAddress
 	if ipAddress == "" {
 		return "", fmt.Errorf("container has no IP address on the specified network: %s", networkName)
