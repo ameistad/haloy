@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -23,7 +22,7 @@ import (
 )
 
 const (
-	RefreshInterval  = 5 * time.Minute
+	RefreshInterval  = 30 * time.Minute
 	HAProxyConfigDir = "/haproxy-config"
 	CertificatesDir  = "/cert-storage"
 	HTTPProviderPort = "8080"
@@ -34,6 +33,7 @@ var logger = logrus.New()
 type ContainerEvent struct {
 	Event     events.Message
 	Container container.InspectResponse
+	Labels    *config.ContainerLabels
 }
 
 func RunManager(dryRun bool) {
@@ -42,7 +42,7 @@ func RunManager(dryRun bool) {
 	})
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		log.Fatalf("Failed to create Docker client: %v", err)
+		logger.Fatalf("Failed to create Docker client: %v", err)
 	}
 	defer dockerClient.Close()
 
@@ -75,7 +75,7 @@ func RunManager(dryRun bool) {
 
 	// Get the initial list of containers and build deployments
 	if err := deploymentManager.BuildDeployments(ctx); err != nil {
-		log.Printf("Failed to build deployments: %v", err)
+		logger.Printf("Failed to build deployments: %v", err)
 	}
 
 	certDomains := deploymentManager.GetCertificateDomains()
@@ -104,91 +104,63 @@ func RunManager(dryRun bool) {
 		case e := <-eventsChan:
 			switch e.Event.Action {
 			case "start":
-				log.Printf("Container %s event: %s", e.Event.Action, e.Event.Actor.ID[:12])
-
-				labels, err := config.ParseContainerLabels(e.Container.Config.Labels)
-				if err != nil {
-					log.Printf("Error parsing container labels: %v", err)
-					continue
-				}
-
-				log.Printf("Container %s has app name '%s' and deployment ID '%s'", e.Container.ID[:12], labels.AppName, labels.DeploymentID)
+				logger.Printf("Container %s event: %s", e.Event.Action, e.Event.Actor.ID[:12])
 
 				// Execute in a goroutine to avoid blocking the event loop
-				go func() {
-					// Create a child context for the deployment process.
-					deploymentCtx, cancelDeployment := context.WithCancel(ctx)
-					defer cancelDeployment()
 
-					log.Printf("Starting deployment for %s\n", labels.AppName)
-
-					if err := deploymentManager.BuildDeployments(deploymentCtx); err != nil {
-						log.Printf("Failed to build deployments: %v", err)
-						return
-					}
-
-					if !deploymentManager.HasChanged() {
-						log.Println("Deployment configuration unchanged, skipping HAProxy update")
-						return
-					}
-
-					certDomains := deploymentManager.GetCertificateDomains()
-					certManager.AddDomains(certDomains)
-					certManager.Refresh()
-
-					log.Printf("Generating HAProxy config with for %s\n", labels.AppName)
-					deployments := deploymentManager.Deployments()
-					buf, err := CreateHAProxyConfig(deployments)
-					if err != nil {
-						log.Printf("Failed to create config %v", err)
-						return
-					}
-
-					if !dryRun {
-						if err := os.WriteFile(filepath.Join(HAProxyConfigDir, config.HAProxyConfigFileName), buf.Bytes(), 0644); err != nil {
-							log.Printf("Failed to write updated config file: %v", err)
-							return
-						}
-						log.Printf("Sending SIGUSR2 command to haproxy...")
-						haproxyID, err := getHaproxyContainerID(deploymentCtx, dockerClient)
-						if err != nil {
-							log.Fatalf("Error locating HAProxy container: %v", err)
-						}
-
-						err = dockerClient.ContainerKill(deploymentCtx, haproxyID, "SIGUSR2")
-						if err != nil {
-							log.Printf("Failed to send SIGUSR2: %v", err)
-						} else {
-							log.Println("Sent SIGUSR2 to HAProxy")
-						}
-					} else {
-						log.Printf("Generated HAProxy config would have been written to %s:\n%s", HAProxyConfigDir, buf.String())
-					}
-
-					log.Printf("Deployment completed for app '%s' (deployment: '%s')",
-						labels.AppName, labels.DeploymentID)
-				}()
-
-			case "die", "stop", "kill":
-				log.Printf("Container %s event: %s", e.Event.Action, e.Event.Actor.ID[:12])
-
-				labels, err := config.ParseContainerLabels(e.Container.Config.Labels)
-				if err != nil {
-					log.Printf("Error parsing container labels: %v", err)
-					continue
+				// Create a child context for the deployment process.
+				logger.Printf("Starting deployment for %s\n", e.Labels.AppName)
+				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
+				defer cancelDeployment()
+				if err := updateDeployment(updateDeploymentParams{
+					Context:           deploymentCtx,
+					DeploymentManager: deploymentManager,
+					CertManager:       certManager,
+					DockerClient:      dockerClient,
+					DryRun:            dryRun,
+					Reason:            fmt.Sprintf("container start: %s", e.Labels.AppName),
+				}); err != nil {
+					logger.Printf("Failed to update deployment: %v", err)
+					return
 				}
 
-				// TODO: clean up old deployements:
-				// - remove old containers
-				// - create new deployments
-				logger.Printf("Removing container %s", labels.AppName)
+				logger.Printf("Deployment completed for app '%s' (deployment: '%s')",
+					e.Labels.AppName, e.Labels.DeploymentID)
 
+			case "die", "stop", "kill":
+				logger.Printf("Container %s event: %s", e.Event.Action, e.Event.Actor.ID[:12])
+				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
+				defer cancelDeployment()
+				if err := updateDeployment(updateDeploymentParams{
+					Context:           deploymentCtx,
+					DeploymentManager: deploymentManager,
+					CertManager:       certManager,
+					DockerClient:      dockerClient,
+					DryRun:            dryRun,
+					Reason:            fmt.Sprintf("container start: %s", e.Labels.AppName),
+				}); err != nil {
+					logger.Printf("Failed to update deployment: %v", err)
+					return
+				}
+				logger.Printf("Removing container %s", e.Labels.AppName)
 			}
 
 		case err := <-errorsChan:
-			log.Printf("Error from Docker events: %v", err)
+			logger.Printf("Error from Docker events: %v", err)
 		case <-refreshTicker.C:
-			// Periodic full refresh
+			deploymentCtx, cancelDeployment := context.WithCancel(ctx)
+			defer cancelDeployment()
+			if err := updateDeployment(updateDeploymentParams{
+				Context:           deploymentCtx,
+				DeploymentManager: deploymentManager,
+				CertManager:       certManager,
+				DockerClient:      dockerClient,
+				DryRun:            dryRun,
+				Reason:            "periodic full refresh",
+			}); err != nil {
+				logger.Printf("Failed to update deployment: %v", err)
+				return
+			}
 		}
 	}
 }
@@ -217,20 +189,27 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 
 				container, err := dockerClient.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
-					log.Printf("Error inspecting container %s: %v", event.Actor.ID[:12], err)
+					logger.Printf("Error inspecting container %s: %v", event.Actor.ID[:12], err)
 					continue
 				}
 				eligible := isContainerEligible(container)
 
 				if eligible {
+					labels, err := config.ParseContainerLabels(container.Config.Labels)
+					if err != nil {
+						logger.Printf("Error parsing container labels: %v", err)
+						return
+					}
+
 					containerEvent := ContainerEvent{
 						Event:     event,
 						Container: container,
+						Labels:    labels,
 					}
 					eventsChan <- containerEvent
 					// TODO: remove this else block. It is only for testing.
 				} else {
-					log.Printf("Container %s event but not eligible: %s", event.Action, event.Actor.ID[:12])
+					logger.Printf("Container %s event but not eligible: %s", event.Action, event.Actor.ID[:12])
 				}
 			}
 		case err := <-errs:
@@ -247,6 +226,64 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 			return
 		}
 	}
+}
+
+// updateDeploymentConfig handles the common flow of updating deployments and HAProxy configuration
+type updateDeploymentParams struct {
+	Context           context.Context
+	DeploymentManager *DeploymentManager
+	CertManager       *certificates.Manager
+	DockerClient      *client.Client
+	DryRun            bool
+	Reason            string
+}
+
+func updateDeployment(params updateDeploymentParams) error {
+
+	logger.Printf("Starting deployment update (%s)", params.Reason)
+
+	if err := params.DeploymentManager.BuildDeployments(params.Context); err != nil {
+		return fmt.Errorf("failed to build deployments: %w", err)
+	}
+
+	if !params.DeploymentManager.HasChanged() {
+		return nil
+	}
+
+	// Update certificate domains
+	certDomains := params.DeploymentManager.GetCertificateDomains()
+	params.CertManager.AddDomains(certDomains)
+	params.CertManager.Refresh()
+
+	// Generate HAProxy configuration
+	logger.Printf("Generating HAProxy config for %s", params.Reason)
+	deployments := params.DeploymentManager.Deployments()
+	buf, err := CreateHAProxyConfig(deployments)
+	if err != nil {
+		return fmt.Errorf("failed to create config: %w", err)
+	}
+
+	if !params.DryRun {
+		// Write config and signal reload
+		if err := os.WriteFile(filepath.Join(HAProxyConfigDir, config.HAProxyConfigFileName), buf.Bytes(), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+
+		logger.Printf("Sending SIGUSR2 command to haproxy...")
+		haproxyID, err := getHaproxyContainerID(params.Context, params.DockerClient)
+		if err != nil {
+			return fmt.Errorf("failed to get HAProxy container ID: %w", err)
+		}
+
+		err = params.DockerClient.ContainerKill(params.Context, haproxyID, "SIGUSR2")
+		if err != nil {
+			return fmt.Errorf("failed to send SIGUSR2 to HAProxy: %w", err)
+		}
+	} else {
+		logger.Printf("Generated HAProxy config would have been written to %s:\n%s", HAProxyConfigDir, buf.String())
+	}
+
+	return nil
 }
 
 // isContainerEligible checks if a container should be handled by haloy.
