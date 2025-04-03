@@ -136,12 +136,6 @@ func RunManager(dryRun bool) {
 						return
 					}
 
-					configDirPath, err := config.ConfigDirPath()
-					if err != nil {
-						log.Printf("Failed to determine config directory path: %v", err)
-						return
-					}
-
 					if !dryRun {
 						if err := os.WriteFile(filepath.Join(HAProxyConfigDir, config.HAProxyConfigFileName), buf.Bytes(), 0644); err != nil {
 							log.Printf("Failed to write updated config file: %v", err)
@@ -160,7 +154,7 @@ func RunManager(dryRun bool) {
 							log.Println("Sent SIGUSR2 to HAProxy")
 						}
 					} else {
-						log.Printf("Generated HAProxy config would have been written to %s:\n%s", configDirPath, buf.String())
+						log.Printf("Generated HAProxy config would have been written to %s:\n%s", HAProxyConfigDir, buf.String())
 					}
 
 					log.Printf("Deployment completed for app '%s' (deployment: '%s')",

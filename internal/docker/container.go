@@ -146,7 +146,12 @@ type RemoveContainersParams struct {
 	MaxContainersToKeep int
 }
 
-func RemoveContainers(params RemoveContainersParams) error {
+type RemoveContainersResult struct {
+	ID           string
+	DeploymentID string
+}
+
+func RemoveContainers(params RemoveContainersParams) ([]RemoveContainersResult, error) {
 	filter := filters.NewArgs()
 	filter.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, params.AppName))
 
@@ -155,61 +160,47 @@ func RemoveContainers(params RemoveContainersParams) error {
 		All:     true,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	// Create a slice to hold containers we're going to process
-	type containerInfo struct {
-		id           string
-		deploymentID string
-	}
-	var containers []containerInfo
+	var containers []RemoveContainersResult
 
 	// Filter out the container with IgnoreDeploymentID
 	for _, c := range containerList {
 		deploymentID := c.Labels[config.LabelDeploymentID]
 		if deploymentID == params.IgnoreDeploymentID {
-			ui.Info("Skipping container with ignored deployment ID: %s\n", deploymentID)
 			continue
 		}
-		containers = append(containers, containerInfo{
-			id:           c.ID,
-			deploymentID: deploymentID,
+		containers = append(containers, RemoveContainersResult{
+			ID:           c.ID,
+			DeploymentID: deploymentID,
 		})
 	}
 
-	ui.Info("Found %d containers matching app name %s\n", len(containers), params.AppName)
-
 	// Sort containers by deploymentID (newest/largest timestamp first)
 	sort.Slice(containers, func(i, j int) bool {
-		return containers[i].deploymentID > containers[j].deploymentID
+		return containers[i].DeploymentID > containers[j].DeploymentID
 	})
 
-	// Debug the sorting order
-	// for i, c := range containers {
-	// 	ui.Info("Container %d: ID=%s, DeploymentID=%s", i, c.id[:12], c.deploymentID)
-	// }
-
 	// Skip newest containers according to NumberOfContainersToSkip
-	containersToRemove := []containerInfo{}
+	removedContainers := []RemoveContainersResult{}
 	if params.MaxContainersToKeep == 0 {
 		// Remove all containers except the one with IgnoreDeploymentID
-		containersToRemove = containers
+		removedContainers = containers
 	} else if params.MaxContainersToKeep > 0 && len(containers) > params.MaxContainersToKeep {
 		containersToKeep := containers[:params.MaxContainersToKeep]
-		containersToRemove = containers[params.MaxContainersToKeep:]
+		removedContainers = containers[params.MaxContainersToKeep:]
 
 		_ = containersToKeep // just to avoid linter error
 	}
 
 	// Remove the remaining containers
-	for _, c := range containersToRemove {
-		ui.Info("Removing container %s with deployment ID %s", c.id[:12], c.deploymentID)
-		err := params.DockerClient.ContainerRemove(params.Context, c.id, container.RemoveOptions{Force: true})
+	for _, c := range removedContainers {
+		err := params.DockerClient.ContainerRemove(params.Context, c.ID, container.RemoveOptions{Force: true})
 		if err != nil {
-			ui.Warning("Error removing container %s: %v", c.id[:12], err)
+			ui.Warning("Error removing container %s: %v\n", c.ID[:12], err)
 		}
 	}
 
-	return nil
+	return removedContainers, nil
 }
