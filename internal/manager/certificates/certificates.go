@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,6 +80,7 @@ type DomainEmail struct {
 
 func (m *Manager) Start() {
 	go m.renewalLoop()
+	go m.cleanupLoop()
 }
 
 func (m *Manager) Stop() {
@@ -124,6 +127,24 @@ func (m *Manager) renewalLoop() {
 		select {
 		case <-ticker.C:
 			m.checkRenewals()
+		case <-m.ctx.Done():
+			return
+		}
+	}
+}
+
+// cleanupLoop periodically checks for and removes expired certificates
+func (m *Manager) cleanupLoop() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// Do an initial cleanup
+	m.cleanupExpiredCertificates()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.cleanupExpiredCertificates()
 		case <-m.ctx.Done():
 			return
 		}
@@ -254,4 +275,74 @@ func (m *Manager) saveCertificate(domain string, cert *certificate.Resource) err
 	}
 
 	return nil
+}
+
+func (m *Manager) cleanupExpiredCertificates() {
+	m.logger.Infof("Starting certificate cleanup check")
+
+	// Read all certificate files in the certificate directory
+	files, err := os.ReadDir(m.config.CertDir)
+	if err != nil {
+		m.logger.Errorf("Failed to read certificate directory: %v", err)
+		return
+	}
+
+	// Track how many were deleted
+	deleted := 0
+
+	// Map for quick domain lookup
+	m.domainMutex.RLock()
+	managedDomains := make(map[string]struct{}, len(m.domains))
+	for domain := range m.domains {
+		managedDomains[domain] = struct{}{}
+	}
+	m.domainMutex.RUnlock()
+
+	// Check each .crt file
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".crt") && !strings.HasSuffix(file.Name(), ".crt.key") {
+			// Extract domain name from filename
+			domain := strings.TrimSuffix(file.Name(), ".crt")
+
+			// Check if this domain is still being managed
+			_, isManaged := managedDomains[domain]
+
+			certPath := filepath.Join(m.config.CertDir, file.Name())
+			keyPath := filepath.Join(m.config.CertDir, domain+".key")
+			combinedPath := filepath.Join(m.config.CertDir, domain+".crt.key")
+
+			// Check if certificate has expired
+			certData, err := os.ReadFile(certPath)
+			if err != nil {
+				m.logger.Warnf("Failed to read certificate %s: %v", certPath, err)
+				continue
+			}
+
+			// Parse the certificate
+			block, _ := pem.Decode(certData)
+			if block == nil || block.Type != "CERTIFICATE" {
+				m.logger.Warnf("Failed to decode PEM data for %s", domain)
+				continue
+			}
+
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				m.logger.Warnf("Failed to parse certificate for %s: %v", domain, err)
+				continue
+			}
+
+			// If certificate is expired AND domain is no longer managed, delete files
+			if time.Now().After(cert.NotAfter) && !isManaged {
+				m.logger.Infof("Deleting expired certificate for unmanaged domain %s", domain)
+
+				// Remove all certificate files for this domain
+				os.Remove(certPath)
+				os.Remove(keyPath)
+				os.Remove(combinedPath)
+				deleted++
+			}
+		}
+	}
+
+	m.logger.Infof("Certificate cleanup complete. Deleted %d expired certificates for unmanaged domains", deleted)
 }

@@ -72,6 +72,14 @@ func RunManager(dryRun bool) {
 		logger.Fatalf("Failed to create certificate manager: %v", err)
 		return
 	}
+
+	// Get the initial list of containers and build deployments
+	if err := deploymentManager.BuildDeployments(ctx); err != nil {
+		log.Printf("Failed to build deployments: %v", err)
+	}
+
+	certDomains := deploymentManager.GetCertificateDomains()
+	certManager.AddDomains(certDomains)
 	certManager.Start()
 
 	// Start Docker event listener
@@ -172,7 +180,6 @@ func RunManager(dryRun bool) {
 
 				// TODO: clean up old deployements:
 				// - remove old containers
-				// - remove domains from certManager
 				// - create new deployments
 				logger.Printf("Removing container %s", labels.AppName)
 
@@ -182,38 +189,6 @@ func RunManager(dryRun bool) {
 			log.Printf("Error from Docker events: %v", err)
 		case <-refreshTicker.C:
 			// Periodic full refresh
-			log.Println("Performing periodic HAProxy configuration refresh")
-			// Get all running containers on our network
-			containers, err := dockerClient.ContainerList(ctx, container.ListOptions{})
-			if err != nil {
-				log.Printf("Error listing containers for refresh: %v", err)
-				continue
-			}
-
-			for _, containerSummary := range containers {
-				container, err := dockerClient.ContainerInspect(ctx, containerSummary.ID)
-				if err != nil {
-					continue
-				}
-
-				// Check if container is on our network
-				eligible := isContainerEligible(container)
-				if !eligible {
-					continue
-				}
-
-				labels, err := config.ParseContainerLabels(container.Config.Labels)
-				if err != nil {
-					log.Printf("Error parsing container labels: %v", err)
-					continue
-				}
-
-				// TODO: do the same as for the start event.
-				logger.Printf("Refreshing container %s", labels.AppName)
-			}
-
-			log.Println("HAProxy configuration refresh completed")
-
 		}
 	}
 }
