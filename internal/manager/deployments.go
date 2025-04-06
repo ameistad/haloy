@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"log"
 	"sort"
+	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
@@ -28,8 +29,9 @@ type Deployment struct {
 type DeploymentManager struct {
 	DockerClient *client.Client
 	// Store the previous hash so we can compare it with the new hash to see if anything has changed.
-	previousHash string
-	deployments  []Deployment
+	previousHash     string
+	deployments      []Deployment
+	deploymentsMutex sync.RWMutex
 }
 
 func NewDeploymentManager(dockerClient *client.Client) *DeploymentManager {
@@ -95,12 +97,21 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) error {
 		deployments = append(deployments, deployment)
 	}
 
+	// --- Lock for writing the shared state ---
+	dm.deploymentsMutex.Lock()
+	defer dm.deploymentsMutex.Unlock()
 	dm.deployments = deployments
 	return nil
 }
 
 func (dm *DeploymentManager) Deployments() []Deployment {
-	return dm.deployments
+	dm.deploymentsMutex.RLock()
+	defer dm.deploymentsMutex.RUnlock()
+
+	// Return a copy to prevent external modification after unlock
+	deploymentsCopy := make([]Deployment, len(dm.deployments))
+	copy(deploymentsCopy, dm.deployments)
+	return deploymentsCopy
 }
 
 func (dm *DeploymentManager) calculateHash() string {
@@ -145,7 +156,11 @@ func (dm *DeploymentManager) calculateHash() string {
 }
 
 func (dm *DeploymentManager) HasChanged() bool {
-	currentHash := dm.calculateHash()
+	// --- Lock for writing: Reads deployments, calculates hash (which sorts), writes previousHash ---
+	dm.deploymentsMutex.Lock()
+	defer dm.deploymentsMutex.Unlock()
+
+	currentHash := dm.calculateHash() // Called under write lock
 	changed := currentHash != dm.previousHash
 
 	// Update the hash if changed
@@ -156,26 +171,32 @@ func (dm *DeploymentManager) HasChanged() bool {
 	return changed
 }
 
-func (dm *DeploymentManager) GetCertificateDomains() []certificates.DomainEmail {
-	domains := make([]certificates.DomainEmail, 0)
+// GetCertificateDomains collects all canonical domains and their aliases for certificate management.
+func (dm *DeploymentManager) GetCertificateDomains() []certificates.ManagedDomain {
+	dm.deploymentsMutex.RLock()
+	defer dm.deploymentsMutex.RUnlock()
+
+	managedDomains := make([]certificates.ManagedDomain, 0, len(dm.deployments)) // Pre-allocate roughly
 
 	for _, deployment := range dm.deployments {
+		if deployment.Labels == nil {
+			continue // Skip if labels somehow nil
+		}
 		for _, domain := range deployment.Labels.Domains {
-			// Add canonical domain
-			domains = append(domains, certificates.DomainEmail{
-				Domain: domain.Canonical,
-				Email:  deployment.Labels.ACMEEmail,
-			})
-
-			// Add all aliases
-			for _, alias := range domain.Aliases {
-				domains = append(domains, certificates.DomainEmail{
-					Domain: alias,
-					Email:  deployment.Labels.ACMEEmail,
+			// Only process if canonical domain is set and not empty
+			if domain.Canonical != "" {
+				// Ensure Aliases slice is not nil before passing
+				aliases := domain.Aliases
+				if aliases == nil {
+					aliases = []string{}
+				}
+				managedDomains = append(managedDomains, certificates.ManagedDomain{
+					Canonical: domain.Canonical,
+					Aliases:   aliases, // Include aliases
+					Email:     deployment.Labels.ACMEEmail,
 				})
 			}
 		}
 	}
-
-	return domains
+	return managedDomains
 }

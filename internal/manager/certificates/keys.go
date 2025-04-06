@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
 // KeyManager handles private key operations for the ACME client
@@ -32,7 +34,7 @@ func NewKeyManager(keyDir string) (*KeyManager, error) {
 // LoadOrCreateKey loads an existing account key or creates a new one
 func (km *KeyManager) LoadOrCreateKey(email string) (crypto.PrivateKey, error) {
 	// Sanitize email for filename
-	filename := sanitizeFilename(email) + ".key"
+	filename := helpers.SanitizeFilename(email) + ".key"
 	keyPath := filepath.Join(km.keyDir, filename)
 
 	// Check if key already exists
@@ -100,16 +102,4 @@ func (km *KeyManager) createKey(path string) (crypto.PrivateKey, error) {
 	}
 
 	return privateKey, nil
-}
-
-func sanitizeFilename(email string) string {
-	result := ""
-	for _, c := range email {
-		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' {
-			result += string(c)
-		} else {
-			result += "_"
-		}
-	}
-	return result
 }
