@@ -18,10 +18,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	haProxyContainerLabel = "haloy.role=haproxy"
-)
-
 type HAProxyManager struct {
 	dockerClient *client.Client
 	logger       *logrus.Logger
@@ -73,7 +69,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments []Deploy
 		return fmt.Errorf("HAProxyManager: failed to find HAProxy container: %w", err)
 	}
 	if haproxyID == "" {
-		hpm.logger.Warnf("HAProxyManager: No HAProxy container found with label %s, cannot reload.", haProxyContainerLabel)
+		hpm.logger.Warnf("HAProxyManager: No HAProxy container found with label %s=%s, cannot reload.", config.LabelRole, config.HAProxyLabelRole)
 		return nil // Not necessarily an error if HAProxy isn't running
 	}
 
@@ -176,7 +172,7 @@ func (hpm *HAProxyManager) generateConfig(deployments []Deployment) (bytes.Buffe
 
 func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
 	filtersArgs := filters.NewArgs()
-	filtersArgs.Add("label", haProxyContainerLabel)
+	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole))
 	filtersArgs.Add("status", "running") // Only consider running containers
 
 	containers, err := hpm.dockerClient.ContainerList(ctx, container.ListOptions{
@@ -184,7 +180,8 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
 		Limit:   1, // We only expect one HAProxy container managed by haloy
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to list containers with label %s: %w", haProxyContainerLabel, err)
+		return "", fmt.Errorf("failed to list containers with label %s=%s: %w",
+			config.LabelRole, config.HAProxyLabelRole, err)
 	}
 
 	if len(containers) == 0 {

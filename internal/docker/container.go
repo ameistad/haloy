@@ -67,7 +67,7 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 	if err := EnsureNetwork(dockerClient, ctx); err != nil {
 		return ContainerRunResult{}, fmt.Errorf("failed to ensure Docker network exists: %w", err)
 	}
-	if err := EnsureServicesIsRunning(dockerClient, ctx); err != nil {
+	if _, err := EnsureServicesIsRunning(dockerClient, ctx); err != nil {
 		return ContainerRunResult{}, fmt.Errorf("failed to ensure dependent services are running: %w", err)
 	}
 

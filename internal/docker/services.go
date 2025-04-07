@@ -13,23 +13,44 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func EnsureServicesIsRunning(dockerClient *client.Client, ctx context.Context) error {
-	requiredServices := []string{"haloy-haproxy", "haloy-manager"}
+// ServiceState represents the current state of the haloy services
+type ServiceState string
+
+const (
+	// ServiceStateRunning indicates services were already running and healthy
+	ServiceStateRunning ServiceState = "running"
+	// ServiceStateStarted indicates services needed to be started
+	ServiceStateStarted ServiceState = "started"
+	// ServiceStatePartial indicates some services are running but not all
+	ServiceStatePartial ServiceState = "partial"
+)
+
+// ServiceStatus contains detailed information about the services
+type ServiceStatus struct {
+	State           ServiceState
+	RunningServices map[string]bool
+	Details         string
+}
+
+func EnsureServicesIsRunning(dockerClient *client.Client, ctx context.Context) (ServiceStatus, error) {
+	requiredRoles := []string{config.HAProxyLabelRole, config.ManagerLabelRole}
+	status := ServiceStatus{
+		RunningServices: make(map[string]bool),
+	}
 
 	// Check if containers are running
 	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return status, fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	// Track which services are running and healthy
-	runningServices := make(map[string]bool)
 	for _, container := range containers {
-		for _, name := range container.Names {
-			// Container names in the API response are prefixed with '/'
-			cleanName := strings.TrimPrefix(name, "/")
-			for _, service := range requiredServices {
-				if cleanName == service {
+		// Check if this container has a haloy role label
+		if roleValue, hasRole := container.Labels[config.LabelRole]; hasRole {
+			// Check if the container's role is one we're looking for
+			for _, requiredRole := range requiredRoles {
+				if roleValue == requiredRole {
 					// Check if the container is running
 					isRunning := container.State == "running"
 
@@ -39,47 +60,60 @@ func EnsureServicesIsRunning(dockerClient *client.Client, ctx context.Context) e
 						isHealthy = false
 					}
 
-					runningServices[service] = isRunning && isHealthy
+					status.RunningServices[roleValue] = isRunning && isHealthy
 				}
 			}
 		}
 	}
 
-	// If all required services are running and healthy, return early
+	// If all required roles are running and healthy, return early
 	allRunning := true
-	for _, service := range requiredServices {
-		if !runningServices[service] {
+	runningCount := 0
+	for _, role := range requiredRoles {
+		if status.RunningServices[role] {
+			runningCount++
+		} else {
 			allRunning = false
-			break
 		}
 	}
 
 	if allRunning {
-		return nil
+		status.State = ServiceStateRunning
+		status.Details = "All services are already running and healthy"
+		return status, nil
 	}
 
+	if runningCount > 0 {
+		status.State = ServiceStatePartial
+		status.Details = fmt.Sprintf("%d of %d services are running", runningCount, len(requiredRoles))
+	}
+
+	// Rest of the function remains the same
 	// Get docker-compose file path
 	dockerComposeFilePath, err := config.ServicesDockerComposeFilePath()
 	if err != nil {
-		return fmt.Errorf("failed to get docker-compose file path: %w", err)
+		return status, fmt.Errorf("failed to get docker-compose file path: %w", err)
 	}
 
 	// Check if the docker-compose file exists
 	if _, err := os.Stat(dockerComposeFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("docker-compose file not found at %s: %w", dockerComposeFilePath, err)
+		return status, fmt.Errorf("docker-compose file not found at %s: %w", dockerComposeFilePath, err)
 	}
 
 	// Get the directory of the docker-compose file
 	composeDir := filepath.Dir(dockerComposeFilePath)
 
 	// Start the containers according to docker-compose
-	// For simplicity, we'll use the docker command to run docker-compose
 	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", dockerComposeFilePath, "up", "-d")
 	cmd.Dir = composeDir
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to start services: %w\nOutput: %s", err, string(output))
+		status.Details = string(output)
+		return status, fmt.Errorf("failed to start services: %w", err)
 	}
-	return nil
+
+	status.State = ServiceStateStarted
+	status.Details = "Services started successfully"
+	return status, nil
 }

@@ -71,7 +71,7 @@ func InitCmd() *cobra.Command {
 			}
 
 			if !skipServices {
-				if err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
+				if _, err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
 					ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
 					return
 				}
