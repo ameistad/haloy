@@ -15,7 +15,6 @@ const (
 )
 
 func DeployApp(appConfig *config.AppConfig) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), deployTimeout)
 	defer cancel()
 	dockerClient, err := docker.NewClient(ctx)

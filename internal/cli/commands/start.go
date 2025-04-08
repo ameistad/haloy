@@ -38,12 +38,10 @@ func StartCmd() *cobra.Command {
 			}
 
 			if status.State == docker.ServiceStateRunning {
-				ui.Success("Haloy services are already running")
+				ui.Success("Haloy services are already running\n")
 			} else {
-				ui.Success("Haloy services started successfully")
+				ui.Success("Haloy services started successfully\n")
 			}
-			return
-
 		},
 	}
 	return cmd

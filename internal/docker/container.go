@@ -32,6 +32,7 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 		Port:            appConfig.Port,
 		HealthCheckPath: appConfig.HealthCheckPath,
 		Domains:         appConfig.Domains,
+		Role:            config.AppLabelRole,
 	}
 	// Add all labels at once by merging maps
 	labels := cl.ToLabels()

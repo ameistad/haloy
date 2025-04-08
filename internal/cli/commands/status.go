@@ -1,12 +1,16 @@
 package commands
 
 import (
+	"context"
 	"fmt"
-	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
@@ -61,21 +65,60 @@ func StatusAllCmd() *cobra.Command {
 	return statusAllCmd
 }
 
-func showAppStatus(app *config.AppConfig) error {
-	// Get container status and ID.
-	containerID, err := getContainerID(app.Name)
+const (
+	showStatusTimeout = 5 * time.Minute
+)
+
+func showAppStatus(appConfig *config.AppConfig) error {
+
+	ctx, cancel := context.WithTimeout(context.Background(), showStatusTimeout)
+	defer cancel()
+	dockerClient, err := docker.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get container info: %w", err)
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer dockerClient.Close()
+
+	filtersArgs := filters.NewArgs()
+	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
+	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appConfig.Name))
+
+	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
+		Filters: filtersArgs,
+		All:     false,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get container for app %s: %w", appConfig.Name, err)
 	}
 
-	status, err := getContainerStatus(app.Name)
-	if err != nil {
-		return fmt.Errorf("failed to get container status: %w", err)
+	if len(containers) == 0 {
+		return fmt.Errorf("no running container found for app %s", appConfig.Name)
+	}
+
+	runningContainerIds := make([]string, len(containers))
+	for i, c := range containers {
+		if c.State == "running" || c.State == "restarting" {
+			runningContainerIds[i] = c.ID[:12]
+		}
+	}
+
+	runningContainerIdsStr := strings.Join(runningContainerIds, ", ")
+
+	state := "Not running"
+	for _, c := range containers {
+		switch c.State {
+		case "running":
+			state = "Running"
+		case "restarting":
+			state = "Restarting"
+		case "exited":
+			state = "Exited"
+		}
 	}
 
 	// Build domains output.
 	var domainLines []string
-	for _, d := range app.Domains {
+	for _, d := range appConfig.Domains {
 		// Canonical domain.
 		ip, err := helpers.GetARecord(d.Canonical)
 		if err != nil {
@@ -98,7 +141,7 @@ func showAppStatus(app *config.AppConfig) error {
 
 	// Build environment variables output.
 	var envLines []string
-	for _, ev := range app.Env {
+	for _, ev := range appConfig.Env {
 		var val string
 		if ev.Value != nil {
 			val = *ev.Value
@@ -122,37 +165,13 @@ func showAppStatus(app *config.AppConfig) error {
 
 	// Display structured output.
 	fmt.Println(header("-------------------------------------------------"))
-	fmt.Printf("%s: %s\n", label("App"), app.Name)
-	fmt.Printf("%s: %s\n", label("Status"), success(status))
+	fmt.Printf("%s: %s\n", label("App"), appConfig.Name)
+	fmt.Printf("%s: %s\n", label("State"), success(state))
 	fmt.Printf("%s:\n%s\n", label("Domains"), domainsStr)
-	fmt.Printf("%s: %s\n", label("Container ID"), containerID)
+	fmt.Printf("%s: %s\n", label("Container IDs"), runningContainerIdsStr)
 	if envStr != "" {
 		fmt.Printf("%s:\n%s\n", label("Environment Variables"), envStr)
 	}
 	fmt.Println(header("-------------------------------------------------"))
 	return nil
-}
-
-// getContainerID returns the container ID for an app by filtering on the image ancestor.
-func getContainerID(appName string) (string, error) {
-	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("ancestor=%s:latest", appName), "--format", "{{.ID}}")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(output)), nil
-}
-
-// getContainerStatus returns the container status for an app.
-func getContainerStatus(appName string) (string, error) {
-	cmd := exec.Command("docker", "ps", "--filter", fmt.Sprintf("ancestor=%s:latest", appName), "--format", "{{.Status}}")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	status := strings.TrimSpace(string(output))
-	if status == "" {
-		return "Not running", nil
-	}
-	return status, nil
 }

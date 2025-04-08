@@ -32,6 +32,7 @@ const (
 const (
 	HAProxyLabelRole = "haproxy"
 	ManagerLabelRole = "manager"
+	AppLabelRole     = "app"
 )
 
 type ContainerLabels struct {
@@ -42,6 +43,7 @@ type ContainerLabels struct {
 	ACMEEmail       string
 	Port            string
 	Domains         []Domain
+	Role            string
 }
 
 // Parse from docker labels to ContainerLabels struct.
@@ -50,6 +52,7 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 		AppName:      labels[LabelAppName],
 		DeploymentID: labels[LabelDeploymentID],
 		ACMEEmail:    labels[LabelACMEEmail],
+		Role:         labels[LabelRole],
 	}
 
 	// Parse and validate Ignore flag.
@@ -138,6 +141,7 @@ func (cl *ContainerLabels) ToLabels() map[string]string {
 		LabelHealthCheckPath: cl.HealthCheckPath,
 		LabelPort:            cl.Port,
 		LabelACMEEmail:       cl.ACMEEmail,
+		LabelRole:            cl.Role,
 	}
 
 	// Iterate through the domains slice.
@@ -180,6 +184,11 @@ func (cl *ContainerLabels) IsValid() error {
 	if len(cl.Domains) == 0 {
 		return fmt.Errorf("at least one domain is required")
 	}
+
+	if cl.Role != AppLabelRole {
+		return fmt.Errorf("role must be '%s'", AppLabelRole)
+	}
+
 	return nil
 }
 
