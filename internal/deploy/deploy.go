@@ -58,10 +58,18 @@ func DeployApp(appConfig *config.AppConfig) {
 		}
 		return
 	}
+	if len(runResult) == 0 {
+		ui.Error("Failed to run new container: no containers started")
+		return
+	}
 
-	ui.Info("New container '%s' started successfully.\n", runResult.ContainerID[:12])
+	deploymentID := runResult[0].DeploymentID
+	for _, container := range runResult {
+		ui.Info("New container '%s' started successfully.\n", container.ID[:12])
 
-	if err := docker.StopContainers(ctx, dockerClient, appConfig.Name, runResult.DeploymentID); err != nil {
+	}
+
+	if err := docker.StopContainers(ctx, dockerClient, appConfig.Name, deploymentID); err != nil {
 		ui.Error("Failed to stop old containers: %v", err)
 		return
 	}
@@ -70,7 +78,7 @@ func DeployApp(appConfig *config.AppConfig) {
 		Context:             ctx,
 		DockerClient:        dockerClient,
 		AppName:             appConfig.Name,
-		IgnoreDeploymentID:  runResult.DeploymentID,
+		IgnoreDeploymentID:  deploymentID,
 		MaxContainersToKeep: *appConfig.MaxContainersToKeep,
 	})
 	if err != nil {
@@ -100,5 +108,5 @@ func DeployApp(appConfig *config.AppConfig) {
 	// 	// We don't return the error here as this is a non-critical step
 	// }
 
-	ui.Success("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, runResult.DeploymentID)
+	ui.Success("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, deploymentID)
 }

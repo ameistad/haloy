@@ -40,6 +40,76 @@ func ValidateHealthCheckPath(path string) error {
 	return nil
 }
 
+func (ac *AppConfig) Validate() error {
+	if ac.Name == "" {
+		return errors.New("name cannot be empty")
+	}
+
+	if err := ac.Source.Validate(); err != nil {
+		return fmt.Errorf("invalid source: %w", err)
+	}
+	if len(ac.Domains) == 0 {
+		return fmt.Errorf("no domains defined")
+	}
+	for _, domain := range ac.Domains {
+		if err := ValidateDomain(domain.Canonical); err != nil {
+			return err
+		}
+		for _, alias := range domain.Aliases {
+			if err := ValidateDomain(alias); err != nil {
+				return fmt.Errorf("alias '%s': %w", alias, err)
+			}
+		}
+	}
+
+	// Validate ACME email.
+	if ac.ACMEEmail == "" {
+		return fmt.Errorf("missing ACME email used to get TLS certificates")
+	}
+	if !helpers.IsValidEmail(ac.ACMEEmail) {
+		return fmt.Errorf("invalid ACME email '%s'", ac.ACMEEmail)
+	}
+
+	// Validate environment variables.
+	for j, envVar := range ac.Env {
+		if err := envVar.Validate(); err != nil {
+			return fmt.Errorf("env[%d]: %w", j, err)
+		}
+	}
+
+	// Validate volumes.
+	for _, volume := range ac.Volumes {
+		// Expected format: /host/path:/container/path[:options]
+		parts := strings.Split(volume, ":")
+		if len(parts) < 2 || len(parts) > 3 {
+			return fmt.Errorf("invalid volume mapping '%s'; expected '/host/path:/container/path[:options]'", volume)
+		}
+		// Validate host path.
+		if !filepath.IsAbs(parts[0]) {
+			return fmt.Errorf("volume host path '%s' in '%s' is not an absolute path", parts[0], volume)
+		}
+		// Validate container path.
+		if !filepath.IsAbs(parts[1]) {
+			return fmt.Errorf("volume container path '%s' in '%s' is not an absolute path", parts[1], volume)
+		}
+	}
+
+	// Validate health check path.
+	if err := ValidateHealthCheckPath(ac.HealthCheckPath); err != nil {
+		return err
+	}
+
+	// Validate replicas.
+	if ac.Replicas == nil {
+		return errors.New("replicas cannot be nil")
+	}
+	if *ac.Replicas < 1 {
+		return errors.New("replicas must be at least 1")
+	}
+
+	return nil
+}
+
 // ValidateConfigFile checks that the Config is well-formed.
 func (c *Config) Validate() error {
 	// Check that at least one app is defined.
@@ -47,65 +117,8 @@ func (c *Config) Validate() error {
 		return errors.New("config: no apps defined")
 	}
 	for _, app := range c.Apps {
-		// Enforce a non-empty app name.
-		if app.Name == "" {
-			return errors.New("app '': name cannot be empty")
-		}
-
-		// Validate source with app name in error message.
-		if err := app.Source.Validate(); err != nil {
-			return fmt.Errorf("app '%s': invalid source: %w", app.Name, err)
-		}
-
-		// Validate domains.
-		if len(app.Domains) == 0 {
-			return fmt.Errorf("app '%s': no domains defined", app.Name)
-		}
-		for _, domain := range app.Domains {
-			if err := ValidateDomain(domain.Canonical); err != nil {
-				return fmt.Errorf("app '%s': %w", app.Name, err)
-			}
-			for _, alias := range domain.Aliases {
-				if err := ValidateDomain(alias); err != nil {
-					return fmt.Errorf("app '%s', alias '%s': %w", app.Name, alias, err)
-				}
-			}
-		}
-
-		// Validate ACME email.
-		if app.ACMEEmail == "" {
-			return fmt.Errorf("app '%s': missing ACME email used to get TLS certificates", app.Name)
-		}
-		if !helpers.IsValidEmail(app.ACMEEmail) {
-			return fmt.Errorf("app '%s': invalid ACME email '%s'", app.Name, app.ACMEEmail)
-		}
-
-		// Validate environment variables.
-		for j, envVar := range app.Env {
-			if err := envVar.Validate(); err != nil {
-				return fmt.Errorf("app '%s', env[%d]: %w", app.Name, j, err)
-			}
-		}
-
-		// Validate volumes.
-		for _, volume := range app.Volumes {
-			// Expected format: /host/path:/container/path[:options]
-			parts := strings.Split(volume, ":")
-			if len(parts) < 2 || len(parts) > 3 {
-				return fmt.Errorf("app '%s': invalid volume mapping '%s'; expected '/host/path:/container/path[:options]'", app.Name, volume)
-			}
-			// Validate host path.
-			if !filepath.IsAbs(parts[0]) {
-				return fmt.Errorf("app '%s': volume host path '%s' in '%s' is not an absolute path", app.Name, parts[0], volume)
-			}
-			// Validate container path.
-			if !filepath.IsAbs(parts[1]) {
-				return fmt.Errorf("app '%s': volume container path '%s' in '%s' is not an absolute path", app.Name, parts[1], volume)
-			}
-		}
-
-		// Validate health check path.
-		if err := ValidateHealthCheckPath(app.HealthCheckPath); err != nil {
+		err := app.Validate()
+		if err != nil {
 			return fmt.Errorf("app '%s': %w", app.Name, err)
 		}
 	}

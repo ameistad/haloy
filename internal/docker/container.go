@@ -15,13 +15,14 @@ import (
 )
 
 type ContainerRunResult struct {
-	ContainerID  string
+	ID           string
 	DeploymentID string
+	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, dockerClient *client.Client, imageName string, appConfig *config.AppConfig) (ContainerRunResult, error) {
+func RunContainer(ctx context.Context, dockerClient *client.Client, imageName string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
 	deploymentID := time.Now().Format("20060102150405")
-	containerName := fmt.Sprintf("%s-haloy-%s", appConfig.Name, deploymentID)
+	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
 	// Convert AppConfig to ContainerLabels
 	cl := config.ContainerLabels{
@@ -34,28 +35,20 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 		Domains:         appConfig.Domains,
 		Role:            config.AppLabelRole,
 	}
-	// Add all labels at once by merging maps
 	labels := cl.ToLabels()
 
 	// Process environment variables
 	var envVars []string
 	decryptedEnvVars, err := config.DecryptEnvVars(appConfig.Env)
 	if err != nil {
-		return ContainerRunResult{}, fmt.Errorf("failed to decrypt environment variables: %w", err)
+		return result, fmt.Errorf("failed to decrypt environment variables: %w", err)
 	}
 	for _, v := range decryptedEnvVars {
 		value, err := v.GetValue()
 		if err != nil {
-			return ContainerRunResult{}, fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
+			return result, fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
 		}
 		envVars = append(envVars, fmt.Sprintf("%s=%s", v.Name, value))
-	}
-
-	// Prepare container configuration
-	containerConfig := &container.Config{
-		Image:  imageName,
-		Labels: labels,
-		Env:    envVars,
 	}
 
 	// Prepare host configuration - set restart policy and volumes to mount.
@@ -66,10 +59,10 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 
 	// Ensure that the custom network and required services are running.
 	if err := EnsureNetwork(dockerClient, ctx); err != nil {
-		return ContainerRunResult{}, fmt.Errorf("failed to ensure Docker network exists: %w", err)
+		return result, fmt.Errorf("failed to ensure Docker network exists: %w", err)
 	}
 	if _, err := EnsureServicesIsRunning(dockerClient, ctx); err != nil {
-		return ContainerRunResult{}, fmt.Errorf("failed to ensure dependent services are running: %w", err)
+		return result, fmt.Errorf("failed to ensure dependent services are running: %w", err)
 	}
 
 	// Attach the container to the predefined network
@@ -79,34 +72,45 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 		},
 	}
 
-	// Create the container
-	resp, err := dockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, containerName)
-	if err != nil {
-		return ContainerRunResult{}, fmt.Errorf("failed to create container: %w", err)
-	}
-
-	// Ensure the container is removed on error
-	// This is important to avoid leaving dangling containers in case of failure.
-	// We use a deferred function to ensure cleanup happens even if the function exits early.
-	defer func() {
-		if err != nil && resp.ID != "" {
-			// Try to remove container on error
-			removeErr := dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
-			if removeErr != nil {
-				fmt.Printf("Failed to clean up container after error: %v\n", removeErr)
-			}
+	for i := range make([]struct{}, *appConfig.Replicas) {
+		envVars := append(envVars, fmt.Sprintf("HALOY_REPLICA_ID=%d", i+1))
+		containerConfig := &container.Config{
+			Image:  imageName,
+			Labels: labels,
+			Env:    envVars,
 		}
-	}()
+		containerName := fmt.Sprintf("%s-haloy-%s-replica-%d", appConfig.Name, deploymentID, i+1)
+		resp, err := dockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, containerName)
+		if err != nil {
+			return result, fmt.Errorf("failed to create container: %w", err)
+		}
 
-	// Start the container
-	if err := dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return ContainerRunResult{}, fmt.Errorf("failed to start container: %w", err)
+		// Ensure the container is removed on error
+		// This is important to avoid leaving dangling containers in case of failure.
+		// We use a deferred function to ensure cleanup happens even if the function exits early.
+		defer func() {
+			if err != nil && resp.ID != "" {
+				// Try to remove container on error
+				removeErr := dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+				if removeErr != nil {
+					fmt.Printf("Failed to clean up container after error: %v\n", removeErr)
+				}
+			}
+		}()
+
+		if err := dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+			return result, fmt.Errorf("failed to start container: %w", err)
+		}
+
+		result = append(result, ContainerRunResult{
+			ID:           resp.ID,
+			DeploymentID: deploymentID,
+			ReplicaID:    i + 1,
+		})
+
 	}
 
-	return ContainerRunResult{
-		ContainerID:  resp.ID,
-		DeploymentID: deploymentID,
-	}, nil
+	return result, nil
 }
 
 func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) error {

@@ -21,6 +21,9 @@ const (
 	// DefaultContainerPort is the port on which your container serves HTTP.
 	DefaultContainerPort = "80"
 
+	// DefaultReplicas is the default number of replicas for a container.
+	DefaultReplicas = 1
+
 	ConfigFileName = "apps.yml"
 
 	HAProxyConfigFileName = "haproxy.cfg"
@@ -68,6 +71,7 @@ type AppConfig struct {
 	Volumes             []string `yaml:"volumes,omitempty"`
 	HealthCheckPath     string   `yaml:"healthCheckPath,omitempty"`
 	Port                string   `yaml:"port,omitempty"`
+	Replicas            *int     `yaml:"replicas,omitempty"`
 }
 
 func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
@@ -159,32 +163,6 @@ func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
 	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
 }
 
-// func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
-// 	// If the YAML node is a scalar, treat it as a simple canonical domain.
-// 	if value.Kind == yaml.ScalarNode {
-// 		d.Canonical = value.Value
-// 		d.Aliases = []string{}
-// 		return nil
-// 	}
-
-// 	// If the node is a mapping, decode it normally.
-// 	if value.Kind == yaml.MappingNode {
-// 		type domainAlias Domain // alias to avoid recursion
-// 		var da domainAlias
-// 		if err := value.Decode(&da); err != nil {
-// 			return err
-// 		}
-// 		*d = Domain(da)
-// 		// Ensure Aliases is not nil.
-// 		if d.Aliases == nil {
-// 			d.Aliases = []string{}
-// 		}
-// 		return nil
-// 	}
-
-// 	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
-// }
-
 // NormalizeConfig sets default values for the loaded configuration.
 func NormalizeConfig(conf *Config) *Config {
 	normalized := *conf
@@ -204,6 +182,11 @@ func NormalizeConfig(conf *Config) *Config {
 
 		if app.Port == "" {
 			normalized.Apps[i].Port = DefaultContainerPort
+		}
+
+		if app.Replicas == nil {
+			defaultReplicas := DefaultReplicas
+			normalized.Apps[i].Replicas = &defaultReplicas
 		}
 	}
 	return &normalized
