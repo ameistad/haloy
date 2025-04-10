@@ -3,5 +3,5 @@ package deploy
 import "time"
 
 const (
-	DefaultDeployTimeout = 5 * time.Second
+	DefaultDeployTimeout = 120 * time.Second
 )

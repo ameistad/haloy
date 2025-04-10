@@ -30,8 +30,9 @@ func RollbackAppCmd() *cobra.Command {
 
 			if err := deploy.RollbackApp(appConfig, targetDeploymentID); err != nil {
 				ui.Error("Failed to rollback %q: %v\n", appName, err)
+			} else {
+				ui.Success("Rollback of %s completed successfully.\n", appName)
 			}
-			ui.Success("Rollback of %s completed successfully.\n", appName)
 		},
 	}
 

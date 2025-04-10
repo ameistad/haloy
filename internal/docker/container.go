@@ -213,14 +213,43 @@ func RemoveContainers(params RemoveContainersParams) ([]RemoveContainersResult, 
 	return removedContainers, nil
 }
 
-func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, containerID string) error {
-	containerInfo, err := dockerClient.ContainerInspect(ctx, containerID)
-	if err != nil {
-		return fmt.Errorf("failed to inspect container %s: %w", helpers.SafeIDPrefix(containerID), err)
+func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, containerID string, initialWaitTime ...time.Duration) error {
+	// Check if container is running - wait up to 30 seconds for it to start
+	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	var containerInfo container.InspectResponse
+	var err error
+
+	// Wait for container to be running
+	ui.Info("Waiting for container %s to be running...", helpers.SafeIDPrefix(containerID))
+	for {
+		containerInfo, err = dockerClient.ContainerInspect(startCtx, containerID)
+		if err != nil {
+			return fmt.Errorf("failed to inspect container %s: %w", helpers.SafeIDPrefix(containerID), err)
+		}
+
+		if containerInfo.State.Running {
+			break
+		}
+
+		select {
+		case <-startCtx.Done():
+			return fmt.Errorf("timed out waiting for container %s to start", helpers.SafeIDPrefix(containerID))
+		case <-time.After(500 * time.Millisecond):
+		}
 	}
 
-	if !containerInfo.State.Running {
-		return fmt.Errorf("container %s is not running", helpers.SafeIDPrefix(containerID))
+	if len(initialWaitTime) > 0 && initialWaitTime[0] > 0 {
+		waitTime := initialWaitTime[0]
+		ui.Info("Waiting %v for container to initialize...", waitTime)
+
+		waitTimer := time.NewTimer(waitTime)
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context canceled during initial wait period")
+		case <-waitTimer.C:
+		}
 	}
 
 	// Check if container has built-in Docker healthcheck
@@ -234,6 +263,50 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 		}
 	}
 
+	// Check if container has built-in Docker healthcheck
+	if containerInfo.State.Health != nil {
+		ui.Info("Container has built-in health check, status: %s", containerInfo.State.Health.Status)
+
+		// Wait for Docker healthcheck to transition from starting state
+		if containerInfo.State.Health.Status == "starting" {
+			healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+
+			ui.Info("Waiting for built-in health check to complete...")
+			for {
+				containerInfo, err = dockerClient.ContainerInspect(healthCtx, containerID)
+				if err != nil {
+					return fmt.Errorf("failed to re-inspect container: %w", err)
+				}
+
+				if containerInfo.State.Health.Status != "starting" {
+					break
+				}
+
+				select {
+				case <-healthCtx.Done():
+					return fmt.Errorf("timed out waiting for container health check to complete")
+				case <-time.After(1 * time.Second):
+					// Continue polling
+				}
+			}
+		}
+
+		// If container has healthcheck and it's healthy, we can skip our manual check
+		if containerInfo.State.Health.Status == "healthy" {
+			ui.Success("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID))
+			return nil
+		} else if containerInfo.State.Health.Status == "unhealthy" {
+			// Log health check failure details if available
+			if len(containerInfo.State.Health.Log) > 0 {
+				lastLog := containerInfo.State.Health.Log[len(containerInfo.State.Health.Log)-1]
+				return fmt.Errorf("container %s is unhealthy: %s", helpers.SafeIDPrefix(containerID), lastLog.Output)
+			}
+			return fmt.Errorf("container %s is unhealthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID))
+		}
+	}
+
+	// Rest of the existing HTTP health check code remains the same...
 	labels, err := config.ParseContainerLabels(containerInfo.Config.Labels)
 	if err != nil {
 		return fmt.Errorf("failed to parse container labels: %w", err)
@@ -266,7 +339,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 	// Use traditional for loop for clarity
 	for retry := 0; retry < maxRetries; retry++ {
 		if retry > 0 {
-			ui.Info("Retrying health check in %v... (attempt %d/%d)", backoff, retry+1, maxRetries)
+			ui.Info("Retrying health check in %v... (attempt %d/%d)\n", backoff, retry+1, maxRetries)
 			time.Sleep(backoff)
 			backoff *= 2 // Exponential backoff
 		}
@@ -284,7 +357,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			ui.Success("Health check passed for container %s", helpers.SafeIDPrefix(containerID))
+			ui.Success("Health check passed for container %s\n", helpers.SafeIDPrefix(containerID))
 			return nil
 		}
 
