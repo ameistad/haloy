@@ -233,7 +233,6 @@ If you need to build releases manually:
 ### List of labels that haloy will use to configure HAProxy.
 
 Haloy uses the following Docker container labels to configure HAProxy:
-- `haloy.ignore` - If set to true haloy will ignore the container (default: false) 
 - `haloy.appName` - Identifies the application name
 - `haloy.deployment` - Identifies the deployment ID
 - `haloy.domains.all` - A comma-separated list of all domains

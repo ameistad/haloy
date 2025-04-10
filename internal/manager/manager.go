@@ -216,6 +216,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 				}
 				eligible := isContainerEligible(container)
 
+				// We'll only process events for containers that have been marked with haloy labels.
 				if eligible {
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
 					if err != nil {
@@ -229,9 +230,8 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 						Labels:    labels,
 					}
 					eventsChan <- containerEvent
-					// TODO: remove this else block. It is only for testing.
 				} else {
-					logger.Printf("Container %s event but not eligible: %s", event.Action, helpers.SafeIDPrefix(event.Actor.ID))
+					logger.Printf("Container %s is not eligible for haloy management", helpers.SafeIDPrefix(event.Actor.ID))
 				}
 			}
 		case err := <-errs:
@@ -252,7 +252,9 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 
 // isContainerEligible checks if a container should be handled by haloy.
 func isContainerEligible(container container.InspectResponse) bool {
-	if container.Config.Labels["haloy.ignore"] == "true" {
+
+	// Check if the container has the correct role.
+	if container.Config.Labels[config.AppLabelRole] != config.AppLabelRole {
 		return false
 	}
 

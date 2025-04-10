@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -14,7 +13,6 @@ import (
 const (
 	LabelAppName         = "haloy.appName"
 	LabelDeploymentID    = "haloy.deployment-id"
-	LabelIgnore          = "haloy.ignore"            // optional
 	LabelHealthCheckPath = "haloy.health-check-path" // optional default to "/"
 	LabelACMEEmail       = "haloy.acme.email"
 	LabelPort            = "haloy.port" // optional
@@ -38,7 +36,6 @@ const (
 type ContainerLabels struct {
 	AppName         string
 	DeploymentID    string
-	Ignore          bool
 	HealthCheckPath string
 	ACMEEmail       string
 	Port            string
@@ -53,15 +50,6 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 		DeploymentID: labels[LabelDeploymentID],
 		ACMEEmail:    labels[LabelACMEEmail],
 		Role:         labels[LabelRole],
-	}
-
-	// Parse and validate Ignore flag.
-	if v, ok := labels[LabelIgnore]; ok {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			return nil, fmt.Errorf("invalid value for %s: %w", LabelIgnore, err)
-		}
-		cl.Ignore = b
 	}
 
 	if v, ok := labels[LabelPort]; ok {
@@ -137,7 +125,6 @@ func (cl *ContainerLabels) ToLabels() map[string]string {
 	labels := map[string]string{
 		LabelAppName:         cl.AppName,
 		LabelDeploymentID:    cl.DeploymentID,
-		LabelIgnore:          strconv.FormatBool(cl.Ignore),
 		LabelHealthCheckPath: cl.HealthCheckPath,
 		LabelPort:            cl.Port,
 		LabelACMEEmail:       cl.ACMEEmail,
@@ -203,7 +190,6 @@ func (cl *ContainerLabels) String() string {
 
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("App Name"), cyan(cl.AppName))
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("Deployment ID"), cyan(cl.DeploymentID))
-	fmt.Fprintf(w, "%s:\t%t\n", yellow("Ignore"), cl.Ignore)
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("Health Check Path"), cyan(cl.HealthCheckPath))
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("ACME Email"), cyan(cl.ACMEEmail))
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("Port"), cyan(cl.Port))

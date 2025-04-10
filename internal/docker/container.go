@@ -31,7 +31,6 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 	cl := config.ContainerLabels{
 		AppName:         appConfig.Name,
 		DeploymentID:    deploymentID,
-		Ignore:          false,
 		ACMEEmail:       appConfig.ACMEEmail,
 		Port:            appConfig.Port,
 		HealthCheckPath: appConfig.HealthCheckPath,

@@ -30,7 +30,7 @@ RUN echo '[build]' > /root/.air.toml && \
 # Working directory will be mounted from host
 WORKDIR /src
 
-LABEL haloy.ignore=true
+LABEL haloy.role=manager
 
 # Use air for hot reload during development
 CMD ["air", "-c", "/root/.air.toml"]
