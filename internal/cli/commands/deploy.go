@@ -28,7 +28,9 @@ func DeployAppCmd() *cobra.Command {
 				return
 			}
 
-			deploy.DeployApp(appConfig)
+			if err := deploy.DeployApp(appConfig); err != nil {
+				ui.Error("Failed to deploy %q: %v\n", appName, err)
+			}
 		},
 	}
 	return deployAppCmd
@@ -55,7 +57,9 @@ func DeployAllCmd() *cobra.Command {
 			for i := range configFile.Apps {
 				app := configFile.Apps[i]
 				appConfig := &app
-				deploy.DeployApp(appConfig)
+				if err := deploy.DeployApp(appConfig); err != nil {
+					ui.Error("Failed to deploy %q: %v\n", app.Name, err)
+				}
 			}
 		},
 	}

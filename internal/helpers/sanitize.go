@@ -34,3 +34,10 @@ func SanitizeFilename(email string) string {
 	}
 	return result
 }
+
+func SafeIDPrefix(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}

@@ -98,7 +98,7 @@ func showAppStatus(appConfig *config.AppConfig) error {
 	runningContainerIds := make([]string, len(containers))
 	for i, c := range containers {
 		if c.State == "running" || c.State == "restarting" {
-			runningContainerIds[i] = c.ID[:12]
+			runningContainerIds[i] = helpers.SafeIDPrefix(c.ID)
 		}
 	}
 

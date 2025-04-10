@@ -3,10 +3,13 @@ package docker
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -134,7 +137,7 @@ func StopContainers(ctx context.Context, dockerClient *client.Client, appName, i
 		}
 		err := dockerClient.ContainerStop(ctx, containerInfo.ID, stopOptions)
 		if err != nil {
-			ui.Warning("Error stopping container %s: %v\n", containerInfo.ID[:12], err)
+			ui.Warning("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		}
 	}
 	if err != nil {
@@ -203,9 +206,91 @@ func RemoveContainers(params RemoveContainersParams) ([]RemoveContainersResult, 
 	for _, c := range removedContainers {
 		err := params.DockerClient.ContainerRemove(params.Context, c.ID, container.RemoveOptions{Force: true})
 		if err != nil {
-			ui.Warning("Error removing container %s: %v\n", c.ID[:12], err)
+			ui.Warning("Error removing container %s: %v\n", helpers.SafeIDPrefix(c.ID), err)
 		}
 	}
 
 	return removedContainers, nil
+}
+
+func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, containerID string) error {
+	containerInfo, err := dockerClient.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container %s: %w", helpers.SafeIDPrefix(containerID), err)
+	}
+
+	if !containerInfo.State.Running {
+		return fmt.Errorf("container %s is not running", helpers.SafeIDPrefix(containerID))
+	}
+
+	// Check if container has built-in Docker healthcheck
+	if containerInfo.State.Health != nil {
+		ui.Info("Container has built-in health check, status: %s", containerInfo.State.Health.Status)
+
+		// If container has healthcheck and it's healthy, we can skip our manual check
+		if containerInfo.State.Health.Status == "healthy" {
+			ui.Success("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID))
+			return nil
+		}
+	}
+
+	labels, err := config.ParseContainerLabels(containerInfo.Config.Labels)
+	if err != nil {
+		return fmt.Errorf("failed to parse container labels: %w", err)
+	}
+
+	if labels.Port == "" {
+		return fmt.Errorf("container %s has no port label set", helpers.SafeIDPrefix(containerID))
+	}
+
+	if labels.HealthCheckPath == "" {
+		return fmt.Errorf("container %s has no health check path set", helpers.SafeIDPrefix(containerID))
+	}
+
+	targetIP, err := ContainerNetworkIP(containerInfo, config.DockerNetwork)
+	if err != nil {
+		return fmt.Errorf("failed to get container IP address: %w", err)
+	}
+
+	// Construct URL for health check
+	healthCheckURL := fmt.Sprintf("http://%s:%s%s", targetIP, labels.Port, labels.HealthCheckPath)
+
+	// Perform health check with retries
+	maxRetries := 5
+	backoff := 500 * time.Millisecond
+
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Use traditional for loop for clarity
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			ui.Info("Retrying health check in %v... (attempt %d/%d)", backoff, retry+1, maxRetries)
+			time.Sleep(backoff)
+			backoff *= 2 // Exponential backoff
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", healthCheckURL, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create health check request: %w", err)
+		}
+
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			ui.Warning("Health check attempt failed: %v", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			ui.Success("Health check passed for container %s", helpers.SafeIDPrefix(containerID))
+			return nil
+		}
+
+		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		ui.Warning("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)
 }

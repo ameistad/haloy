@@ -12,6 +12,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/embed"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -74,12 +75,12 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments []Deploy
 	}
 
 	// 4. Signal HAProxy Reload
-	hpm.logger.Infof("HAProxyManager: Sending SIGUSR2 signal to HAProxy container %s...", haproxyID[:12])
+	hpm.logger.Infof("HAProxyManager: Sending SIGUSR2 signal to HAProxy container %s...", helpers.SafeIDPrefix(haproxyID))
 	err = hpm.dockerClient.ContainerKill(ctx, haproxyID, "SIGUSR2")
 	if err != nil {
 		// Log error but potentially don't fail the whole update if signal fails? Or return error?
 		// Let's return error for now.
-		return fmt.Errorf("HAProxyManager: failed to send SIGUSR2 to HAProxy container %s: %w", haproxyID[:12], err)
+		return fmt.Errorf("HAProxyManager: failed to send SIGUSR2 to HAProxy container %s: %w", helpers.SafeIDPrefix(haproxyID), err)
 	}
 
 	hpm.logger.Info("HAProxyManager: Successfully signaled HAProxy for reload.")

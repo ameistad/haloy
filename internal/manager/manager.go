@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/ameistad/haloy/internal/version"
 	"github.com/docker/docker/api/types/container"
@@ -210,7 +211,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 
 				container, err := dockerClient.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
-					logger.Printf("Error inspecting container %s: %v", event.Actor.ID[:12], err)
+					logger.Printf("Error inspecting container %s: %v", helpers.SafeIDPrefix(event.Actor.ID), err)
 					continue
 				}
 				eligible := isContainerEligible(container)
@@ -230,7 +231,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 					eventsChan <- containerEvent
 					// TODO: remove this else block. It is only for testing.
 				} else {
-					logger.Printf("Container %s event but not eligible: %s", event.Action, event.Actor.ID[:12])
+					logger.Printf("Container %s event but not eligible: %s", event.Action, helpers.SafeIDPrefix(event.Actor.ID))
 				}
 			}
 		case err := <-errs:
