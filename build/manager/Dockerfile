@@ -16,7 +16,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /haloy-manager ./cmd/manager
 
 # Use a small image for the final container
-FROM alpine:3.18
+FROM alpine:3.21
 
 # Install ca-certificates for HTTPS and curl for healthchecks
 RUN apk add --no-cache ca-certificates docker-cli
