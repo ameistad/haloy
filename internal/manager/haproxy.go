@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/embed"
@@ -38,7 +39,7 @@ func NewHAProxyManager(cli *client.Client, logger *logrus.Logger, configDir, cer
 
 // ApplyConfig generates, writes (if not dryRun), and reloads HAProxy config.
 // This method is concurrency-safe due to the internal mutex.
-func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments []Deployment) error {
+func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[string]Deployment) error {
 	hpm.logger.Info("HAProxyManager: Attempting to apply new configuration...")
 
 	hpm.updateMutex.Lock()
@@ -90,15 +91,16 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments []Deploy
 
 // generateConfig creates the HAProxy configuration content based on deployments.
 // It checks for certificate existence before adding HTTPS bindings.
-func (hpm *HAProxyManager) generateConfig(deployments []Deployment) (bytes.Buffer, error) {
+func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (bytes.Buffer, error) {
 	var buf bytes.Buffer
-	var httpsFrontend string
 	var httpFrontend string
+	var httpsFrontend string
+	var httpsFrontendUseBackend string
 	var backends string
 	const indent = "    "
 
-	for _, d := range deployments {
-		backendName := d.Labels.AppName
+	for appName, d := range deployments {
+		backendName := appName
 		var canonicalACLs []string
 
 		for _, domain := range d.Labels.Domains {
@@ -132,7 +134,7 @@ func (hpm *HAProxyManager) generateConfig(deployments []Deployment) (bytes.Buffe
 		}
 
 		if len(canonicalACLs) > 0 {
-			httpsFrontend += fmt.Sprintf("%suse_backend %s if %s\n", indent, backendName, strings.Join(canonicalACLs, " or "))
+			httpsFrontendUseBackend += fmt.Sprintf("%suse_backend %s if %s\n", indent, backendName, strings.Join(canonicalACLs, " or "))
 		}
 	}
 
@@ -155,13 +157,15 @@ func (hpm *HAProxyManager) generateConfig(deployments []Deployment) (bytes.Buffe
 	}
 
 	templateData := struct {
-		HTTPFrontend  string
-		HTTPSFrontend string
-		Backends      string
+		HTTPFrontend            string
+		HTTPSFrontend           string
+		HTTPSFrontendUseBackend string
+		Backends                string
 	}{
-		HTTPFrontend:  httpFrontend,
-		HTTPSFrontend: httpsFrontend,
-		Backends:      backends,
+		HTTPFrontend:            httpFrontend,
+		HTTPSFrontend:           httpsFrontend,
+		HTTPSFrontendUseBackend: httpsFrontendUseBackend,
+		Backends:                backends,
 	}
 
 	if err := tmpl.Execute(&buf, templateData); err != nil {
@@ -172,22 +176,50 @@ func (hpm *HAProxyManager) generateConfig(deployments []Deployment) (bytes.Buffe
 }
 
 func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
-	filtersArgs := filters.NewArgs()
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole))
-	filtersArgs.Add("status", "running") // Only consider running containers
+	// Configure retry parameters
+	maxRetries := 30
+	retryInterval := time.Second
 
-	containers, err := hpm.dockerClient.ContainerList(ctx, container.ListOptions{
-		Filters: filtersArgs,
-		Limit:   1, // We only expect one HAProxy container managed by haloy
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to list containers with label %s=%s: %w",
-			config.LabelRole, config.HAProxyLabelRole, err)
+	for retry := 0; retry < maxRetries; retry++ {
+		// Check if context was canceled
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("context canceled while waiting for HAProxy container: %w", ctx.Err())
+		}
+
+		// Set up filter for HAProxy container
+		filtersArgs := filters.NewArgs()
+		filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole))
+		filtersArgs.Add("status", "running") // Only consider running containers
+
+		containers, err := hpm.dockerClient.ContainerList(ctx, container.ListOptions{
+			Filters: filtersArgs,
+			Limit:   1, // We only expect one HAProxy container managed by haloy
+		})
+		if err != nil {
+			return "", fmt.Errorf("failed to list containers with label %s=%s: %w",
+				config.LabelRole, config.HAProxyLabelRole, err)
+		}
+
+		if len(containers) > 0 {
+			// Found a running HAProxy container
+			return containers[0].ID, nil
+		}
+
+		// No running container found yet - log on first attempt and halfway through
+		if retry == 0 || retry == maxRetries/2 {
+			hpm.logger.Infof("HAProxyManager: Waiting for HAProxy container to be running (attempt %d/%d)...",
+				retry+1, maxRetries)
+		}
+
+		// Wait before retrying
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("context canceled while waiting for HAProxy container: %w", ctx.Err())
+		case <-time.After(retryInterval):
+			// Continue to next retry
+		}
 	}
 
-	if len(containers) == 0 {
-		return "", nil // No container found
-	}
-
-	return containers[0].ID, nil
+	return "", fmt.Errorf("timed out waiting for HAProxy container to be in running state after %d seconds",
+		maxRetries)
 }

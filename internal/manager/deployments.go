@@ -1,24 +1,23 @@
 package manager
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"fmt"
 	"log"
-	"sort"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 )
 
 type DeploymentInstance struct {
-	IP   string
-	Port string
+	ContainerID string
+	IP          string
+	Port        string
 }
 
 type Deployment struct {
@@ -27,25 +26,34 @@ type Deployment struct {
 }
 
 type DeploymentManager struct {
+	Context      context.Context
 	DockerClient *client.Client
-	// Store the previous hash so we can compare it with the new hash to see if anything has changed.
-	previousHash     string
-	deployments      []Deployment
+	// deployments is a map of appName to Deployment, key is the app name.
+	deployments      map[string]Deployment
+	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
 }
 
-func NewDeploymentManager(dockerClient *client.Client) *DeploymentManager {
+func NewDeploymentManager(ctx context.Context, dockerClient *client.Client) *DeploymentManager {
 	return &DeploymentManager{
+		Context:      ctx,
 		DockerClient: dockerClient,
-		deployments:  []Deployment{},
+		deployments:  make(map[string]Deployment),
 	}
 }
 
-func (dm *DeploymentManager) BuildDeployments(ctx context.Context) error {
-	deploymentsMap := make(map[string]Deployment)
-	containers, err := dm.DockerClient.ContainerList(ctx, container.ListOptions{})
+func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error) {
+	newDeployments := make(map[string]Deployment)
+
+	// Filter for containers with the app label
+	filtersArgs := filters.NewArgs()
+	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
+	containers, err := dm.DockerClient.ContainerList(ctx, container.ListOptions{
+		Filters: filtersArgs,
+		All:     false, // Only running containers
+	})
 	if err != nil {
-		return err
+		return false, fmt.Errorf("failed to get containers: %w", err)
 	}
 
 	for _, containerSummary := range containers {
@@ -55,8 +63,14 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) error {
 			continue
 		}
 
+		if !IsAppContainer(container) {
+			log.Printf("Container %s is not eligible for haloy management", containerSummary.ID)
+			continue
+		}
+
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
+			log.Printf("Failed to parse labels for container %s: %v", containerSummary.ID, err)
 			continue
 		}
 
@@ -73,102 +87,71 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) error {
 			port = config.DefaultContainerPort
 		}
 
-		instance := DeploymentInstance{IP: ip, Port: port}
+		instance := DeploymentInstance{ContainerID: container.ID, IP: ip, Port: port}
 
-		if deployment, exists := deploymentsMap[labels.AppName]; exists {
+		if deployment, exists := newDeployments[labels.AppName]; exists {
 			// There is a appName match, check if the deployment ID matches.
 			if deployment.Labels.DeploymentID == labels.DeploymentID {
 				deployment.Instances = append(deployment.Instances, instance)
-				deploymentsMap[labels.AppName] = deployment
+				newDeployments[labels.AppName] = deployment
 			} else {
 				// Replace the deployment if the new one has a higher deployment ID
 				if deployment.Labels.DeploymentID < labels.DeploymentID {
-					deploymentsMap[labels.AppName] = Deployment{Labels: labels, Instances: []DeploymentInstance{instance}}
+					newDeployments[labels.AppName] = Deployment{Labels: labels, Instances: []DeploymentInstance{instance}}
 				}
 			}
 		} else {
-			deploymentsMap[labels.AppName] = Deployment{Labels: labels, Instances: []DeploymentInstance{instance}}
+			newDeployments[labels.AppName] = Deployment{Labels: labels, Instances: []DeploymentInstance{instance}}
 		}
 	}
 
-	// Convert map to slice
-	var deployments []Deployment
-	for _, deployment := range deploymentsMap {
-		deployments = append(deployments, deployment)
-	}
-
-	// --- Lock for writing the shared state ---
 	dm.deploymentsMutex.Lock()
 	defer dm.deploymentsMutex.Unlock()
-	dm.deployments = deployments
+
+	oldDeployments := dm.deployments
+	dm.deployments = newDeployments
+
+	compareResult := compareDeployments(oldDeployments, newDeployments)
+	hasChanged := len(compareResult.AddedDeployments) > 0 ||
+		len(compareResult.RemovedDeployments) > 0 ||
+		len(compareResult.UpdatedDeployments) > 0
+
+	dm.compareResult = compareResult
+	return hasChanged, nil
+}
+
+func (dm *DeploymentManager) HealthCheckNewContainers() error {
+	deploymentsToCheck := []Deployment{}
+
+	for _, deployment := range dm.compareResult.AddedDeployments {
+		deploymentsToCheck = append(deploymentsToCheck, deployment)
+	}
+
+	for _, deployment := range dm.compareResult.UpdatedDeployments {
+		deploymentsToCheck = append(deploymentsToCheck, deployment)
+	}
+
+	for _, deployment := range deploymentsToCheck {
+		for _, instance := range deployment.Instances {
+			if err := docker.HealthCheckContainer(dm.Context, dm.DockerClient, instance.ContainerID); err != nil {
+				log.Printf("Health check failed for container %s: %v", instance.ContainerID, err)
+				return fmt.Errorf("health check failed for container %s: %w", instance.ContainerID, err)
+			}
+		}
+	}
 	return nil
 }
 
-func (dm *DeploymentManager) Deployments() []Deployment {
+func (dm *DeploymentManager) Deployments() map[string]Deployment {
 	dm.deploymentsMutex.RLock()
 	defer dm.deploymentsMutex.RUnlock()
 
 	// Return a copy to prevent external modification after unlock
-	deploymentsCopy := make([]Deployment, len(dm.deployments))
-	copy(deploymentsCopy, dm.deployments)
+	deploymentsCopy := make(map[string]Deployment, len(dm.deployments))
+	for appName, deployment := range dm.deployments {
+		deploymentsCopy[appName] = deployment
+	}
 	return deploymentsCopy
-}
-
-func (dm *DeploymentManager) calculateHash() string {
-	var b bytes.Buffer
-
-	// Sort deployments by app name for consistency
-	sort.Slice(dm.deployments, func(i, j int) bool {
-		return dm.deployments[i].Labels.AppName < dm.deployments[j].Labels.AppName
-	})
-
-	for _, d := range dm.deployments {
-		// Write app name and deployment ID
-		b.WriteString(d.Labels.AppName)
-		b.WriteString(d.Labels.DeploymentID)
-
-		// Sort instances for consistency
-		sort.Slice(d.Instances, func(i, j int) bool {
-			if d.Instances[i].IP != d.Instances[j].IP {
-				return d.Instances[i].IP < d.Instances[j].IP
-			}
-			return d.Instances[i].Port < d.Instances[j].Port
-		})
-
-		// Write instance information
-		for _, i := range d.Instances {
-			b.WriteString(i.IP)
-			b.WriteString(i.Port)
-		}
-
-		// Write domains information
-		for _, domain := range d.Labels.Domains {
-			b.WriteString(domain.Canonical)
-			for _, alias := range domain.Aliases {
-				b.WriteString(alias)
-			}
-		}
-	}
-
-	// Calculate hash
-	hash := sha256.Sum256(b.Bytes())
-	return hex.EncodeToString(hash[:])
-}
-
-func (dm *DeploymentManager) HasChanged() bool {
-	// --- Lock for writing: Reads deployments, calculates hash (which sorts), writes previousHash ---
-	dm.deploymentsMutex.Lock()
-	defer dm.deploymentsMutex.Unlock()
-
-	currentHash := dm.calculateHash() // Called under write lock
-	changed := currentHash != dm.previousHash
-
-	// Update the hash if changed
-	if changed {
-		dm.previousHash = currentHash
-	}
-
-	return changed
 }
 
 // GetCertificateDomains collects all canonical domains and their aliases for certificate management.
@@ -199,4 +182,75 @@ func (dm *DeploymentManager) GetCertificateDomains() []certificates.ManagedDomai
 		}
 	}
 	return managedDomains
+}
+
+type compareResult struct {
+	UpdatedDeployments map[string]Deployment
+	RemovedDeployments map[string]Deployment
+	AddedDeployments   map[string]Deployment
+}
+
+func compareDeployments(oldDeployments, newDeployments map[string]Deployment) compareResult {
+
+	updatedDeployments := make(map[string]Deployment)
+	removedDeployments := make(map[string]Deployment)
+	addedDeployments := make(map[string]Deployment)
+
+	// Find removed and updated deployments by comparing previous to current
+	for appName, prevDeployment := range oldDeployments {
+		// Check if this deployment still exists
+		if currentDeployment, exists := newDeployments[appName]; exists {
+			// Deployment exists - check if it's been updated
+			if prevDeployment.Labels.DeploymentID != currentDeployment.Labels.DeploymentID {
+				// DeploymentID changed - it's an update
+				updatedDeployments[appName] = currentDeployment
+			} else {
+				// Check if instances changed (added or removed instances)
+				if !instancesEqual(prevDeployment.Instances, currentDeployment.Instances) {
+					updatedDeployments[appName] = currentDeployment
+				}
+			}
+		} else {
+			// Deployment no longer exists - it was removed
+			removedDeployments[appName] = prevDeployment
+		}
+	}
+
+	// Find added deployments by comparing current to previous
+	for appName, currentDeployment := range newDeployments {
+		if _, exists := oldDeployments[appName]; !exists {
+			// This is a new deployment
+			addedDeployments[appName] = currentDeployment
+		}
+	}
+
+	result := compareResult{
+		UpdatedDeployments: updatedDeployments,
+		RemovedDeployments: removedDeployments,
+		AddedDeployments:   addedDeployments,
+	}
+
+	return result
+}
+
+// Helper function to check if two instance lists are equal
+func instancesEqual(a, b []DeploymentInstance) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// Create maps of container IDs for easy comparison
+	mapA := make(map[string]bool)
+	for _, instance := range a {
+		mapA[instance.ContainerID] = true
+	}
+
+	// Check if all instances in b exist in a
+	for _, instance := range b {
+		if !mapA[instance.ContainerID] {
+			return false
+		}
+	}
+
+	return true
 }

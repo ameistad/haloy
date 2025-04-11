@@ -34,18 +34,22 @@ func NewUpdater(config UpdaterConfig) *Updater {
 func (u *Updater) Update(ctx context.Context, reason string) error {
 	u.logger.Infof("Updater: Starting deployment update (%s)", reason)
 
-	// Build Deployments (Thread-safe)
-	if err := u.deploymentManager.BuildDeployments(ctx); err != nil {
+	// Build Deployments and check if anything has changed (Thread-safe)
+	deploymentsHasChanged, err := u.deploymentManager.BuildDeployments(ctx)
+	if err != nil {
 		// Log context with the error
 		u.logger.Errorf("Updater: Failed to build deployments (%s): %v", reason, err)
 		return fmt.Errorf("updater: failed to build deployments (%s): %w", reason, err)
 	}
-
-	// Check HasChanged (Thread-safe)
-	if !u.deploymentManager.HasChanged() {
+	if !deploymentsHasChanged {
 		u.logger.Infof("Updater: No deployment changes detected (%s). Skipping HAProxy update.", reason)
 		return nil // Nothing changed, successful exit
 	}
+
+	if err := u.deploymentManager.HealthCheckNewContainers(); err != nil {
+		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", reason, err)
+	}
+
 	u.logger.Infof("Updater: Deployment changes detected (%s). Triggering cert and HAProxy updates.", reason)
 
 	// --- Certificate Update ---

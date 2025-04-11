@@ -69,7 +69,7 @@ func RunManager(dryRun bool) {
 	certUpdateSignal := make(chan string, 5)
 
 	// Create deployment manager
-	deploymentManager := NewDeploymentManager(dockerClient)
+	deploymentManager := NewDeploymentManager(ctx, dockerClient)
 
 	// Create and start the certifications manager
 	certManagerConfig := certificates.Config{
@@ -100,16 +100,13 @@ func RunManager(dryRun bool) {
 		HAProxyManager:    haproxyManager,
 		Logger:            logger,
 	}
+
+	// Perform initial update
 	updater := NewUpdater(updaterConfig)
-
-	// Get the initial list of containers and build deployments
-	if err := deploymentManager.BuildDeployments(ctx); err != nil {
-		logger.Printf("Failed to build deployments: %v", err)
+	updateReason := "initial update"
+	if err := updater.Update(ctx, updateReason); err != nil {
+		logger.Errorf("Background update failed for %s: %v", updateReason, err)
 	}
-
-	certDomains := deploymentManager.GetCertificateDomains()
-	certManager.AddDomains(certDomains)
-	certManager.Start()
 
 	// Start Docker event listener
 	go listenForDockerEvents(ctx, dockerClient, eventsChan, errorsChan)
@@ -214,7 +211,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 					logger.Printf("Error inspecting container %s: %v", helpers.SafeIDPrefix(event.Actor.ID), err)
 					continue
 				}
-				eligible := isContainerEligible(container)
+				eligible := IsAppContainer(container)
 
 				// We'll only process events for containers that have been marked with haloy labels.
 				if eligible {
@@ -250,11 +247,11 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 	}
 }
 
-// isContainerEligible checks if a container should be handled by haloy.
-func isContainerEligible(container container.InspectResponse) bool {
+// IsAppContainer checks if a container should be handled by haloy.
+func IsAppContainer(container container.InspectResponse) bool {
 
-	// Check if the container has the correct role.
-	if container.Config.Labels[config.AppLabelRole] != config.AppLabelRole {
+	// Check if the container has the correct labels.
+	if container.Config.Labels[config.LabelRole] != config.AppLabelRole {
 		return false
 	}
 
