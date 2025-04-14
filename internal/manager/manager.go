@@ -12,6 +12,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/logstream"
 	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/ameistad/haloy/internal/version"
 	"github.com/docker/docker/api/types/container"
@@ -46,6 +47,18 @@ func RunManager(dryRun bool) {
 		logger.SetLevel(logrus.DebugLevel)
 		logger.Debug("Debug logging enabled")
 	}
+
+	// Start the log server
+	logServer := logstream.NewServer(":9000")
+	if err := logServer.Listen(); err != nil {
+		logger.Fatalf("Log server failed: %v", err)
+	}
+
+	// Add logrus hook to send logs to clients
+	logger.AddHook(logstream.NewLogrusHook(logServer))
+
+	// Handle clean shutdown
+	defer logServer.Stop()
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {

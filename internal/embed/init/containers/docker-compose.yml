@@ -14,7 +14,10 @@ services:
       # Enable Docker socket access for the golang docker client
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
+      # Certificates server
       - "127.0.0.1:8080:8080"
+      # Logserver
+      - "127.0.0.1:9000:9000"
     user: root
     restart: unless-stopped
     networks:
