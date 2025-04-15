@@ -38,6 +38,10 @@ type ContainerEvent struct {
 }
 
 func RunManager(dryRun bool) {
+	// Create a context that will be canceled on shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	logger.SetFormatter(&logrus.TextFormatter{
 		FullTimestamp: true,
 	})
@@ -49,7 +53,7 @@ func RunManager(dryRun bool) {
 	}
 
 	// Start the log server
-	logServer := logstream.NewServer(":9000")
+	logServer := logstream.NewServer(ctx, ":9000")
 	if err := logServer.Listen(); err != nil {
 		logger.Fatalf("Log server failed: %v", err)
 	}
@@ -65,10 +69,6 @@ func RunManager(dryRun bool) {
 		logger.Fatalf("Failed to create Docker client: %v", err)
 	}
 	defer dockerClient.Close()
-
-	// Set up signal handling for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

@@ -28,21 +28,18 @@ type Server struct {
 	logCh           chan string
 	listener        net.Listener
 	ctx             context.Context
-	cancel          context.CancelFunc
 	waitGroup       sync.WaitGroup
 	maxClients      int
 	clientSemaphore chan struct{} // Semaphore to limit concurrent connections
 }
 
 // NewServer creates a new Server.
-func NewServer(addr string) *Server {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewServer(ctx context.Context, addr string) *Server {
 	return &Server{
 		addr:            addr,
 		clients:         make(map[string]*Client),
 		logCh:           make(chan string, 100),
 		ctx:             ctx,
-		cancel:          cancel,
 		maxClients:      100,                      // Default max clients
 		clientSemaphore: make(chan struct{}, 100), // Match maxClients
 	}
@@ -116,9 +113,6 @@ func (s *Server) Listen() error {
 
 // Stop gracefully shuts down the server
 func (s *Server) Stop() {
-	// Cancel the context to signal all goroutines to stop
-	s.cancel()
-
 	// Close the listener
 	if s.listener != nil {
 		s.listener.Close()
