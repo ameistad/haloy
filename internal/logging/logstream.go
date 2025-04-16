@@ -1,7 +1,8 @@
-package logstream
+package logging
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Client represents a connected client with a filter.
@@ -22,12 +21,12 @@ type Client struct {
 
 // Server holds state for our TCP server.
 type Server struct {
-	addr            string
+	address         string
 	clients         map[string]*Client // Using map for more efficient lookups
-	mu              sync.RWMutex       // Using RWMutex for better concurrency
-	logCh           chan string
+	mutex           sync.RWMutex       // Using RWMutex for better concurrency
+	logChan         chan string
 	listener        net.Listener
-	ctx             context.Context
+	context         context.Context
 	waitGroup       sync.WaitGroup
 	maxClients      int
 	clientSemaphore chan struct{} // Semaphore to limit concurrent connections
@@ -36,10 +35,10 @@ type Server struct {
 // NewServer creates a new Server.
 func NewServer(ctx context.Context, addr string) *Server {
 	return &Server{
-		addr:            addr,
+		address:         addr,
 		clients:         make(map[string]*Client),
-		logCh:           make(chan string, 100),
-		ctx:             ctx,
+		logChan:         make(chan string, 100),
+		context:         ctx,
 		maxClients:      100,                      // Default max clients
 		clientSemaphore: make(chan struct{}, 100), // Match maxClients
 	}
@@ -57,9 +56,9 @@ func (s *Server) SetMaxClients(max int) {
 // Listen starts listening for new client connections.
 func (s *Server) Listen() error {
 	var err error
-	s.listener, err = net.Listen("tcp", s.addr)
+	s.listener, err = net.Listen("tcp", s.address)
 	if err != nil {
-		return fmt.Errorf("cannot listen on %s: %w", s.addr, err)
+		return fmt.Errorf("cannot listen on %s: %w", s.address, err)
 	}
 
 	// Start the broadcaster
@@ -75,7 +74,7 @@ func (s *Server) Listen() error {
 		defer s.waitGroup.Done()
 		for {
 			select {
-			case <-s.ctx.Done():
+			case <-s.context.Done():
 				return
 			default:
 				s.listener.(*net.TCPListener).SetDeadline(time.Now().Add(1 * time.Second))
@@ -119,16 +118,16 @@ func (s *Server) Stop() {
 	}
 
 	// Close the log channel to signal the broadcaster to stop
-	close(s.logCh)
+	close(s.logChan)
 
 	// Close all client connections
-	s.mu.Lock()
+	s.mutex.Lock()
 	for _, client := range s.clients {
 		close(client.done)
 		client.conn.Close()
 	}
 	s.clients = nil
-	s.mu.Unlock()
+	s.mutex.Unlock()
 
 	// Wait for all goroutines to exit
 	s.waitGroup.Wait()
@@ -165,16 +164,16 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 
 	// Add client to map
-	s.mu.Lock()
+	s.mutex.Lock()
 	s.clients[clientID] = client
-	s.mu.Unlock()
+	s.mutex.Unlock()
 
 	// Welcome message
 	conn.Write([]byte("Connected to log stream. Filter: " + filter + "\n"))
 
 	// Block until connection terminates or server shuts down
 	select {
-	case <-s.ctx.Done():
+	case <-s.context.Done():
 		return
 	case <-client.done:
 		return
@@ -185,22 +184,22 @@ func (s *Server) handleConnection(conn net.Conn) {
 func (s *Server) broadcastLogs() {
 	for {
 		select {
-		case <-s.ctx.Done():
+		case <-s.context.Done():
 			return
-		case msg, ok := <-s.logCh:
+		case msg, ok := <-s.logChan:
 			if !ok {
 				// Channel closed, exit
 				return
 			}
 
 			// Use RLock for reading clients
-			s.mu.RLock()
+			s.mutex.RLock()
 			// Create a copy of clients to avoid holding the lock during writes
 			clientsCopy := make(map[string]*Client, len(s.clients))
 			for id, client := range s.clients {
 				clientsCopy[id] = client
 			}
-			s.mu.RUnlock()
+			s.mutex.RUnlock()
 
 			// Process clients without holding the lock
 			var disconnectedClients []string
@@ -219,11 +218,11 @@ func (s *Server) broadcastLogs() {
 
 			// Remove disconnected clients if any
 			if len(disconnectedClients) > 0 {
-				s.mu.Lock()
+				s.mutex.Lock()
 				for _, id := range disconnectedClients {
 					delete(s.clients, id)
 				}
-				s.mu.Unlock()
+				s.mutex.Unlock()
 			}
 		}
 	}
@@ -232,36 +231,26 @@ func (s *Server) broadcastLogs() {
 // Publish pushes a log message to all clients.
 func (s *Server) Publish(msg string) {
 	select {
-	case s.logCh <- msg:
+	case s.logChan <- msg:
 		// Message sent
-	case <-s.ctx.Done():
+	case <-s.context.Done():
 		// Server is shutting down
 	default:
 		// Channel full, log is dropped
 	}
 }
 
-// LogrusHook is a logrus hook that sends logs to connected clients
-type LogrusHook struct {
-	server *Server
+// LogStreamWriter adapts logstream.Server to io.Writer for zerolog
+type LogStreamWriter struct {
+	Server  *Server
+	Context context.Context
 }
 
-// NewLogrusHook creates a new logrus hook for the log server
-func NewLogrusHook(server *Server) *LogrusHook {
-	return &LogrusHook{server: server}
-}
-
-// Fire implements logrus.Hook.Fire
-func (h *LogrusHook) Fire(entry *logrus.Entry) error {
-	line, err := entry.String()
-	if err != nil {
-		return err
+func (lsw *LogStreamWriter) Write(p []byte) (n int, err error) {
+	// Trim trailing newline added by zerolog ConsoleWriter
+	msg := string(bytes.TrimSpace(p))
+	if msg != "" {
+		lsw.Server.Publish(msg)
 	}
-	h.server.Publish(line)
-	return nil
-}
-
-// Levels implements logrus.Hook.Levels
-func (h *LogrusHook) Levels() []logrus.Level {
-	return logrus.AllLevels
+	return len(p), nil
 }

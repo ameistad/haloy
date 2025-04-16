@@ -12,14 +12,15 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logstream"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/ameistad/haloy/internal/version"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -29,8 +30,6 @@ const (
 	HTTPProviderPort = "8080"
 )
 
-var logger = logrus.New()
-
 type ContainerEvent struct {
 	Event     events.Message
 	Container container.InspectResponse
@@ -38,35 +37,33 @@ type ContainerEvent struct {
 }
 
 func RunManager(dryRun bool) {
-	// Create a context that will be canceled on shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
-	})
-
-	// Enable debug logging if in dry run mode
+	// Initialize logging
+	logLevel := zerolog.InfoLevel
 	if dryRun {
-		logger.SetLevel(logrus.DebugLevel)
-		logger.Debug("Debug logging enabled")
+		logLevel = zerolog.DebugLevel
 	}
 
-	// Start the log server
-	logServer := logstream.NewServer(ctx, ":9000")
-	if err := logServer.Listen(); err != nil {
-		logger.Fatalf("Log server failed: %v", err)
+	// Initialize logging (configures global logger and starts server)
+	logServer, err := logging.Init(ctx, logLevel, ":9000") // Pass address
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v\n", err)
 	}
 
-	// Add logrus hook to send logs to clients
-	logger.AddHook(logstream.NewLogrusHook(logServer))
+	// Ensure server is stopped on exit if it was started
+	if logServer != nil {
+		defer logServer.Stop()
+	}
+	if dryRun {
+		log.Debug().Msg("Debug logging enabled")
+	}
 
-	// Handle clean shutdown
-	defer logServer.Stop()
-
+	// Initialize Docker client
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		logger.Fatalf("Failed to create Docker client: %v", err)
+		log.Fatal().Err(err).Msg("Failed to create Docker client")
 	}
 	defer dockerClient.Close()
 
@@ -88,37 +85,37 @@ func RunManager(dryRun bool) {
 	certManagerConfig := certificates.Config{
 		CertDir:          CertificatesDir,
 		HTTPProviderPort: HTTPProviderPort,
-		Logger:           logger,
+		Logger:           log.Logger,
 		TlsStaging:       dryRun,
 	}
 	certManager, err := certificates.NewManager(certManagerConfig, certUpdateSignal)
 	if err != nil {
-		logger.Fatalf("Failed to create certificate manager: %v", err)
+		log.Fatal().Err(err).Msg("Failed to create certificate manager")
 		return
 	}
 
 	// Create the HAProxy manager
-	haproxyManager := NewHAProxyManager(
-		dockerClient,
-		logger,
-		HAProxyConfigDir,
-		CertificatesDir,
-		dryRun,
-	)
+	haproxyManagerConfig := HAProxyManagerConfig{
+		DockerClient: dockerClient,
+		Logger:       log.Logger,
+		ConfigDir:    HAProxyConfigDir,
+		DryRun:       dryRun,
+	}
+	haproxyManager := NewHAProxyManager(haproxyManagerConfig)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
 		DeploymentManager: deploymentManager,
 		CertManager:       certManager,
 		HAProxyManager:    haproxyManager,
-		Logger:            logger,
+		Logger:            log.Logger,
 	}
 
 	// Perform initial update
 	updater := NewUpdater(updaterConfig)
 	updateReason := "initial update"
 	if err := updater.Update(ctx, updateReason); err != nil {
-		logger.Errorf("Background update failed for %s: %v", updateReason, err)
+		log.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 	}
 
 	// Start Docker event listener
@@ -128,13 +125,13 @@ func RunManager(dryRun bool) {
 	refreshTicker := time.NewTicker(RefreshInterval)
 	defer refreshTicker.Stop()
 
-	fmt.Printf("Haloy manager version %s started on network %s...\n", version.Version, config.DockerNetwork)
+	log.Info().Msgf("Haloy manager version %s started on network %s...", version.Version, config.DockerNetwork)
 
 	// Main event loop
 	for {
 		select {
 		case <-sigChan:
-			fmt.Println("\nShutting down gracefully...")
+			log.Ctx(ctx).Info().Msg("Received shutdown signal, stopping manager...")
 			if certManager != nil {
 				certManager.Stop()
 			}
@@ -142,23 +139,26 @@ func RunManager(dryRun bool) {
 			return
 		case e := <-eventsChan:
 			reason := fmt.Sprintf("container %s: %s", e.Event.Action, e.Labels.AppName)
-			logger.Printf("Received event: %s", reason)
+			log.Info().Str("reason", reason).Msg("Received event")
 
 			go func(event ContainerEvent, updateReason string) {
-				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
+				baseDeploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
 
 				u := updater
+				// Create a contextual logger for this specific app update
+				appLogger := u.logger.With().Str("appName", event.Labels.AppName).Logger()
+				deploymentCtx := logging.WithLogger(baseDeploymentCtx, appLogger)
 				if err := u.Update(deploymentCtx, updateReason); err != nil {
-					u.logger.Errorf("Background update failed for %s: %v", updateReason, err)
+					u.logger.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 				} else {
-					u.logger.Infof("Background update completed for %s", updateReason)
+					u.logger.Info().Str("reason", updateReason).Msg("Background update completed")
 				}
 			}(e, reason)
 
 		case domainUpdated := <-certUpdateSignal:
 			reason := fmt.Sprintf("post-certificate update for %s", domainUpdated)
-			logger.Infof("Received cert update signal: %s", reason)
+			log.Info().Str("reason", reason).Msg("Received cert update signal")
 			// Launch a background HAProxy update
 			go func(updateReason string) {
 				// Use a timeout context for this specific task
@@ -172,17 +172,17 @@ func RunManager(dryRun bool) {
 				currentDeployments := u.deploymentManager.Deployments()
 				// Directly apply HAProxy config
 				if err := u.haproxyManager.ApplyConfig(updateCtx, currentDeployments); err != nil {
-					u.logger.Errorf("Background HAProxy update failed for %s: %v", updateReason, err)
+					u.logger.Error().Err(err).Str("reason", updateReason).Msg("Background HAProxy update failed")
 				} else {
-					u.logger.Infof("Background HAProxy update completed for %s", updateReason)
+					u.logger.Info().Str("reason", updateReason).Msg("Background HAProxy update completed")
 				}
 			}(reason)
 
 		case err := <-errorsChan:
-			logger.Printf("Error from Docker events: %v", err)
+			log.Error().Err(err).Msg("Error from Docker events")
 		case <-refreshTicker.C:
 			reason := "periodic full refresh"
-			logger.Printf("Received event: %s", reason)
+			log.Info().Str("reason", reason).Msg("Received event")
 
 			go func(updateReason string) {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
@@ -190,7 +190,7 @@ func RunManager(dryRun bool) {
 
 				u := updater // Capture updater
 				if err := u.Update(deploymentCtx, updateReason); err != nil {
-					u.logger.Errorf("Background update failed for %s: %v", updateReason, err)
+					u.logger.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 				}
 			}(reason)
 		}
@@ -221,7 +221,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 
 				container, err := dockerClient.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
-					logger.Printf("Error inspecting container %s: %v", helpers.SafeIDPrefix(event.Actor.ID), err)
+					log.Error().Err(err).Str("container", helpers.SafeIDPrefix(event.Actor.ID)).Msg("Error inspecting container")
 					continue
 				}
 				eligible := IsAppContainer(container)
@@ -230,7 +230,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 				if eligible {
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
 					if err != nil {
-						logger.Printf("Error parsing container labels: %v", err)
+						log.Error().Err(err).Msg("Error parsing container labels")
 						return
 					}
 
@@ -241,7 +241,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 					}
 					eventsChan <- containerEvent
 				} else {
-					logger.Printf("Container %s is not eligible for haloy management", helpers.SafeIDPrefix(event.Actor.ID))
+					log.Info().Str("container", helpers.SafeIDPrefix(event.Actor.ID)).Msg("Container is not eligible for haloy management")
 				}
 			}
 		case err := <-errs:
