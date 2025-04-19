@@ -108,13 +108,13 @@ func RunManager(dryRun bool) {
 		DeploymentManager: deploymentManager,
 		CertManager:       certManager,
 		HAProxyManager:    haproxyManager,
-		Logger:            log.Logger,
 	}
 
 	// Perform initial update
 	updater := NewUpdater(updaterConfig)
 	updateReason := "initial update"
-	if err := updater.Update(ctx, updateReason); err != nil {
+	updateLogger := log.With().Str("reason", updateReason).Logger()
+	if err := updater.Update(ctx, updateReason, updateLogger); err != nil {
 		log.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 	}
 
@@ -142,17 +142,16 @@ func RunManager(dryRun bool) {
 			log.Info().Str("reason", reason).Msg("Received event")
 
 			go func(event ContainerEvent, updateReason string) {
-				baseDeploymentCtx, cancelDeployment := context.WithCancel(ctx)
+				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
 
 				u := updater
 				// Create a contextual logger for this specific app update
-				appLogger := u.logger.With().Str("appName", event.Labels.AppName).Logger()
-				deploymentCtx := logging.WithLogger(baseDeploymentCtx, appLogger)
-				if err := u.Update(deploymentCtx, updateReason); err != nil {
-					u.logger.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
+				appLogger := log.With().Str("appName", event.Labels.AppName).Logger()
+				if err := u.Update(deploymentCtx, updateReason, appLogger); err != nil {
+					appLogger.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 				} else {
-					u.logger.Info().Str("reason", updateReason).Msg("Background update completed")
+					appLogger.Info().Str("reason", updateReason).Msg("Background update completed")
 				}
 			}(e, reason)
 
@@ -172,9 +171,9 @@ func RunManager(dryRun bool) {
 				currentDeployments := u.deploymentManager.Deployments()
 				// Directly apply HAProxy config
 				if err := u.haproxyManager.ApplyConfig(updateCtx, currentDeployments); err != nil {
-					u.logger.Error().Err(err).Str("reason", updateReason).Msg("Background HAProxy update failed")
+					log.Error().Err(err).Str("reason", updateReason).Msg("Background HAProxy update failed")
 				} else {
-					u.logger.Info().Str("reason", updateReason).Msg("Background HAProxy update completed")
+					log.Info().Str("reason", updateReason).Msg("Background HAProxy update completed")
 				}
 			}(reason)
 
@@ -189,8 +188,9 @@ func RunManager(dryRun bool) {
 				defer cancelDeployment()
 
 				u := updater // Capture updater
-				if err := u.Update(deploymentCtx, updateReason); err != nil {
-					u.logger.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
+				updateLogger := log.With().Str("reason", updateReason).Logger()
+				if err := u.Update(deploymentCtx, updateReason, updateLogger); err != nil {
+					log.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 				}
 			}(reason)
 		}

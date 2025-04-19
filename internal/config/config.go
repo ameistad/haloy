@@ -9,27 +9,13 @@ import (
 )
 
 const (
-	// DockerNetwork is the network name to which containers are attached.
 	DockerNetwork = "haloy-public"
-
-	// DefaultMaxContainersToKeep is the default number of old containers to keep.
 	DefaultMaxContainersToKeep = 3
-
-	// DefaultHealthCheckPath is the path to which the health check endpoint is bound.
 	DefaultHealthCheckPath = "/"
-
-	// DefaultContainerPort is the port on which your container serves HTTP.
 	DefaultContainerPort = "80"
-
-	// DefaultReplicas is the default number of replicas for a container.
 	DefaultReplicas = 1
-
 	ConfigFileName = "apps.yml"
-
 	HAProxyConfigFileName = "haproxy.cfg"
-
-	// TODO: Consider adding labelPrefix
-	// LabelPreix = "haloy"
 )
 
 type Config struct {

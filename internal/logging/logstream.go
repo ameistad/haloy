@@ -4,19 +4,22 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
-// Client represents a connected client with a filter.
+// Client represents a connected client with a app name filter.
 type Client struct {
-	conn   net.Conn
-	filter string
-	done   chan struct{}
+	conn          net.Conn
+	appNameFilter string
+	done          chan struct{}
 }
 
 // Server holds state for our TCP server.
@@ -158,9 +161,9 @@ func (s *Server) handleConnection(conn net.Conn) {
 	clientID := fmt.Sprintf("%s-%d", conn.RemoteAddr().String(), time.Now().UnixNano())
 
 	client := &Client{
-		conn:   conn,
-		filter: filter,
-		done:   make(chan struct{}),
+		conn:          conn,
+		appNameFilter: filter,
+		done:          make(chan struct{}),
 	}
 
 	// Add client to map
@@ -180,7 +183,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}
 }
 
-// broadcastLogs delivers log messages to all clients matching their filter.
+// broadcastLogs delivers log messages to clients matching their specific appName filter.
 func (s *Server) broadcastLogs() {
 	for {
 		select {
@@ -188,41 +191,67 @@ func (s *Server) broadcastLogs() {
 			return
 		case msg, ok := <-s.logChan:
 			if !ok {
-				// Channel closed, exit
+				log.Info().Msg("Log channel closed, stopping broadcaster.")
 				return
 			}
 
-			// Use RLock for reading clients
+			// Parse the log message as JSON once
+			var logEntry map[string]interface{}
+			// Use []byte(msg) for unmarshalling
+			isJson := json.Unmarshal([]byte(msg), &logEntry) == nil
+
 			s.mutex.RLock()
-			// Create a copy of clients to avoid holding the lock during writes
 			clientsCopy := make(map[string]*Client, len(s.clients))
+			clientIDs := make([]string, 0, len(s.clients))
 			for id, client := range s.clients {
 				clientsCopy[id] = client
+				clientIDs = append(clientIDs, id)
 			}
 			s.mutex.RUnlock()
 
-			// Process clients without holding the lock
 			var disconnectedClients []string
-			for id, c := range clientsCopy {
-				// If filter is empty or message contains filter
-				if c.filter == "" || strings.Contains(msg, c.filter) {
+			for _, id := range clientIDs {
+				c := clientsCopy[id]
+				send := false // Default to not sending
+
+				if c.appNameFilter == "" {
+					// Client wants all logs
+					send = true
+				} else if isJson {
+					// Client has a filter AND the log message is valid JSON
+					// Check if the "appName" field exists and matches the filter
+					if appName, ok := logEntry[LogFieldAppName].(string); ok && appName == c.appNameFilter {
+						send = true
+					}
+				}
+				// If !isJson and c.filter != "", send remains false
+
+				if send {
+					c.conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+					// Append newline as Write expects raw bytes including delimiter usually
 					_, err := c.conn.Write([]byte(msg + "\n"))
+					c.conn.SetWriteDeadline(time.Time{})
+
 					if err != nil {
-						// Mark client for removal
+						log.Warn().Err(err).Str("clientAddr", c.conn.RemoteAddr().String()).Str("filter", c.appNameFilter).Msg("Failed to write to log stream client, marking for removal.")
 						disconnectedClients = append(disconnectedClients, id)
-						close(c.done)
+						select {
+						case <-c.done:
+						default:
+							close(c.done)
+						}
 						c.conn.Close()
 					}
 				}
 			}
 
-			// Remove disconnected clients if any
 			if len(disconnectedClients) > 0 {
 				s.mutex.Lock()
 				for _, id := range disconnectedClients {
 					delete(s.clients, id)
 				}
 				s.mutex.Unlock()
+				log.Debug().Strs("disconnectedClients", disconnectedClients).Msg("Removed disconnected clients")
 			}
 		}
 	}

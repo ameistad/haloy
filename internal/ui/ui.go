@@ -4,7 +4,6 @@ import (
 	"github.com/fatih/color"
 )
 
-// Text styling functions
 var (
 	Success = color.New(color.FgGreen).Add(color.Bold).PrintfFunc()
 	Info    = color.New(color.FgCyan).PrintfFunc()

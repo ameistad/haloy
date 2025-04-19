@@ -12,6 +12,18 @@ import (
 	"github.com/rs/zerolog/pkgerrors"
 )
 
+var (
+	LogFieldLevel   = zerolog.LevelFieldName   // "level"
+	LogFieldMessage = zerolog.MessageFieldName // "message"
+)
+
+const (
+	LogFieldAppName          = "appName"
+	LogFieldDeploymentStatus = "deployment_status"
+	LogDeploymentCompleted   = "completed"
+	LogDeploymentFailed      = "failed"
+)
+
 // Init configures the global zerolog logger and optionally starts the log stream server.
 // It returns the server instance (if created) so its lifecycle can be managed.
 func Init(ctx context.Context, level zerolog.Level, streamAddress string) (*Server, error) {

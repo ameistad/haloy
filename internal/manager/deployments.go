@@ -42,6 +42,10 @@ func NewDeploymentManager(ctx context.Context, dockerClient *client.Client) *Dep
 	}
 }
 
+// BuildDeployments scans all running Docker containers with the app label and builds a map of
+// current deployments in the system. It compares the new deployment state with the previous state
+// to determine if any changes have occurred (additions, removals, or updates to deployments).
+// Returns true if the deployment state has changed, along with any error encountered.
 func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error) {
 	newDeployments := make(map[string]Deployment)
 
@@ -190,6 +194,12 @@ type compareResult struct {
 	AddedDeployments   map[string]Deployment
 }
 
+// compareDeployments analyzes differences between the previous and current deployment states.
+// It identifies three types of changes:
+// 1. Updated deployments - same app name but different deployment ID or instance configuration
+// 2. Removed deployments - deployments that existed before but are no longer present
+// 3. Added deployments - new deployments that didn't exist in the previous state
+// This comparison is critical for determining when HAProxy configuration should be updated.
 func compareDeployments(oldDeployments, newDeployments map[string]Deployment) compareResult {
 
 	updatedDeployments := make(map[string]Deployment)
