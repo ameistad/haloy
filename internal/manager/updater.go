@@ -30,7 +30,7 @@ func NewUpdater(config UpdaterConfig) *Updater {
 
 func (u *Updater) Update(ctx context.Context, reason string, logger zerolog.Logger) error {
 
-	logger.Info().Str("reason", reason).Msg("Updater: Starting deployment update")
+	logger.Debug().Str("reason", reason).Msg("Updater: Starting deployment update")
 
 	// Build Deployments and check if anything has changed (Thread-safe)
 	deploymentsHasChanged, err := u.deploymentManager.BuildDeployments(ctx)
@@ -38,7 +38,7 @@ func (u *Updater) Update(ctx context.Context, reason string, logger zerolog.Logg
 		return fmt.Errorf("updater: failed to build deployments (%s): %w", reason, err)
 	}
 	if !deploymentsHasChanged {
-		logger.Info().Str("reason", reason).Msg("Updater: No deployment changes detected. Skipping HAProxy update.")
+		logger.Debug().Str("reason", reason).Msg("Updater: No deployment changes detected. Skipping HAProxy update.")
 		return nil // Nothing changed, successful exit
 	}
 
@@ -46,7 +46,7 @@ func (u *Updater) Update(ctx context.Context, reason string, logger zerolog.Logg
 		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", reason, err)
 	}
 
-	logger.Info().Str("reason", reason).Msg("Deployment changes detected. Triggering cert and HAProxy updates.")
+	logger.Debug().Str("reason", reason).Msg("Deployment changes detected. Triggering cert and HAProxy updates.")
 
 	// Get domains AFTER checking HasChanged to reflect the latest state
 	certDomains := u.deploymentManager.GetCertificateDomains()
@@ -58,11 +58,11 @@ func (u *Updater) Update(ctx context.Context, reason string, logger zerolog.Logg
 
 	// Delegate the entire HAProxy update process (lock, generate, write, signal)
 	if err := u.haproxyManager.ApplyConfig(ctx, deployments); err != nil {
-		// Log context with the error
-		logger.Error().Err(err).Str("reason", reason).Msg("Updater: Failed to apply HAProxy config")
-		return fmt.Errorf("updater: failed to apply HAProxy config (%s): %w", reason, err)
+		return fmt.Errorf("failed to apply HAProxy config (%s): %w", reason, err)
+	} else {
+		logger.Info().Str("reason", reason).Msg("HAProxy configuration updated successfully")
 	}
 
-	logger.Info().Str("reason", reason).Msg("Updater: Successfully completed deployment update process")
+	logger.Debug().Str("reason", reason).Msg("Updater: Successfully completed deployment update process")
 	return nil
 }

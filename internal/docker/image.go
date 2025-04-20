@@ -219,7 +219,7 @@ func getDockerIgnorePatterns(contextDir string) []string {
 	data, err := os.ReadFile(dockerIgnorePath)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
-			ui.Warning("Error reading .dockerignore file at '%s': %v", dockerIgnorePath, err)
+			ui.Warn("Error reading .dockerignore file at '%s': %v", dockerIgnorePath, err)
 		}
 		return patterns
 	}
@@ -294,7 +294,7 @@ func copyFile(src, dst string) error {
 		return fmt.Errorf("failed to close destination file '%s': %w", dst, err)
 	}
 	if err := os.Chmod(dst, info.Mode()); err != nil {
-		ui.Warning("Failed to set permissions on '%s' (mode %s): %v", dst, info.Mode(), err)
+		ui.Warn("Failed to set permissions on '%s' (mode %s): %v", dst, info.Mode(), err)
 		return fmt.Errorf("failed to set permissions on '%s': %w", dst, err)
 	}
 	return nil

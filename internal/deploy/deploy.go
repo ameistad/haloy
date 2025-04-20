@@ -12,6 +12,7 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -99,7 +100,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	// Use dockerOpCtx for stopping containers
 	if err := docker.StopContainers(dockerOpCtx, dockerClient, appConfig.Name, deploymentID); err != nil {
 		// Log warning but don't necessarily fail the whole deployment
-		ui.Warning("Failed to stop old containers: %v\n", err)
+		ui.Warn("Failed to stop old containers: %v\n", err)
 	} else {
 		ui.Info("Old container(s) stopped.\n")
 	}
@@ -114,7 +115,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	}
 	removedContainers, err := docker.RemoveContainers(removeContainersParams)
 	if err != nil {
-		ui.Warning("Failed to remove old containers: %v\n", err)
+		ui.Warn("Failed to remove old containers: %v\n", err)
 	}
 
 	if len(removedContainers) == 0 {
@@ -144,30 +145,26 @@ func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
 	defer wg.Done()
 
 	clientConfig := logging.ClientConfig{
-		Address:       LogStreamAddress,
 		AppNameFilter: appName,
-		UseDeadline:   true, // Use deadlines for deploy command
-		// ReadDeadline defaults to 500ms in NewLogStreamClient
-		// DialTimeout defaults to 5s in NewLogStreamClient
+		UseDeadline:   true,
+		MinLevel:      zerolog.InfoLevel,
 	}
 
-	ui.Info("Attempting to connect to log stream at %s for app '%s'...\n", clientConfig.Address, appName)
+	ui.Info("Attempting to connect to log stream at %s for app '%s'...\n", logging.DefaultStreamAddress, appName)
 	client, err := logging.NewLogStreamClient(clientConfig)
 	if err != nil {
-		ui.Warning("Could not connect to log stream: %v. Continuing deployment without live logs.\n", err)
+		ui.Warn("Could not connect to log stream: %v. Continuing deployment without live logs.\n", err)
 		return
 	}
 	defer client.Close()
 	ui.Success("Connected to log stream. Filtering for '%s'.\n", appName)
 
-	// Stream logs to stdout
-	// Prefix output to distinguish stream logs
-	prefixWriter := helpers.NewPrefixWriter(os.Stdout, "[STREAM] ")
-	err = client.Stream(ctx, prefixWriter)
+	// Stream logs directly to standard output (or wherever ui writes)
+	// The writer argument might become unnecessary if ui always writes to stdout/stderr
+	err = client.Stream(ctx, os.Stdout) // Pass os.Stdout directly
 
 	// Handle stream exit reason
 	if err != nil && !errors.Is(err, context.Canceled) {
-		// Log errors other than context cancellation (which is expected on deploy finish)
 		ui.Error("Log stream error: %v\n", err)
 	} else {
 		ui.Info("Log stream finished.\n")

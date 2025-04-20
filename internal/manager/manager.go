@@ -47,7 +47,7 @@ func RunManager(dryRun bool) {
 	}
 
 	// Initialize logging (configures global logger and starts server)
-	logServer, err := logging.Init(ctx, logLevel, ":9000") // Pass address
+	logServer, err := logging.Init(ctx, logLevel) // Pass address
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v\n", err)
 	}
@@ -149,15 +149,13 @@ func RunManager(dryRun bool) {
 				// Create a contextual logger for this specific app update
 				appLogger := log.With().Str("appName", event.Labels.AppName).Logger()
 				if err := u.Update(deploymentCtx, updateReason, appLogger); err != nil {
-					appLogger.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
-				} else {
-					appLogger.Info().Str("reason", updateReason).Msg("Background update completed")
+					appLogger.Error().Err(err).Str("reason", updateReason).Msg("HAProxy configuration update failed")
 				}
 			}(e, reason)
 
 		case domainUpdated := <-certUpdateSignal:
 			reason := fmt.Sprintf("post-certificate update for %s", domainUpdated)
-			log.Info().Str("reason", reason).Msg("Received cert update signal")
+			log.Debug().Str("reason", reason).Msg("Received cert update signal")
 			// Launch a background HAProxy update
 			go func(updateReason string) {
 				// Use a timeout context for this specific task
@@ -172,8 +170,6 @@ func RunManager(dryRun bool) {
 				// Directly apply HAProxy config
 				if err := u.haproxyManager.ApplyConfig(updateCtx, currentDeployments); err != nil {
 					log.Error().Err(err).Str("reason", updateReason).Msg("Background HAProxy update failed")
-				} else {
-					log.Info().Str("reason", updateReason).Msg("Background HAProxy update completed")
 				}
 			}(reason)
 

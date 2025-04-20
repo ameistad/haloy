@@ -45,7 +45,7 @@ func InitCmd() *cobra.Command {
 			defer dockerClient.Close()
 
 			if _, err := os.Stat(configDir); err == nil {
-				ui.Warning("Configuration directory already exists. Files may be overwritten.\n")
+				ui.Warn("Configuration directory already exists. Files may be overwritten.\n")
 			}
 
 			var emptyDirs = []string{
@@ -65,9 +65,9 @@ func InitCmd() *cobra.Command {
 
 			// Ensure default Docker network exists.
 			if err := docker.EnsureNetwork(dockerClient, ctx); err != nil {
-				ui.Warning("Failed to ensure Docker network exists: %v\n", err)
-				ui.Warning("You can manually create it with:\n")
-				ui.Warning("docker network create --driver bridge %s", config.DockerNetwork)
+				ui.Warn("Failed to ensure Docker network exists: %v\n", err)
+				ui.Warn("You can manually create it with:\n")
+				ui.Warn("docker network create --driver bridge %s", config.DockerNetwork)
 			}
 
 			if !skipServices {

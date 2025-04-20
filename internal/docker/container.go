@@ -136,7 +136,7 @@ func StopContainers(ctx context.Context, dockerClient *client.Client, appName, i
 		}
 		err := dockerClient.ContainerStop(ctx, containerInfo.ID, stopOptions)
 		if err != nil {
-			ui.Warning("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
+			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		}
 	}
 	if err != nil {
@@ -205,7 +205,7 @@ func RemoveContainers(params RemoveContainersParams) ([]RemoveContainersResult, 
 	for _, c := range removedContainers {
 		err := params.DockerClient.ContainerRemove(params.Context, c.ID, container.RemoveOptions{Force: true})
 		if err != nil {
-			ui.Warning("Error removing container %s: %v\n", helpers.SafeIDPrefix(c.ID), err)
+			ui.Warn("Error removing container %s: %v\n", helpers.SafeIDPrefix(c.ID), err)
 		}
 	}
 
@@ -350,7 +350,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			ui.Warning("Health check attempt failed: %v", err)
+			ui.Warn("Health check attempt failed: %v", err)
 			continue
 		}
 		defer resp.Body.Close()
@@ -361,7 +361,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 		}
 
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		ui.Warning("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		ui.Warn("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)

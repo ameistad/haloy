@@ -23,16 +23,17 @@ type LogStreamClient struct {
 	appNameFilter string
 	useDeadline   bool          // Flag to control read deadline usage. This will be true for deploy and false for logs cmd.
 	readDeadline  time.Duration // Duration for the read deadline if used
+	minLevel      zerolog.Level // Minimum log level to display
 }
 
 // ClientConfig defines the configuration options for creating a LogStreamClient.
 // It controls connection parameters, filtering, and timeout behavior.
 type ClientConfig struct {
-	Address       string        // Address of the log stream server (e.g., "localhost:9000")
 	AppNameFilter string        // Filter for the application name (e.g., "myapp")
 	UseDeadline   bool          // Whether to use read deadlines (true for deploy, false for logs cmd)
 	ReadDeadline  time.Duration // Deadline duration if UseDeadline is true (e.g., 500ms)
 	DialTimeout   time.Duration // Timeout for establishing the connection
+	MinLevel      zerolog.Level // Minimum log level to display (e.g., zerolog.InfoLevel)
 }
 
 // NewLogStreamClient creates and connects a new log stream client.
@@ -44,9 +45,9 @@ func NewLogStreamClient(config ClientConfig) (*LogStreamClient, error) {
 		config.ReadDeadline = 500 * time.Millisecond // Default read deadline
 	}
 
-	conn, err := net.DialTimeout("tcp", config.Address, config.DialTimeout)
+	conn, err := net.DialTimeout("tcp", DefaultStreamAddress, config.DialTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to log stream at %s: %w", config.Address, err)
+		return nil, fmt.Errorf("failed to connect to log stream at %s: %w", DefaultStreamAddress, err)
 	}
 
 	// Send the filter immediately after connecting
@@ -63,6 +64,7 @@ func NewLogStreamClient(config ClientConfig) (*LogStreamClient, error) {
 		appNameFilter: filter,
 		useDeadline:   config.UseDeadline,
 		readDeadline:  config.ReadDeadline,
+		minLevel:      config.MinLevel,
 	}
 
 	// Read and discard the welcome message from the server
@@ -83,8 +85,6 @@ func NewLogStreamClient(config ClientConfig) (*LogStreamClient, error) {
 // their log level. It detects deployment completion/failure messages and returns appropriate
 // errors when these occur. The function runs until context cancellation or connection closure.
 func (c *LogStreamClient) Stream(ctx context.Context, writer io.Writer) error { // writer might become unused if ui writes directly to stdout/stderr
-	prefix := "[STREAM] " // Define prefix for streamed logs
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,7 +114,7 @@ func (c *LogStreamClient) Stream(ctx context.Context, writer io.Writer) error { 
 			}
 
 			// Attempt to parse the line as JSON
-			var logEntry map[string]interface{}
+			var logEntry map[string]any
 			if json.Unmarshal(lineBytes, &logEntry) == nil {
 				// JSON parsing successful, extract fields
 				levelStr, _ := logEntry[LogFieldLevel].(string)
@@ -122,37 +122,41 @@ func (c *LogStreamClient) Stream(ctx context.Context, writer io.Writer) error { 
 
 				if !msgOk {
 					// If message field is missing, print raw line as fallback
-					fmt.Fprint(writer, prefix+string(lineBytes)) // Use original writer
+					fmt.Fprint(writer, string(lineBytes)) // Use original writer
 					continue
 				}
 
-				// Use ui package based on level
-				switch levelStr {
-				case zerolog.LevelInfoValue: // "info"
-					ui.Info(prefix + messageStr + "\n")
-				case zerolog.LevelErrorValue: // "error"
-					// Optionally include error field if present
-					errField, _ := logEntry[zerolog.ErrorFieldName].(string)
-					if errField != "" {
-						ui.Error(prefix+"%s (error: %s)\n", messageStr, errField)
-					} else {
-						ui.Error(prefix + messageStr + "\n")
+				// Parse the log level from the string
+				parsedLevel, levelErr := zerolog.ParseLevel(levelStr)
+				if levelErr != nil {
+					parsedLevel = zerolog.NoLevel // Treat unknown levels as lowest priority? Or print raw?
+				}
+
+				if parsedLevel >= c.minLevel {
+					// Use ui package based on level
+					switch levelStr {
+					case zerolog.LevelInfoValue: // "info"
+						ui.Info(messageStr + "\n")
+					case zerolog.LevelErrorValue: // "error"
+						// Optionally include error field if present
+						errField, _ := logEntry[zerolog.ErrorFieldName].(string)
+						if errField != "" {
+							ui.Error("%s (error: %s)\n", messageStr, errField)
+						} else {
+							ui.Error(messageStr + "\n")
+						}
+					case zerolog.LevelWarnValue: // "warn"
+						ui.Warn(messageStr + "\n")
+					case zerolog.LevelDebugValue: // "debug"
+						ui.Debug(messageStr + "\n") // Show debug as info for now
+					case zerolog.LevelFatalValue: // "fatal"
+						ui.Error(messageStr + "\n") // Show fatal as error
+					case zerolog.LevelPanicValue: // "panic"
+						ui.Error("[PANIC] " + messageStr + "\n") // Show panic as error
+					default:
+						// Unknown level, print raw line
+						fmt.Fprint(writer, string(lineBytes)) // Use original writer
 					}
-				case zerolog.LevelWarnValue: // "warn"
-					ui.Warning(prefix + messageStr + "\n")
-				case zerolog.LevelDebugValue: // "debug"
-					// Decide if you want to show debug logs in the CLI stream
-					// ui.Info(prefix+"[DEBUG] "+messageStr+"\n") // Example: show as Info
-					// Or ignore them:
-					// continue
-					ui.Info(prefix + "[DEBUG] " + messageStr + "\n") // Show debug as info for now
-				case zerolog.LevelFatalValue: // "fatal"
-					ui.Error(prefix + "[FATAL] " + messageStr + "\n") // Show fatal as error
-				case zerolog.LevelPanicValue: // "panic"
-					ui.Error(prefix + "[PANIC] " + messageStr + "\n") // Show panic as error
-				default:
-					// Unknown level, print raw line
-					fmt.Fprint(writer, prefix+string(lineBytes)) // Use original writer
 				}
 
 				// Check for completion status after printing the message
@@ -173,7 +177,7 @@ func (c *LogStreamClient) Stream(ctx context.Context, writer io.Writer) error { 
 
 			} else {
 				// JSON parsing failed, print raw line
-				fmt.Fprint(writer, prefix+string(lineBytes)) // Use original writer
+				fmt.Fprint(writer, string(lineBytes)) // Use original writer
 			}
 		}
 	}
