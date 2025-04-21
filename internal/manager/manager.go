@@ -85,7 +85,6 @@ func RunManager(dryRun bool) {
 	certManagerConfig := certificates.Config{
 		CertDir:          CertificatesDir,
 		HTTPProviderPort: HTTPProviderPort,
-		Logger:           log.Logger,
 		TlsStaging:       dryRun,
 	}
 	certManager, err := certificates.NewManager(certManagerConfig, certUpdateSignal)
@@ -139,7 +138,7 @@ func RunManager(dryRun bool) {
 			return
 		case e := <-eventsChan:
 			reason := fmt.Sprintf("container %s: %s", e.Event.Action, e.Labels.AppName)
-			log.Info().Str("reason", reason).Msg("Received event")
+			log.Debug().Str("reason", reason).Msg("Received event")
 
 			go func(event ContainerEvent, updateReason string) {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)

@@ -50,8 +50,8 @@ func (u *Updater) Update(ctx context.Context, reason string, logger zerolog.Logg
 
 	// Get domains AFTER checking HasChanged to reflect the latest state
 	certDomains := u.deploymentManager.GetCertificateDomains()
-	u.certManager.AddDomains(certDomains) // Let CertManager handle duplicates/warnings
-	u.certManager.Refresh()               // Refresh is debounced internally
+	u.certManager.AddDomains(certDomains, logger) // Let CertManager handle duplicates/warnings
+	u.certManager.Refresh(logger)                 // Refresh is debounced internally
 
 	// Get deployments AFTER checking HasChanged
 	deployments := u.deploymentManager.Deployments() // Gets a safe copy
