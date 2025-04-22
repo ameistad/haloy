@@ -9,9 +9,9 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
-	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/docker/docker/client"
 	"github.com/rs/zerolog"
 )
 
@@ -20,19 +20,13 @@ const (
 )
 
 func DeployApp(appConfig *config.AppConfig) error {
-	// 1. Create the primary context for the whole deployment + log streaming
+
+	// Create the primary context for the whole deployment + log streaming
 	deployCtx, cancelDeploy := context.WithCancel(context.Background())
 	// Ensure cancelDeploy is called eventually to stop the streamer and release resources
 	defer cancelDeploy()
 
-	// Use a WaitGroup to wait for the log streamer goroutine to finish
-	var wg sync.WaitGroup
-
-	// Start log streaming in a separate goroutine, passing the primary context
-	wg.Add(1)
-	go streamLogs(deployCtx, &wg, appConfig.Name)
-
-	// 2. Create a derived context with a timeout for Docker operations
+	// Create a derived context with a timeout for Docker operations
 	// This context will be cancelled if deployCtx is cancelled OR if the timeout expires.
 	dockerOpCtx, cancelDockerOps := context.WithTimeout(deployCtx, DefaultDeployTimeout)
 	// Ensure the timeout context's resources are released
@@ -48,33 +42,29 @@ func DeployApp(appConfig *config.AppConfig) error {
 	}
 	defer dockerClient.Close()
 
-	imageName := appConfig.Name + ":latest"
-
-	ui.Info("Building image '%s'...\n", imageName)
-	buildImageParams := docker.BuildImageParams{
-		Context:      dockerOpCtx, // Use dockerOpCtx
-		DockerClient: dockerClient,
-		ImageName:    imageName,
-		Source:       appConfig.Source.Dockerfile,
-		EnvVars:      appConfig.Env,
+	// Ensure that the custom docker network and required services are running.
+	if err := docker.EnsureNetwork(dockerClient, dockerOpCtx); err != nil {
+		return fmt.Errorf("failed to ensure Docker network exists: %w", err)
 	}
-	if err := docker.BuildImage(buildImageParams); err != nil {
-		// Distinguish between timeout and cancellation
-		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultDeployTimeout, err)
-		} else if errors.Is(err, context.Canceled) {
-			// Check if the cancellation came from the parent deployCtx
-			if deployCtx.Err() != nil {
-				return fmt.Errorf("failed to build image: deployment canceled (%w)", deployCtx.Err())
-			}
-			// Otherwise, it might be an internal cancellation within the Docker op
-			return fmt.Errorf("failed to build image: docker operation canceled (%w)", err)
-		}
-		return fmt.Errorf("failed to build image: %w", err)
+	if _, err := docker.EnsureServicesIsRunning(dockerClient, dockerOpCtx); err != nil {
+		return fmt.Errorf("failed to ensure dependent services are running: %w", err)
 	}
-	ui.Success("Image '%s' built successfully.\n", imageName)
 
-	ui.Info("Running new container(s) for '%s'...\n", appConfig.Name)
+	// Use a WaitGroup to wait for the log streamer goroutine to finish
+	var wg sync.WaitGroup
+
+	// Start log streaming in a separate goroutine, passing the primary context
+	wg.Add(1)
+	go streamLogs(deployCtx, &wg, appConfig.Name)
+
+	imageName, err := GetImage(dockerOpCtx, dockerClient, appConfig) // Use dockerOpCtx
+	if err != nil {
+		return err
+	}
+
+	// Slice to hold information about the deployment which will be displayed on success.
+	deploySummary := make([]string, 0)
+
 	runResult, err := docker.RunContainer(dockerOpCtx, dockerClient, imageName, appConfig) // Use dockerOpCtx
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -92,20 +82,12 @@ func DeployApp(appConfig *config.AppConfig) error {
 	}
 
 	deploymentID := runResult[0].DeploymentID
-	for _, container := range runResult {
-		ui.Info("New container '%s' started successfully.\n", helpers.SafeIDPrefix(container.ID))
-	}
+	deploySummary = append(deploySummary, fmt.Sprintf("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID))
 
-	ui.Info("Stopping old container(s) for '%s' (excluding deployment %s)...\n", appConfig.Name, deploymentID)
-	// Use dockerOpCtx for stopping containers
 	if err := docker.StopContainers(dockerOpCtx, dockerClient, appConfig.Name, deploymentID); err != nil {
-		// Log warning but don't necessarily fail the whole deployment
 		ui.Warn("Failed to stop old containers: %v\n", err)
-	} else {
-		ui.Info("Old container(s) stopped.\n")
 	}
 
-	ui.Info("Removing old container(s) for '%s' (excluding deployment %s)...\n", appConfig.Name, deploymentID)
 	removeContainersParams := docker.RemoveContainersParams{
 		Context:             dockerOpCtx, // Use dockerOpCtx
 		DockerClient:        dockerClient,
@@ -118,27 +100,17 @@ func DeployApp(appConfig *config.AppConfig) error {
 		ui.Warn("Failed to remove old containers: %v\n", err)
 	}
 
-	if len(removedContainers) == 0 {
-		ui.Info("No old containers to remove.\n")
-	} else {
-		suffix := ""
-		if len(removedContainers) > 1 {
-			suffix = "s"
-		}
-		ui.Info("Removed %d old container%s\n", len(removedContainers), suffix)
-	}
+	deploySummary = append(deploySummary, fmt.Sprintf("Removed %d old container(s)", len(removedContainers)))
 
-	// --- Deployment Finished Successfully ---
-
-	// 3. Explicitly cancel the primary context *before* waiting.
+	// Explicitly cancel the primary context *before* waiting.
 	// This signals the log streamer to stop.
 	cancelDeploy()
 
-	// 4. Wait for the log streamer goroutine to finish cleanly.
+	// Wait for the log streamer goroutine to finish cleanly.
 	wg.Wait()
 
-	ui.Success("Successfully deployed app '%s'. New deployment ID: %s\n", appConfig.Name, deploymentID)
-	return nil // Success
+	ui.Section(fmt.Sprintf("Successfully deployed %s", appConfig.Name), deploySummary)
+	return nil
 }
 
 func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
@@ -150,14 +122,12 @@ func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
 		MinLevel:      zerolog.InfoLevel,
 	}
 
-	ui.Info("Attempting to connect to log stream at %s for app '%s'...\n", logging.DefaultStreamAddress, appName)
 	client, err := logging.NewLogStreamClient(clientConfig)
 	if err != nil {
-		ui.Warn("Could not connect to log stream: %v. Continuing deployment without live logs.\n", err)
+		ui.Warn("Could not connect to log stream from manager: %v. Continuing deployment without live logs.\n", err)
 		return
 	}
 	defer client.Close()
-	ui.Success("Connected to log stream. Filtering for '%s'.\n", appName)
 
 	// Stream logs directly to standard output (or wherever ui writes)
 	// The writer argument might become unnecessary if ui always writes to stdout/stderr
@@ -169,4 +139,54 @@ func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
 	} else {
 		ui.Info("Log stream finished.\n")
 	}
+}
+
+func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *config.AppConfig) (string, error) {
+	switch true {
+	case appConfig.Source.Dockerfile != nil:
+		// Source is a Dockerfile. The image name is derived from the app name.
+		imageName := appConfig.Name + ":latest" // Convention for locally built images
+
+		ui.Info("Source is Dockerfile, building image '%s'...\n", imageName)
+		buildImageParams := docker.BuildImageParams{
+			Context:      ctx,
+			DockerClient: dockerClient,
+			ImageName:    imageName,
+			Source:       appConfig.Source.Dockerfile,
+			EnvVars:      appConfig.Env,
+		}
+		if err := docker.BuildImage(buildImageParams); err != nil {
+			// Distinguish between timeout and cancellation
+			if errors.Is(err, context.DeadlineExceeded) {
+				return "", fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultDeployTimeout, err)
+			} else if errors.Is(err, context.Canceled) {
+				// Check if the cancellation came from the parent deployCtx
+				if ctx.Err() != nil {
+					return "", fmt.Errorf("failed to build image: deployment canceled (%w)", ctx.Err())
+				}
+				// Otherwise, it might be an internal cancellation within the Docker op
+				return "", fmt.Errorf("failed to build image: docker operation canceled (%w)", err)
+			}
+			return "", fmt.Errorf("failed to build image: %w", err)
+		}
+		ui.Success("Image '%s' built successfully.\n", imageName)
+
+		return imageName, nil
+
+	case appConfig.Source.Image != nil:
+		// Source is a pre-existing image.
+		imgSource := appConfig.Source.Image
+		imageName := imgSource.Repository
+		tag := imgSource.Tag
+		if tag == "" {
+			tag = "latest" // Default to latest tag if not specified
+		}
+		imageName = imageName + ":" + tag
+		ui.Debug("Determined image name '%s' from image source.\n", imageName)
+		return imageName, nil
+
+	default:
+		return "", fmt.Errorf("invalid app source configuration: no source type (Dockerfile or Image) defined for app '%s'", appConfig.Name)
+	}
+
 }

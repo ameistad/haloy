@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/fatih/color"
+	"github.com/pterm/pterm"
 )
 
 var (
@@ -12,3 +15,9 @@ var (
 	Warn    = color.New(color.FgYellow).Add(color.Bold).PrintfFunc()
 	Error   = color.New(color.FgRed).Add(color.Bold).PrintfFunc()
 )
+
+func Section(title string, textLines []string) {
+	lines := strings.Join(textLines, "\n")
+	pterm.DefaultSection.Println(title)
+	pterm.Info.Println(lines)
+}

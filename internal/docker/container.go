@@ -59,14 +59,6 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 		Binds:         appConfig.Volumes,
 	}
 
-	// Ensure that the custom network and required services are running.
-	if err := EnsureNetwork(dockerClient, ctx); err != nil {
-		return result, fmt.Errorf("failed to ensure Docker network exists: %w", err)
-	}
-	if _, err := EnsureServicesIsRunning(dockerClient, ctx); err != nil {
-		return result, fmt.Errorf("failed to ensure dependent services are running: %w", err)
-	}
-
 	// Attach the container to the predefined network
 	networkingConfig := &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{

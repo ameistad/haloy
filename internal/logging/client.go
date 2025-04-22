@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ameistad/haloy/internal/ui"
@@ -36,7 +38,7 @@ type ClientConfig struct {
 	MinLevel      zerolog.Level // Minimum log level to display (e.g., zerolog.InfoLevel)
 }
 
-// NewLogStreamClient creates and connects a new log stream client.
+// NewLogStreamClient creates and connects a new log stream client with retries.
 func NewLogStreamClient(config ClientConfig) (*LogStreamClient, error) {
 	if config.DialTimeout == 0 {
 		config.DialTimeout = 5 * time.Second // Default dial timeout
@@ -45,9 +47,35 @@ func NewLogStreamClient(config ClientConfig) (*LogStreamClient, error) {
 		config.ReadDeadline = 500 * time.Millisecond // Default read deadline
 	}
 
-	conn, err := net.DialTimeout("tcp", DefaultStreamAddress, config.DialTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to log stream at %s: %w", DefaultStreamAddress, err)
+	var conn net.Conn
+	var err error
+	const maxRetries = 3
+	const retryDelay = 250 * time.Millisecond
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		conn, err = net.DialTimeout("tcp", DefaultStreamAddress, config.DialTimeout)
+		if err == nil {
+			// Connection successful
+			break
+		}
+
+		// Check if the error is a connection refused error
+		var opErr *net.OpError
+		if errors.As(err, &opErr) {
+			// Check for specific syscall errors indicating connection refused
+			var sysErr *os.SyscallError
+			if errors.As(opErr.Err, &sysErr) && sysErr.Err == syscall.ECONNREFUSED {
+				// It's connection refused, retry if attempts remain
+				if attempt < maxRetries {
+					// log.Debug().Int("attempt", attempt).Msgf("Connection refused, retrying in %v...", retryDelay) // Optional: Add debug log
+					time.Sleep(retryDelay)
+					continue
+				}
+			}
+		}
+
+		// If it's not a connection refused error, or if retries are exhausted, return the error
+		return nil, fmt.Errorf("failed to connect to log stream at %s after %d attempts: %w", DefaultStreamAddress, attempt, err)
 	}
 
 	// Send the filter immediately after connecting
