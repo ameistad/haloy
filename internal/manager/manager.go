@@ -13,7 +13,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
-	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/ameistad/haloy/internal/version"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
@@ -84,12 +83,12 @@ func RunManager(dryRun bool) {
 	deploymentManager := NewDeploymentManager(ctx, dockerClient)
 
 	// Create and start the certifications manager
-	certManagerConfig := certificates.Config{
+	certManagerConfig := CertificatesManagerConfig{
 		CertDir:          CertificatesDir,
 		HTTPProviderPort: HTTPProviderPort,
 		TlsStaging:       dryRun,
 	}
-	certManager, err := certificates.NewManager(certManagerConfig, certUpdateSignal)
+	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create certificate manager")
 		return

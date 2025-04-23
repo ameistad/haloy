@@ -4,19 +4,18 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/rs/zerolog"
 )
 
 type Updater struct {
 	deploymentManager *DeploymentManager
-	certManager       *certificates.Manager
+	certManager       *CertificatesManager
 	haproxyManager    *HAProxyManager
 }
 
 type UpdaterConfig struct {
 	DeploymentManager *DeploymentManager
-	CertManager       *certificates.Manager
+	CertManager       *CertificatesManager
 	HAProxyManager    *HAProxyManager
 }
 

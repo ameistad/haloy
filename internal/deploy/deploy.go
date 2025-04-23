@@ -97,7 +97,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	if err != nil {
 		ui.Warn("Failed to remove old containers: %v\n", err)
 	}
-	ui.Info(fmt.Sprintf("Old container cleanup complete\nStopped %d container(s)\nRemoved %d old container(s)", len(runResult), len(removedContainers)))
+	ui.Info(fmt.Sprintf("Cleanup complete:\nStopped %d container(s)\nRemoved %d old container(s)", len(runResult), len(removedContainers)))
 
 	// Explicitly cancel the primary context *before* waiting.
 	// This signals the log streamer to stop.

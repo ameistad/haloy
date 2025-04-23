@@ -8,7 +8,6 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
-	"github.com/ameistad/haloy/internal/manager/certificates"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -159,11 +158,11 @@ func (dm *DeploymentManager) Deployments() map[string]Deployment {
 }
 
 // GetCertificateDomains collects all canonical domains and their aliases for certificate management.
-func (dm *DeploymentManager) GetCertificateDomains() []certificates.ManagedDomain {
+func (dm *DeploymentManager) GetCertificateDomains() []CertificatesDomain {
 	dm.deploymentsMutex.RLock()
 	defer dm.deploymentsMutex.RUnlock()
 
-	managedDomains := make([]certificates.ManagedDomain, 0, len(dm.deployments)) // Pre-allocate roughly
+	managedDomains := make([]CertificatesDomain, 0, len(dm.deployments)) // Pre-allocate roughly
 
 	for _, deployment := range dm.deployments {
 		if deployment.Labels == nil {
@@ -177,7 +176,7 @@ func (dm *DeploymentManager) GetCertificateDomains() []certificates.ManagedDomai
 				if aliases == nil {
 					aliases = []string{}
 				}
-				managedDomains = append(managedDomains, certificates.ManagedDomain{
+				managedDomains = append(managedDomains, CertificatesDomain{
 					Canonical: domain.Canonical,
 					Aliases:   aliases, // Include aliases
 					Email:     deployment.Labels.ACMEEmail,

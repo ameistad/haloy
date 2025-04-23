@@ -1,8 +1,12 @@
-package certificates
+package manager
 
 import (
 	"bytes"
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -15,37 +19,148 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/go-acme/lego/v4/certificate"
+	"github.com/go-acme/lego/v4/challenge/http01"
+	"github.com/go-acme/lego/v4/lego"
+	"github.com/go-acme/lego/v4/registration"
 	"github.com/rs/zerolog"
 )
 
-type Config struct {
+const (
+	// Define a key for the certificate refresh debounce action
+	refreshDebounceKey = "certificate_refresh"
+	// Define the debounce delay for certificate refreshes
+	refreshDebounceDelay = 5 * time.Second
+)
+
+type CertificatesUser struct {
+	Email        string
+	Registration *registration.Resource
+	privateKey   crypto.PrivateKey
+}
+
+func (u *CertificatesUser) GetEmail() string {
+	return u.Email
+}
+func (u *CertificatesUser) GetRegistration() *registration.Resource {
+	return u.Registration
+}
+func (u *CertificatesUser) GetPrivateKey() crypto.PrivateKey {
+	return u.privateKey
+}
+
+type CertificatesClientManager struct {
+	tlsStaging         bool
+	keyManager         *CertificatesKeyManager
+	clients            map[string]*lego.Client
+	clientsMutex       sync.RWMutex
+	sharedHTTPProvider *http01.ProviderServer
+}
+
+func NewCertificatesClientManager(certDir string, tlsStaging bool, httpProviderPort string) (*CertificatesClientManager, error) {
+	keyDir := filepath.Join(certDir, "accounts")
+	keyManager, err := NewCertificatesKeyManager(keyDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create key manager: %w", err)
+	}
+
+	httpProvider := http01.NewProviderServer("", httpProviderPort)
+
+	return &CertificatesClientManager{
+		tlsStaging:         tlsStaging,
+		clients:            make(map[string]*lego.Client),
+		keyManager:         keyManager,
+		sharedHTTPProvider: httpProvider,
+	}, nil
+}
+
+func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.Client, error) {
+
+	// Return client early if it exists
+	cm.clientsMutex.RLock()
+	client, ok := cm.clients[email]
+	cm.clientsMutex.RUnlock()
+
+	if ok {
+		return client, nil
+	}
+
+	// Client doesn't exist, acquire write lock for creation
+	cm.clientsMutex.Lock()
+	defer cm.clientsMutex.Unlock()
+
+	// Check again in case another goroutine created it while we were waiting
+	if client, ok := cm.clients[email]; ok {
+		return client, nil
+	}
+
+	privateKey, err := cm.keyManager.LoadOrCreateKey(email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load/create user key: %w", err)
+	}
+
+	user := &CertificatesUser{
+		Email:      email,
+		privateKey: privateKey,
+	}
+
+	legoConfig := lego.NewConfig(user)
+	if cm.tlsStaging {
+		legoConfig.CADirURL = lego.LEDirectoryStaging
+	} else {
+		legoConfig.CADirURL = lego.LEDirectoryProduction
+	}
+
+	client, err = lego.NewClient(legoConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create lego client: %w", err)
+	}
+
+	// Configure HTTP challenge provider using a server that listens on port 8080
+	// HAProxy is configured to forward /.well-known/acme-challenge/* requests to this server
+	err = client.Challenge.SetHTTP01Provider(cm.sharedHTTPProvider)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set HTTP challenge provider: %w", err)
+	}
+
+	// Register the user with the ACME server
+	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+	if err != nil {
+		return nil, fmt.Errorf("failed to register user: %w", err)
+	}
+	user.Registration = reg
+
+	cm.clients[email] = client
+
+	return client, nil
+}
+
+type CertificatesManagerConfig struct {
 	CertDir          string
 	HTTPProviderPort string
 	TlsStaging       bool
 }
 
-type ManagedDomain struct {
+type CertificatesDomain struct {
 	Canonical string
 	Aliases   []string
 	Email     string
 }
 
-type Manager struct {
-	config        Config
-	domains       map[string]ManagedDomain
+type CertificatesManager struct {
+	config        CertificatesManagerConfig
+	domains       map[string]CertificatesDomain
 	domainMutex   sync.RWMutex
-	refreshMutex  sync.Mutex
-	refreshTimer  *time.Timer
-	refreshNeeded bool
 	checkMutex    sync.Mutex
 	ctx           context.Context
 	cancel        context.CancelFunc
-	clientManager *ClientManager
+	clientManager *CertificatesClientManager
 	updateSignal  chan<- string // Channel to signal successful updates
+	debouncer     *helpers.Debouncer
 }
 
-func NewManager(config Config, updateSignal chan<- string) (*Manager, error) {
+func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<- string) (*CertificatesManager, error) {
 	// Create directories if they don't exist
 	if err := os.MkdirAll(config.CertDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create certificate directory: %w", err)
@@ -53,51 +168,47 @@ func NewManager(config Config, updateSignal chan<- string) (*Manager, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	clientManager, err := NewClientManager(config.CertDir, config.TlsStaging, config.HTTPProviderPort)
+	clientManager, err := NewCertificatesClientManager(config.CertDir, config.TlsStaging, config.HTTPProviderPort)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create client manager: %w", err)
 	}
 
-	m := &Manager{
+	m := &CertificatesManager{
 		config:        config,
-		domains:       make(map[string]ManagedDomain),
+		domains:       make(map[string]CertificatesDomain),
 		ctx:           ctx,
 		cancel:        cancel,
 		clientManager: clientManager,
 		updateSignal:  updateSignal, // Store the channel
+		debouncer:     helpers.NewDebouncer(refreshDebounceDelay),
 	}
 
 	return m, nil
 }
 
-func (m *Manager) Start(logger zerolog.Logger) {
+func (m *CertificatesManager) Start(logger zerolog.Logger) {
 	// Initial check might still be direct if desired on immediate startup
 	// go m.checkRenewals() // Or use Refresh() if debounce on startup is ok
 	go m.renewalLoop(logger)
 	go m.cleanupLoop(logger)
 }
 
-func (m *Manager) Stop() {
+func (m *CertificatesManager) Stop() {
 	m.cancel()
-
-	m.refreshMutex.Lock()
-	defer m.refreshMutex.Unlock()
-	if m.refreshTimer != nil {
-		m.refreshTimer.Stop()
-		m.refreshTimer = nil
-	}
+	m.debouncer.Stop() // Stop the debouncer to clean up any pending timers
 }
 
 // AddDomains updates the set of domains managed by the certificate manager.
 // It adds new domains, updates existing ones if aliases or email change,
 // and removes domains that are no longer present in the input list.
-func (m *Manager) AddDomains(managedDomains []ManagedDomain, logger zerolog.Logger) {
+func (m *CertificatesManager) AddDomains(managedDomains []CertificatesDomain, logger zerolog.Logger) {
 	m.domainMutex.Lock()
 	defer m.domainMutex.Unlock()
 
 	added := 0
 	updated := 0
+	removed := 0
 	currentManaged := make(map[string]struct{}, len(managedDomains)) // Track for removal check
 
 	for _, md := range managedDomains {
@@ -134,7 +245,6 @@ func (m *Manager) AddDomains(managedDomains []ManagedDomain, logger zerolog.Logg
 	}
 
 	// Remove domains from m.domains that are no longer in the input list
-	removed := 0
 	for domain := range m.domains {
 		if _, ok := currentManaged[domain]; !ok {
 			delete(m.domains, domain)
@@ -152,51 +262,31 @@ func (m *Manager) AddDomains(managedDomains []ManagedDomain, logger zerolog.Logg
 			Int("updated", updated).
 			Int("removed", removed).
 			Msg("Certificate domains updated")
-		// Trigger a refresh check if changes occurred
-		go m.Refresh(logger) // Run in background to avoid blocking caller
+
+		// Trigger a refresh check - Refresh itself is non-blocking
+		m.Refresh(logger)
 	} else {
-		logger.Debug().
+		logger.Trace().
 			Msg("AddDomains called, but no changes detected in managed domains.")
 	}
 }
 
-func (m *Manager) Refresh(logger zerolog.Logger) {
-	logger.Debug().
-		Msg("Refresh requested for certificate manager")
-	m.refreshMutex.Lock()
-	defer m.refreshMutex.Unlock()
-	m.refreshNeeded = true
+func (m *CertificatesManager) Refresh(logger zerolog.Logger) {
+	logger.Debug().Msg("Refresh requested for certificate manager, using debouncer.")
 
-	// If a timer is already running, reset it
-	if m.refreshTimer != nil {
-		logger.Debug().
-			Msg("Resetting existing debounce timer")
-		m.refreshTimer.Stop()
+	// Define the action to perform after the debounce delay
+	refreshAction := func() {
+		actionLogger := logger.With().Str("trigger", "debounced_refresh").Logger()
+		actionLogger.Debug().Msg("Debounced refresh triggered: running checkRenewals")
+		m.checkRenewals(actionLogger) // Call the actual check function
 	}
 
-	// Use timer to debounce refresh requests - reduced from 15s to 5s for faster response
-	m.refreshTimer = time.AfterFunc(5*time.Second, func() {
-		m.refreshMutex.Lock()
-		needsRun := m.refreshNeeded
-		m.refreshNeeded = false // Reset flag *before* running
-		m.refreshTimer = nil    // Clear the timer reference
-		m.refreshMutex.Unlock()
-
-		if needsRun {
-			logger.Debug().
-				Msg("Debounced refresh triggered: running checkRenewals")
-			m.checkRenewals(logger)
-		} else {
-			logger.Debug().
-				Msg("Debounced refresh timer fired, but no longer needed.")
-		}
-	})
-	logger.Debug().
-		Msg("Refresh debouncer timer started/reset.")
+	// Use the generic debouncer with a specific key for certificate refreshes
+	m.debouncer.Debounce(refreshDebounceKey, refreshAction)
 }
 
 // renewalLoop periodically checks for certificates that need renewal
-func (m *Manager) renewalLoop(logger zerolog.Logger) {
+func (m *CertificatesManager) renewalLoop(logger zerolog.Logger) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
@@ -219,7 +309,7 @@ func (m *Manager) renewalLoop(logger zerolog.Logger) {
 }
 
 // cleanupLoop periodically checks for and removes expired certificates
-func (m *Manager) cleanupLoop(logger zerolog.Logger) {
+func (m *CertificatesManager) cleanupLoop(logger zerolog.Logger) {
 	ticker := time.NewTicker(24 * time.Hour) // Check once a day
 	defer ticker.Stop()
 
@@ -240,7 +330,7 @@ func (m *Manager) cleanupLoop(logger zerolog.Logger) {
 	}
 }
 
-func (m *Manager) checkRenewals(logger zerolog.Logger) {
+func (m *CertificatesManager) checkRenewals(logger zerolog.Logger) {
 	m.checkMutex.Lock()
 	logger.Debug().
 		Msg("Acquired renewal check lock")
@@ -251,7 +341,7 @@ func (m *Manager) checkRenewals(logger zerolog.Logger) {
 	}()
 
 	m.domainMutex.RLock()
-	domainsToCheck := make(map[string]ManagedDomain, len(m.domains))
+	domainsToCheck := make(map[string]CertificatesDomain, len(m.domains))
 	if len(m.domains) > 0 {
 		maps.Copy(domainsToCheck, m.domains)
 	}
@@ -363,7 +453,7 @@ func (m *Manager) checkRenewals(logger zerolog.Logger) {
 }
 
 // obtainCertificate requests a certificate from ACME provider for the canonical domain and its aliases.
-func (m *Manager) obtainCertificate(managedDomain ManagedDomain, logger zerolog.Logger) {
+func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain, logger zerolog.Logger) {
 	canonicalDomain := managedDomain.Canonical
 	email := managedDomain.Email
 	// Ensure Aliases is not nil before appending
@@ -452,7 +542,7 @@ func (m *Manager) obtainCertificate(managedDomain ManagedDomain, logger zerolog.
 
 }
 
-func (m *Manager) saveCertificate(domain string, cert *certificate.Resource, logger zerolog.Logger) error {
+func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.Resource, logger zerolog.Logger) error {
 	// Save certificate (.crt)
 	certPath := filepath.Join(m.config.CertDir, domain+".crt")
 	if err := os.WriteFile(certPath, cert.Certificate, 0644); err != nil {
@@ -494,7 +584,7 @@ func (m *Manager) saveCertificate(domain string, cert *certificate.Resource, log
 	return nil
 }
 
-func (m *Manager) cleanupExpiredCertificates(logger zerolog.Logger) {
+func (m *CertificatesManager) cleanupExpiredCertificates(logger zerolog.Logger) {
 	logger.Debug().
 		Msg("Starting certificate cleanup check")
 
@@ -590,4 +680,94 @@ func parseCertificate(certData []byte) (*x509.Certificate, error) {
 		return nil, fmt.Errorf("failed to parse certificate: %w", err)
 	}
 	return cert, nil
+}
+
+// CertificatesKeyManager handles private key operations for the ACME client
+type CertificatesKeyManager struct {
+	keyDir string
+}
+
+// NewCertificatesKeyManager creates a new key manager
+func NewCertificatesKeyManager(keyDir string) (*CertificatesKeyManager, error) {
+	// Create key directory if it doesn't exist
+	if err := os.MkdirAll(keyDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to create key directory: %w", err)
+	}
+
+	return &CertificatesKeyManager{
+		keyDir: keyDir,
+	}, nil
+}
+
+// LoadOrCreateKey loads an existing account key or creates a new one
+func (km *CertificatesKeyManager) LoadOrCreateKey(email string) (crypto.PrivateKey, error) {
+	// Sanitize email for filename
+	filename := helpers.SanitizeFilename(email) + ".key"
+	keyPath := filepath.Join(km.keyDir, filename)
+
+	// Check if key already exists
+	if _, err := os.Stat(keyPath); err == nil {
+		// Key exists, load it
+		return km.loadKey(keyPath)
+	}
+
+	// Key doesn't exist, create a new one
+	return km.createKey(keyPath)
+}
+
+// loadKey loads a private key from disk
+func (km *CertificatesKeyManager) loadKey(path string) (crypto.PrivateKey, error) {
+	// Read key file
+	keyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	// Decode PEM
+	keyBlock, _ := pem.Decode(keyBytes)
+	if keyBlock == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+
+	// Parse private key
+	switch keyBlock.Type {
+	case "EC PRIVATE KEY":
+		return x509.ParseECPrivateKey(keyBlock.Bytes)
+	default:
+		return nil, fmt.Errorf("unsupported key type: %s", keyBlock.Type)
+	}
+}
+
+// createKey creates a new ECDSA private key and saves it to disk
+func (km *CertificatesKeyManager) createKey(path string) (crypto.PrivateKey, error) {
+	// Generate new ECDSA key (P-256 for good balance of security and performance)
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Encode private key to PEM
+	keyBytes, err := x509.MarshalECPrivateKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+
+	// Create PEM block
+	pemBlock := &pem.Block{
+		Type:  "EC PRIVATE KEY",
+		Bytes: keyBytes,
+	}
+
+	// Write key to file
+	keyFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create key file: %w", err)
+	}
+	defer keyFile.Close()
+
+	if err := pem.Encode(keyFile, pemBlock); err != nil {
+		return nil, fmt.Errorf("failed to write key file: %w", err)
+	}
+
+	return privateKey, nil
 }
