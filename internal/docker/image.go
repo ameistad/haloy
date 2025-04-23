@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/rs/zerolog"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -27,9 +29,17 @@ type BuildImageParams struct {
 	ImageName    string
 	Source       *config.DockerfileSource
 	EnvVars      []config.EnvVar
+	LogHandler   logging.LogHandlerFunc
 }
 
 func BuildImage(params BuildImageParams) error {
+
+	if params.LogHandler == nil {
+		params.LogHandler = func(level zerolog.Level, message string, appName string) {
+			fmt.Print(message)
+		}
+	}
+
 	absContext, err := filepath.Abs(params.Source.BuildContext)
 	if err != nil {
 		return fmt.Errorf("failed to resolve absolute path for build context '%s': %w", params.Source.BuildContext, err)
@@ -61,7 +71,7 @@ func BuildImage(params BuildImageParams) error {
 		Remove:     true,
 		Version:    types.BuilderBuildKit,
 		// Uncomment this line to disable cache when testing
-		// NoCache:    true,
+		// NoCache: true,
 	}
 
 	// Add build args from params.Source.
@@ -145,7 +155,7 @@ func BuildImage(params BuildImageParams) error {
 	if !cacheExists {
 		startMsg += " (this may take a while for first build)"
 	}
-	ui.Info("%s\n", startMsg)
+	params.LogHandler(zerolog.InfoLevel, startMsg, "")
 
 	// Periodic progress messages.
 	done := make(chan bool)
@@ -155,7 +165,7 @@ func BuildImage(params BuildImageParams) error {
 		for {
 			select {
 			case <-ticker.C:
-				ui.Info("Build still in progress...\n")
+				params.LogHandler(zerolog.InfoLevel, "Build still in progress...", "")
 			case <-done:
 				return
 			}
@@ -208,7 +218,7 @@ func BuildImage(params BuildImageParams) error {
 		return fmt.Errorf("build failed: %w", lastError)
 	}
 	close(done)
-	ui.Info("Build completed!\n")
+	params.LogHandler(zerolog.InfoLevel, "Build completed successfully!", "")
 	return nil
 }
 

@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	Success = color.New(color.FgGreen).Add(color.Bold).PrintfFunc()
-	Info    = color.New(color.FgCyan).PrintfFunc()
+	Success = pterm.Success.Println
+	Info    = pterm.Info.Println
 	Debug   = color.New(color.FgWhite).PrintfFunc()
 	Command = color.New(color.FgYellow).PrintfFunc()
 	Warn    = color.New(color.FgYellow).Add(color.Bold).PrintfFunc()

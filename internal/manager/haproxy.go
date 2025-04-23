@@ -52,7 +52,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[stri
 	hpm.updateMutex.Lock()
 	defer hpm.updateMutex.Unlock()
 
-	// 1. Generate Config (with certificate check)
+	// Generate Config (with certificate check)
 	hpm.logger.Info().Msg("HAProxyManager: Generating new configuration...")
 	configBuf, err := hpm.generateConfig(deployments)
 	if err != nil {
@@ -65,14 +65,14 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[stri
 		return nil // Successful dry run
 	}
 
-	// 2. Write Config File
+	// Write Config File
 	configPath := filepath.Join(hpm.configDir, config.HAProxyConfigFileName)
 	hpm.logger.Info().Str("path", configPath).Msg("HAProxyManager: Writing config")
 	if err := os.WriteFile(configPath, configBuf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("HAProxyManager: failed to write config file %s: %w", configPath, err)
 	}
 
-	// 3. Get HAProxy Container ID
+	// Get HAProxy Container ID
 	haproxyID, err := hpm.getContainerID(ctx)
 	if err != nil {
 		return fmt.Errorf("HAProxyManager: failed to find HAProxy container: %w", err)
@@ -83,7 +83,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[stri
 	}
 
 	// 4. Signal HAProxy Reload
-	hpm.logger.Info().Str("container", helpers.SafeIDPrefix(haproxyID)).Msg("HAProxyManager: Sending SIGUSR2 signal to HAProxy container...")
+	hpm.logger.Debug().Str("container", helpers.SafeIDPrefix(haproxyID)).Msg("HAProxyManager: Sending SIGUSR2 signal to HAProxy container...")
 	err = hpm.dockerClient.ContainerKill(ctx, haproxyID, "SIGUSR2")
 	if err != nil {
 		// Log error but potentially don't fail the whole update if signal fails? Or return error?
@@ -91,8 +91,8 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[stri
 		return fmt.Errorf("HAProxyManager: failed to send SIGUSR2 to HAProxy container %s: %w", helpers.SafeIDPrefix(haproxyID), err)
 	}
 
-	hpm.logger.Info().Msg("HAProxyManager: Successfully signaled HAProxy for reload.")
-	hpm.logger.Info().Msg("HAProxyManager: Configuration apply process complete.")
+	hpm.logger.Debug().Msg("HAProxyManager: Successfully signaled HAProxy for reload.")
+	hpm.logger.Debug().Msg("HAProxyManager: Configuration apply process complete.")
 	return nil
 }
 

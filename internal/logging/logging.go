@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog/pkgerrors"
 )
 
+type LogHandlerFunc func(level zerolog.Level, message string, appName string)
+
 var (
 	LogFieldLevel   = zerolog.LevelFieldName   // "level"
 	LogFieldMessage = zerolog.MessageFieldName // "message"

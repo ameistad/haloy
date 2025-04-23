@@ -24,10 +24,12 @@ import (
 )
 
 const (
-	RefreshInterval  = 30 * time.Minute
-	HAProxyConfigDir = "/haproxy-config"
-	CertificatesDir  = "/cert-storage"
-	HTTPProviderPort = "8080"
+	RefreshInterval    = 30 * time.Minute
+	HAProxyConfigDir   = "/haproxy-config"
+	CertificatesDir    = "/cert-storage"
+	HTTPProviderPort   = "8080"
+	EventDebounceDelay = 1 * time.Second // Delay for debouncing container events
+	UpdateTimeout      = 2 * time.Minute // Max time for a single update operation
 )
 
 type ContainerEvent struct {
@@ -49,7 +51,7 @@ func RunManager(dryRun bool) {
 	// Initialize logging (configures global logger and starts server)
 	logServer, err := logging.Init(ctx, logLevel) // Pass address
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v\n", err)
+		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v", err)
 	}
 
 	// Ensure server is stopped on exit if it was started
@@ -117,6 +119,9 @@ func RunManager(dryRun bool) {
 		log.Error().Err(err).Str("reason", updateReason).Msg("Background update failed")
 	}
 
+	// Create a debouncer to prevent multiple updates in quick succession
+	debouncer := helpers.NewDebouncer(EventDebounceDelay)
+
 	// Start Docker event listener
 	go listenForDockerEvents(ctx, dockerClient, eventsChan, errorsChan)
 
@@ -137,20 +142,32 @@ func RunManager(dryRun bool) {
 			cancel()
 			return
 		case e := <-eventsChan:
-			reason := fmt.Sprintf("container %s: %s", e.Event.Action, e.Labels.AppName)
-			log.Debug().Str("reason", reason).Msg("Received event")
+			appName := e.Labels.AppName
+			reason := fmt.Sprintf("container %s: %s", e.Event.Action, appName)
+			log.Debug().Str("reason", reason).Str("appName", appName).Msg("Received event, debouncing update")
 
-			go func(event ContainerEvent, updateReason string) {
-				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
-				defer cancelDeployment()
+			// Define the action to be executed after debouncing
+			updateAction := func() {
+				// Create a contextual logger for this specific debounced update.
+				appLogger := log.With().Str("appName", appName).Str("trigger", "debounced_event").Logger()
+				appLogger.Debug().Str("reason", reason).Msg("Executing debounced update")
 
-				u := updater
-				// Create a contextual logger for this specific app update
-				appLogger := log.With().Str("appName", event.Labels.AppName).Logger()
-				if err := u.Update(deploymentCtx, updateReason, appLogger); err != nil {
-					appLogger.Error().Err(err).Str("reason", updateReason).Msg("HAProxy configuration update failed")
+				// Create a context with a timeout for this specific update task.
+				// Use the main manager context `ctx` as the parent.
+				updateCtx, cancelUpdate := context.WithTimeout(ctx, UpdateTimeout)
+				defer cancelUpdate()
+
+				// Run the actual update using the captured updater.
+				// Pass the specific reason and logger.
+				if err := updater.Update(updateCtx, reason, appLogger); err != nil {
+					appLogger.Error().Err(err).Str("reason", reason).Msg("Debounced HAProxy configuration update failed")
+				} else {
+					appLogger.Info().Str("reason", reason).Msg("Debounced HAProxy configuration update successful")
 				}
-			}(e, reason)
+			}
+
+			// Use the generic debouncer, keyed by appName
+			debouncer.Debounce(appName, updateAction)
 
 		case domainUpdated := <-certUpdateSignal:
 			reason := fmt.Sprintf("post-certificate update for %s", domainUpdated)
@@ -236,7 +253,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 					}
 					eventsChan <- containerEvent
 				} else {
-					log.Info().Str("container", helpers.SafeIDPrefix(event.Actor.ID)).Msg("Container is not eligible for haloy management")
+					log.Info().Msgf("Container %s is not eligible for haloy management", helpers.SafeIDPrefix(event.Actor.ID))
 				}
 			}
 		case err := <-errs:
