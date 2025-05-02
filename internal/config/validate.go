@@ -17,13 +17,20 @@ func ValidateDomain(domain string) error {
 	if domain == "" {
 		return errors.New("domain cannot be empty")
 	}
-	// This regular expression is a simple validator. Adjust if needed.
-	pattern := `^(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$`
+	// This regex enforces that labels start/end with alphanumeric chars
+	// and contain only alphanumeric chars or hyphens internally.
+	pattern := `^([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 	matched, err := regexp.MatchString(pattern, domain)
 	if err != nil {
-		return err
+		// Consider logging the regex compilation error if it happens
+		return fmt.Errorf("domain regex error: %w", err)
 	}
 	if !matched {
+		// Add checks for other potential issues not covered by regex, if needed
+		if strings.HasPrefix(domain, "-") || strings.Contains(domain, ".-") {
+			return fmt.Errorf("invalid domain format: labels cannot start with a hyphen: %s", domain)
+		}
+		// Add more specific checks if the regex fails for unexpected reasons
 		return fmt.Errorf("invalid domain format: %s", domain)
 	}
 	return nil
