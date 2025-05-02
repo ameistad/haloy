@@ -4,14 +4,11 @@ Self-hostable deployments with zero downtime using Docker and HAProxy.
 
 ## Features
 
+- Domain routing and HTTPS redirection
 - Automatic TLS certificate provisioning via Let's Encrypt
 - Easy app configuration with a simple YAML file
-- Built-in health checks for deployed containers
-- Domain routing and HTTPS redirection
 
 ## Installation
-
-### Option 1: Download the binary
 
 Download the latest release from [GitHub Releases](https://github.com/ameistad/haloy/releases).
 
@@ -24,15 +21,6 @@ sudo mv haloy /usr/local/bin/
 # macOS (Apple Silicon)
 curl -L https://github.com/ameistad/haloy/releases/latest/download/haloy-darwin-arm64 -o haloy
 chmod +x haloy
-sudo mv haloy /usr/local/bin/
-```
-
-### Option 2: Build from source
-
-```bash
-git clone https://github.com/ameistad/haloy.git
-cd haloy
-go build -o haloy ./cmd/cli
 sudo mv haloy /usr/local/bin/
 ```
 
