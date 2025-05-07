@@ -7,3 +7,10 @@ type HAProxyTemplateData struct {
 	HTTPSFrontendUseBackend string
 	Backends                string
 }
+
+type ConfigFileWithTestAppTemplateData struct {
+	ConfigDirPath string
+	Domain        string
+	Alias         string
+	AcmeEmail     string
+}

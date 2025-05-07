@@ -13,6 +13,7 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/embed"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -23,14 +24,49 @@ const (
 
 func InitCmd() *cobra.Command {
 	var skipServices bool
+	var withTestApp bool
+	var overrideExistingConfig bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize configuration files and prepare HAProxy for production",
 		Run: func(cmd *cobra.Command, args []string) {
-			configDir, err := config.EnsureConfigDir()
+			configDirPath, err := config.ConfigDirPath()
 			if err != nil {
 				ui.Error("Failed to determine config directory: %v\n", err)
+				return
+			}
+
+			// Check the status of the configuration directory
+			fileInfo, statErr := os.Stat(configDirPath)
+			if statErr == nil { // Directory exists
+				if !fileInfo.IsDir() {
+					ui.Error("Configuration path '%s' exists but is not a directory. Please remove it or use a different path.", configDirPath)
+					return
+				}
+				// Directory exists
+				if !overrideExistingConfig {
+					ui.Error("Configuration directory '%s' already exists. Use --override-existing-config to overwrite.", configDirPath)
+					return
+				}
+				// overrideExistingConfig is true, so remove the existing directory
+				ui.Info("Removing existing configuration directory: %s\n", configDirPath)
+				if err := os.RemoveAll(configDirPath); err != nil {
+					ui.Error("Failed to remove existing config directory: %v\n", err)
+					return
+				}
+				// Proceed to create the directory below
+			} else if !os.IsNotExist(statErr) {
+				// An error other than "does not exist" occurred with os.Stat
+				ui.Error("Failed to check status of config directory '%s': %v\n", configDirPath, statErr)
+				return
+			}
+			// At this point, the directory either did not exist,
+			// or it existed, was a directory, and has been removed (if overrideExistingConfig was true).
+			// Now, (re)create the configuration directory.
+			ui.Info("Creating configuration directory: %s\n", configDirPath)
+			if err := os.MkdirAll(configDirPath, 0755); err != nil {
+				ui.Error("Failed to create config directory '%s': %v\n", configDirPath, err)
 				return
 			}
 
@@ -44,21 +80,17 @@ func InitCmd() *cobra.Command {
 			}
 			defer dockerClient.Close()
 
-			if _, err := os.Stat(configDir); err == nil {
-				ui.Warn("Configuration directory already exists. Files may be overwritten.\n")
-			}
-
 			var emptyDirs = []string{
 				"containers/cert-storage",
 				"containers/haproxy-config",
 			}
-			if err := copyConfigFiles(configDir, emptyDirs); err != nil {
+			if err := copyConfigFiles(configDirPath, emptyDirs); err != nil {
 				ui.Error("Failed to create configuration files: %v\n", err)
 				return
 			}
 
 			// Prompt the user for email and update apps.yml.
-			if err := copyConfigTemplateFiles(); err != nil {
+			if err := copyConfigTemplateFiles(withTestApp); err != nil {
 				ui.Error("Failed to update configuration files: %v\n", err)
 				return
 			}
@@ -78,25 +110,23 @@ func InitCmd() *cobra.Command {
 
 			}
 
-			successMsg := fmt.Sprintf("Configuration files created successfully in %s\n", configDir)
+			successMsg := fmt.Sprintf("Configuration files created successfully in %s\n", configDirPath)
 			if !skipServices {
 				successMsg += "HAProxy and haloy-manager services are running.\n"
 			}
 			successMsg += "You can now add your applications to apps.yml and run:\n"
 			successMsg += "haloy deploy <app-name>"
-			ui.Success(successMsg)
+			ui.Success("%s", successMsg)
 		},
 	}
 
 	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Initialize configuration files without starting Docker services")
+	cmd.Flags().BoolVar(&withTestApp, "with-test-app", false, "Add an initial test app to apps.yml")
+	cmd.Flags().BoolVar(&overrideExistingConfig, "override-existing-config", false, "Override existing configuration directory if it already exists")
 	return cmd
 }
 
 func copyConfigFiles(dst string, emptyDirs []string) error {
-	if err := os.MkdirAll(dst, 0755); err != nil {
-		return fmt.Errorf("failed to create destination directory: %w", err)
-	}
-
 	for _, dir := range emptyDirs {
 		dirPath := filepath.Join(dst, dir)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -141,38 +171,38 @@ func copyConfigFiles(dst string, emptyDirs []string) error {
 	})
 }
 
-func copyConfigTemplateFiles() error {
-	// Prompt for email with validation
-	// var email string
-	// for {
-	// 	fmt.Print("Enter email for Let's Encrypt TLS certificates: ")
-	// 	if _, err := fmt.Scanln(&email); err != nil {
-	// 		if err.Error() == "unexpected newline" {
-	// 			fmt.Println("Email cannot be empty")
-	// 			continue
-	// 		}
-	// 		return fmt.Errorf("failed to read email input: %w", err)
-	// 	}
-
-	// 	if !helpers.IsValidEmail(email) {
-	// 		fmt.Println("Please enter a valid email address")
-	// 		continue
-	// 	}
-	// 	break
-	// }
-
+func copyConfigTemplateFiles(withTestApp bool) error {
 	configDirPath, err := config.ConfigDirPath()
 	if err != nil {
 		return fmt.Errorf("failed to write updated config file: %w", err)
 	}
-	configFileTemplateData := struct {
-		ConfigDirPath string
-	}{
-		ConfigDirPath: configDirPath,
-	}
-	configFile, err := renderTemplate(fmt.Sprintf("templates/%s", config.ConfigFileName), configFileTemplateData)
-	if err != nil {
-		return fmt.Errorf("failed to build template: %w", err)
+
+	configFile := bytes.Buffer{}
+
+	if withTestApp {
+		testAppData, err := getTestAppData()
+		if err != nil {
+			return fmt.Errorf("failed to get test app data: %w", err)
+		}
+		configFileTemplateData := embed.ConfigFileWithTestAppTemplateData{
+			ConfigDirPath: configDirPath,
+			Domain:        testAppData.domain,
+			Alias:         testAppData.alias,
+			AcmeEmail:     testAppData.acmeEmail,
+		}
+		configFileWithTestApp, err := renderTemplate(fmt.Sprintf("templates/%s", embed.ConfigFileTemplateTest), configFileTemplateData)
+		if err != nil {
+			return fmt.Errorf("failed to build template for config with test app: %w", err)
+		}
+		configFile = configFileWithTestApp
+	} else {
+		data, err := embed.TemplatesFS.ReadFile(fmt.Sprintf("templates/%s", embed.ConfigFileTemplate))
+		if err != nil {
+			return fmt.Errorf("failed to read default apps.yml template: %w", err)
+		}
+		if _, err := configFile.Write(data); err != nil {
+			return fmt.Errorf("failed to buffer default apps.yml: %w", err)
+		}
 	}
 
 	haproxyConfigTemplateData := embed.HAProxyTemplateData{
@@ -225,4 +255,45 @@ func renderTemplate(templateFilePath string, templateData any) (bytes.Buffer, er
 		return buf, fmt.Errorf("failed to execute template: %w", err)
 	}
 	return buf, nil
+}
+
+type TestAppData struct {
+	domain    string
+	alias     string
+	acmeEmail string
+}
+
+func getTestAppData() (TestAppData, error) {
+	data := TestAppData{}
+
+	// Prompt for email with validation
+	var email string
+	for {
+		fmt.Print("Enter email for Let's Encrypt TLS certificates: ")
+		if _, err := fmt.Scanln(&email); err != nil {
+			if err.Error() == "unexpected newline" {
+				ui.Info("Email cannot be empty")
+				continue
+			}
+			return data, fmt.Errorf("failed to read email input: %w", err)
+		}
+
+		if !helpers.IsValidEmail(email) {
+			ui.Info("Please enter a valid email address")
+			continue
+		}
+		break
+	}
+
+	data.acmeEmail = email
+
+	ip, err := helpers.GetExternalIP()
+	if err != nil {
+		return data, fmt.Errorf("failed to get external IP: %w", err)
+	}
+
+	data.domain = fmt.Sprintf("%s.sslip.io", ip.String())
+	data.alias = fmt.Sprintf("www.%s.sslip.io", ip.String())
+
+	return data, nil
 }

@@ -81,7 +81,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	}
 
 	deploymentID := runResult[0].DeploymentID
-	ui.Info(fmt.Sprintf("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID))
+	ui.Info("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID)
 
 	if err := docker.StopContainers(dockerOpCtx, dockerClient, appConfig.Name, deploymentID); err != nil {
 		ui.Warn("Failed to stop old containers: %v\n", err)
@@ -97,7 +97,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	if err != nil {
 		ui.Warn("Failed to remove old containers: %v\n", err)
 	}
-	ui.Info(fmt.Sprintf("Cleanup complete:\nStopped %d container(s)\nRemoved %d old container(s)", len(runResult), len(removedContainers)))
+	ui.Info("Cleanup complete:\nStopped %d container(s)\nRemoved %d old container(s)", len(runResult), len(removedContainers))
 
 	// Explicitly cancel the primary context *before* waiting.
 	// This signals the log streamer to stop.
@@ -106,8 +106,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	// Wait for the log streamer goroutine to finish cleanly.
 	wg.Wait()
 
-	// printerDeployStatus.Success(fmt.Sprintf("Successfully deployed %s", appConfig.Name))
-	ui.Success(fmt.Sprintf("Successfully deployed %s", appConfig.Name))
+	ui.Success("Successfully deployed %s", appConfig.Name)
 
 	return nil
 }
@@ -124,7 +123,7 @@ func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
 
 	client, err := logging.NewLogStreamClient(clientConfig)
 	if err != nil {
-		ui.Warn(fmt.Sprintf("Could not connect to log stream from manager: %v. Continuing deployment without live logs.", err))
+		ui.Warn("Could not connect to log stream from manager: %v. Continuing deployment without live logs.", err)
 		return
 	}
 	defer client.Close()
@@ -133,7 +132,7 @@ func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
 
 	// Handle stream exit reason
 	if err != nil && !errors.Is(err, context.Canceled) {
-		ui.Error(fmt.Sprintf("Log stream error: %v\n", err))
+		ui.Error("Log stream error: %v\n", err)
 	}
 }
 
@@ -144,7 +143,7 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		// Source is a Dockerfile. The image name is derived from the app name.
 		imageName := appConfig.Name + ":latest" // Convention for locally built images
 
-		ui.Info(fmt.Sprintf("Source is Dockerfile, building image '%s'...", imageName))
+		ui.Info("Source is Dockerfile, building image '%s'...", imageName)
 		buildImageParams := docker.BuildImageParams{
 			Context:      ctx,
 			DockerClient: dockerClient,
@@ -192,15 +191,15 @@ func sharedLogHandler() logging.LogHandlerFunc {
 		switch level {
 		case zerolog.DebugLevel:
 		case zerolog.InfoLevel:
-			ui.Info(message)
+			ui.Info("%s", message)
 		case zerolog.WarnLevel:
-			ui.Warn(message)
+			ui.Warn(message, "")
 		case zerolog.ErrorLevel:
 		case zerolog.FatalLevel:
 		case zerolog.PanicLevel:
-			ui.Error(message)
+			ui.Error("%s", message)
 		default:
-			ui.Info(message)
+			ui.Info("%s", message)
 		}
 	}
 }

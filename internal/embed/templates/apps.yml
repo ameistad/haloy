@@ -1,14 +1,1 @@
 apps:
-  - name: "haloy-test"
-    source:
-      dockerfile:
-        path: "{{ .ConfigDirPath }}/test-website/Dockerfile"
-        buildContext: "{{ .ConfigDirPath }}/test-website"
-    domains:
-      - domain: "example.com"
-        aliases:
-          - "www.example.com"
-      - domain: "test.example.com"
-    acmeEmail: "tls@example.com"
-    maxContainersToKeep: 3
-    healthCheckPath: "/health.html"

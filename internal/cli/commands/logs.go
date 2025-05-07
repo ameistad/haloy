@@ -63,7 +63,7 @@ func LogsCmd() *cobra.Command {
 			if showDebug {
 				levelMsg = "debug level and above"
 			}
-			ui.Success(fmt.Sprintf("Connected to log stream. Displaying %s (%s). Press Ctrl+C to stop.\n", filterMsg, levelMsg))
+			ui.Success("Connected to log stream. Displaying %s (%s). Press Ctrl+C to stop.\n", filterMsg, levelMsg)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()

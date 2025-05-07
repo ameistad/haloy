@@ -6,20 +6,6 @@ import (
 	"path/filepath"
 )
 
-func CheckConfigDirExists(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("directory %s does not exist", path)
-		}
-		return fmt.Errorf("failed to access directory: %w", err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("path %s is not a directory", path)
-	}
-	return nil
-}
-
 // Defaults to ~/.config/haloy
 // If HALOY_CONFIG_PATH is set, it will use that instead.
 func ConfigDirPath() (string, error) {
