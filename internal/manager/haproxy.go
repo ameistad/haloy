@@ -163,12 +163,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 		return buf, fmt.Errorf("failed to parse template: %w", err)
 	}
 
-	templateData := struct {
-		HTTPFrontend            string
-		HTTPSFrontend           string
-		HTTPSFrontendUseBackend string
-		Backends                string
-	}{
+	templateData := embed.HAProxyTemplateData{
 		HTTPFrontend:            httpFrontend,
 		HTTPSFrontend:           httpsFrontend,
 		HTTPSFrontendUseBackend: httpsFrontendUseBackend,

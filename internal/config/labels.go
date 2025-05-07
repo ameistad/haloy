@@ -188,6 +188,7 @@ func (cl *ContainerLabels) String() string {
 	// Create a tabwriter with padding settings.
 	w := tabwriter.NewWriter(&builder, 0, 0, 2, ' ', 0)
 
+	// TODO: use ui package for colors
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("App Name"), cyan(cl.AppName))
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("Deployment ID"), cyan(cl.DeploymentID))
 	fmt.Fprintf(w, "%s:\t%s\n", yellow("Health Check Path"), cyan(cl.HealthCheckPath))

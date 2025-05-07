@@ -164,6 +164,7 @@ func showAppStatus(appConfig *config.AppConfig) error {
 	success := color.New(color.FgGreen).SprintFunc()
 
 	// Display structured output.
+	// TODO: use ui package instead of fmt
 	fmt.Println(header("-------------------------------------------------"))
 	fmt.Printf("%s: %s\n", label("App"), appConfig.Name)
 	fmt.Printf("%s: %s\n", label("State"), success(state))

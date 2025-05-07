@@ -25,6 +25,9 @@ echo "Building version: $version"
 # Build the CLI binary from cmd/cli using the extracted version
 GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $BINARY_NAME ../cmd/cli
 
+# Ensure remote bin dir exists
+ssh "${USERNAME}@${HOSTNAME}" "mkdir -p /home/${USERNAME}/.local/bin"
+
 # Upload the binary via scp using the current username
 scp $BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/.local/bin/$BINARY_NAME
 

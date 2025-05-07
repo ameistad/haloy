@@ -28,7 +28,7 @@ func InitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize configuration files and prepare HAProxy for production",
 		Run: func(cmd *cobra.Command, args []string) {
-			configDir, err := config.ConfigDirPath()
+			configDir, err := config.EnsureConfigDir()
 			if err != nil {
 				ui.Error("Failed to determine config directory: %v\n", err)
 				return
@@ -78,12 +78,13 @@ func InitCmd() *cobra.Command {
 
 			}
 
-			ui.Success("Configuration files created successfully in %s\n", configDir)
+			successMsg := fmt.Sprintf("Configuration files created successfully in %s\n", configDir)
 			if !skipServices {
-				ui.Success("HAProxy and haloy-manager services are running.\n")
+				successMsg += "HAProxy and haloy-manager services are running.\n"
 			}
-			ui.Success("Add your applications to apps.yml and run:.\n")
-			ui.Command("haloy deploy <app-name>")
+			successMsg += "You can now add your applications to apps.yml and run:\n"
+			successMsg += "haloy deploy <app-name>"
+			ui.Success(successMsg)
 		},
 	}
 
@@ -174,15 +175,13 @@ func copyConfigTemplateFiles() error {
 		return fmt.Errorf("failed to build template: %w", err)
 	}
 
-	haproxyConfigTemplateData := struct {
-		HTTPFrontend  string
-		HTTPSFrontend string
-		Backends      string
-	}{
-		HTTPFrontend:  "",
-		HTTPSFrontend: "",
-		Backends:      "",
+	haproxyConfigTemplateData := embed.HAProxyTemplateData{
+		HTTPFrontend:            "",
+		HTTPSFrontend:           "",
+		HTTPSFrontendUseBackend: "",
+		Backends:                "",
 	}
+
 	haproxyConfigFile, err := renderTemplate(fmt.Sprintf("templates/%s", config.HAProxyConfigFileName), haproxyConfigTemplateData)
 	if err != nil {
 		return fmt.Errorf("failed to build HAProxy template: %w", err)

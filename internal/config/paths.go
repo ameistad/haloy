@@ -23,26 +23,28 @@ func CheckConfigDirExists(path string) error {
 // Defaults to ~/.config/haloy
 // If HALOY_CONFIG_PATH is set, it will use that instead.
 func ConfigDirPath() (string, error) {
-
-	// First check if HALOY_CONFIG_PATH is set.
+	// allow overriding via env
 	if envPath, ok := os.LookupEnv("HALOY_CONFIG_PATH"); ok && envPath != "" {
-		if err := CheckConfigDirExists(envPath); err != nil {
-			return "", fmt.Errorf("HALOY_CONFIG_PATH is set to '%s' but it is not a valid directory: %w", envPath, err)
-		}
 		return envPath, nil
-
 	}
 
-	// Fallback to the default path.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	defaultPath := filepath.Join(home, ".config", "haloy")
-	if err := CheckConfigDirExists(defaultPath); err != nil {
-		return "", fmt.Errorf("default config directory '%s' does not exist: %w", defaultPath, err)
+	return filepath.Join(home, ".config", "haloy"), nil
+}
+
+// EnsureConfigDir makes sure the config dir exists (creates it if needed)
+func EnsureConfigDir() (string, error) {
+	path, err := ConfigDirPath()
+	if err != nil {
+		return "", err
 	}
-	return defaultPath, nil
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return "", fmt.Errorf("failed to create config directory '%s': %w", path, err)
+	}
+	return path, nil
 }
 
 // ConfigFilePath returns "~/.config/haloy/apps.yml".

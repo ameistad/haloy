@@ -2,12 +2,6 @@
 
 Self-hostable deployments with zero downtime using Docker and HAProxy.
 
-## Features
-
-- Domain routing and HTTPS redirection
-- Automatic TLS certificate provisioning via Let's Encrypt
-- Easy app configuration with a simple YAML file
-
 ## Installation
 
 Download the latest release from [GitHub Releases](https://github.com/ameistad/haloy/releases).
@@ -29,8 +23,18 @@ sudo mv haloy /usr/local/bin/
 ### Prerequisites
 
 - Docker installed and running
-- User added to the docker group: `sudo usermod -aG docker your_username`
-- Log out and log back in for group changes to take effect, or run `newgrp docker`
+- A non-root user added to the docker group: `sudo usermod -aG docker $(whoami)`
+- Verify your group membership (you should see “docker” in the output):
+  ```bash
+  id -nG $(whoami)
+  # or
+  groups $(whoami)
+  ```
+- Log out and log back in for group changes to take effect, or run newgrp docker
+- Check that you can run Docker commands without sudo:
+  ```bash
+  docker ps
+  ```
 
 ### Initialize Haloy
 
