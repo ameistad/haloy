@@ -46,6 +46,19 @@ func (e *EnvVar) UnmarshalYAML(value *yaml.Node) error {
 // DecryptEnvVars iterates over the provided environment variables and, when a SecretName is set,
 // looks up the corresponding encrypted secret, decrypts it using the age identity, and updates the variable.
 func DecryptEnvVars(initialEnvVars []EnvVar) ([]EnvVar, error) {
+	// If not secrets are provided, return the original env vars without initializing secrets.
+	// We do this because the age ideetity might not be available in the current context and we can't load them.<
+	hasSecrets := false
+	for _, ev := range initialEnvVars {
+		if ev.SecretName != nil {
+			hasSecrets = true
+			break
+		}
+	}
+	if !hasSecrets {
+		return initialEnvVars, nil
+	}
+
 	secrets, err := LoadSecrets()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load secrets: %w", err)

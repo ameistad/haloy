@@ -292,8 +292,8 @@ func getTestAppData() (TestAppData, error) {
 		return data, fmt.Errorf("failed to get external IP: %w", err)
 	}
 
-	data.domain = fmt.Sprintf("%s.sslip.io", ip.String())
-	data.alias = fmt.Sprintf("www.%s.sslip.io", ip.String())
+	data.domain = fmt.Sprintf("%s.nip.io", ip.String())
+	data.alias = fmt.Sprintf("www.%s.nip.io", ip.String())
 
 	return data, nil
 }

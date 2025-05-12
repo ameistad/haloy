@@ -144,15 +144,16 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		imageName := appConfig.Name + ":latest" // Convention for locally built images
 
 		ui.Info("Source is Dockerfile, building image '%s'...", imageName)
-		buildImageParams := docker.BuildImageParams{
-			Context:      ctx,
-			DockerClient: dockerClient,
-			ImageName:    imageName,
-			Source:       appConfig.Source.Dockerfile,
-			EnvVars:      appConfig.Env,
-			LogHandler:   sharedLogHandler(),
+		// Not using the dockerClient here, but passing it to the BuildImageCLIParams
+		buildImageParams := docker.BuildImageCLIParams{
+			Context: ctx,
+			// DockerClient: dockerClient,
+			ImageName:  imageName,
+			Source:     appConfig.Source.Dockerfile,
+			EnvVars:    appConfig.Env,
+			LogHandler: sharedLogHandler(),
 		}
-		if err := docker.BuildImage(buildImageParams); err != nil {
+		if err := docker.BuildImageCLI(buildImageParams); err != nil {
 			// Distinguish between timeout and cancellation
 			if errors.Is(err, context.DeadlineExceeded) {
 				return "", fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultDeployTimeout, err)

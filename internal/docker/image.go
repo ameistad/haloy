@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -307,5 +308,90 @@ func copyFile(src, dst string) error {
 		ui.Warn("Failed to set permissions on '%s' (mode %s): %v", dst, info.Mode(), err)
 		return fmt.Errorf("failed to set permissions on '%s': %w", dst, err)
 	}
+	return nil
+}
+
+type BuildImageCLIParams struct {
+	Context    context.Context
+	ImageName  string
+	Source     *config.DockerfileSource
+	EnvVars    []config.EnvVar
+	LogHandler logging.LogHandlerFunc
+}
+
+func BuildImageCLI(params BuildImageCLIParams) error {
+	if params.LogHandler == nil {
+		params.LogHandler = func(level zerolog.Level, message string, appName string) {
+			fmt.Print(message)
+		}
+	}
+
+	absContext, err := filepath.Abs(params.Source.BuildContext)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path for build context '%s': %w", params.Source.BuildContext, err)
+	}
+	absDockerfile, err := filepath.Abs(params.Source.Path)
+	if err != nil {
+		return fmt.Errorf("failed to resolve absolute path for Dockerfile '%s': %w", params.Source.Path, err)
+	}
+
+	// Docker CLI expects the Dockerfile path to be relative to the build context if it's inside.
+	dockerfilePathForCli := absDockerfile
+	if strings.HasPrefix(absDockerfile, absContext+string(filepath.Separator)) {
+		relPath, err := filepath.Rel(absContext, absDockerfile)
+		if err != nil {
+			return fmt.Errorf("failed to calculate relative Dockerfile path for CLI: %w", err)
+		}
+		dockerfilePathForCli = relPath
+	}
+
+	cmdArgs := []string{"build", "-t", params.ImageName, "-f", dockerfilePathForCli}
+
+	// Add build args from params.Source.BuildArgs
+	for k, v := range params.Source.BuildArgs {
+		cmdArgs = append(cmdArgs, "--build-arg", fmt.Sprintf("%s=%s", k, v))
+	}
+
+	// Add environment variables as build args
+	if len(params.EnvVars) > 0 {
+		decryptedEnvVars, err := config.DecryptEnvVars(params.EnvVars)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt env vars for build args: %w", err)
+		}
+		for _, envVar := range decryptedEnvVars {
+			strValue, err := envVar.GetValue() // Assuming GetValue returns the decrypted string
+			if err != nil {
+				return fmt.Errorf("failed to get value for environment variable '%s': %w", envVar.Name, err)
+			}
+			cmdArgs = append(cmdArgs, "--build-arg", fmt.Sprintf("%s=%s", envVar.Name, strValue))
+		}
+	}
+
+	// Add the build context path at the end
+	cmdArgs = append(cmdArgs, absContext)
+
+	params.LogHandler(zerolog.InfoLevel, fmt.Sprintf("Building image '%s' with Docker CLI: docker %s", params.ImageName, strings.Join(cmdArgs, " ")), "")
+
+	cmd := exec.CommandContext(params.Context, "docker", cmdArgs...)
+	cmd.Dir = absContext // Set the working directory for the command
+
+	// For real-time output, you might want to use cmd.StdoutPipe and cmd.StderrPipe
+	// and process them in goroutines. For simplicity, CombinedOutput is used here.
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		// Log the output for debugging
+		params.LogHandler(zerolog.ErrorLevel, fmt.Sprintf("Docker build failed. Output:\n%s", string(output)), "")
+
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("docker build command failed with exit code %d: %w. Output: %s", exitErr.ExitCode(), err, string(output))
+		}
+		return fmt.Errorf("failed to execute docker build command: %w. Output: %s", err, string(output))
+	}
+
+	params.LogHandler(zerolog.InfoLevel, fmt.Sprintf("Docker build for '%s' successful.", params.ImageName), "")
+	// Optionally log success output if needed:
+	// params.LogHandler(zerolog.DebugLevel, fmt.Sprintf("Docker build output:\n%s", string(output)), "")
+
 	return nil
 }
