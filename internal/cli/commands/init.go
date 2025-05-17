@@ -82,6 +82,7 @@ func InitCmd() *cobra.Command {
 
 			var emptyDirs = []string{
 				"containers/cert-storage",
+				"containers/cert-storage/accounts",
 				"containers/haproxy-config",
 			}
 			if err := copyConfigFiles(configDirPath, emptyDirs); err != nil {
@@ -112,7 +113,7 @@ func InitCmd() *cobra.Command {
 
 			successMsg := fmt.Sprintf("Configuration files created successfully in %s\n", configDirPath)
 			if !skipServices {
-				successMsg += "HAProxy and haloy-manager services are running.\n"
+				successMsg += "HAProxy and haloy-manager started successfully.\n"
 			}
 			successMsg += "You can now add your applications to apps.yml and run:\n"
 			successMsg += "haloy deploy <app-name>"
@@ -269,7 +270,7 @@ func getTestAppData() (TestAppData, error) {
 	// Prompt for email with validation
 	var email string
 	for {
-		fmt.Print("Enter email for Let's Encrypt TLS certificates: ")
+		fmt.Print("Enter email for TLS certificates for the test-app: ")
 		if _, err := fmt.Scanln(&email); err != nil {
 			if err.Error() == "unexpected newline" {
 				ui.Info("Email cannot be empty")

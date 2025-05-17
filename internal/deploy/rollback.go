@@ -94,7 +94,7 @@ func RollbackToDeployment(ctx context.Context, dockerClient *client.Client, appN
 		ui.Error("Rollback failed, cleaning up started containers...")
 		ignoreDeploymentID = currentDeployment.ID
 	}
-	if err := docker.StopContainers(ctx, dockerClient, appName, ignoreDeploymentID); err != nil {
+	if _, err := docker.StopContainers(ctx, dockerClient, appName, ignoreDeploymentID); err != nil {
 		return fmt.Errorf("failed to stop containers for app %s: %w", appName, err)
 	}
 

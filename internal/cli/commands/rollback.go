@@ -8,7 +8,7 @@ import (
 )
 
 func RollbackAppCmd() *cobra.Command {
-	rollbackAppCmd := &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "rollback <app-name>",
 		Short: "Rollback an application",
 		Long:  `Rollback an application to a previous deployment`,
@@ -36,6 +36,6 @@ func RollbackAppCmd() *cobra.Command {
 		},
 	}
 
-	rollbackAppCmd.Flags().StringP("deployment", "d", "", "Specify deployment ID to use for rollback")
-	return rollbackAppCmd
+	cmd.Flags().StringP("deployment", "d", "", "Specify deployment ID to use for rollback")
+	return cmd
 }

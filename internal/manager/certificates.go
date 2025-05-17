@@ -689,9 +689,15 @@ type CertificatesKeyManager struct {
 
 // NewCertificatesKeyManager creates a new key manager
 func NewCertificatesKeyManager(keyDir string) (*CertificatesKeyManager, error) {
-	// Create key directory if it doesn't exist
-	if err := os.MkdirAll(keyDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create key directory: %w", err)
+	stat, err := os.Stat(keyDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("key directory '%s' does not exist; ensure init process has created it", keyDir)
+		}
+		return nil, fmt.Errorf("failed to stat key directory '%s': %w", keyDir, err)
+	}
+	if !stat.IsDir() {
+		return nil, fmt.Errorf("key directory path '%s' is not a directory", keyDir)
 	}
 
 	return &CertificatesKeyManager{

@@ -107,7 +107,8 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, imageName st
 	return result, nil
 }
 
-func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) error {
+func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) ([]string, error) {
+	stoppedIDs := []string{}
 	filter := filters.NewArgs()
 	filter.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
 
@@ -129,12 +130,14 @@ func StopContainers(ctx context.Context, dockerClient *client.Client, appName, i
 		err := dockerClient.ContainerStop(ctx, containerInfo.ID, stopOptions)
 		if err != nil {
 			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
+		} else {
+			stoppedIDs = append(stoppedIDs, containerInfo.ID)
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return stoppedIDs, fmt.Errorf("failed to list containers: %w", err)
 	}
-	return nil
+	return stoppedIDs, nil
 }
 
 type RemoveContainersParams struct {
