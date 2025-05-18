@@ -1,6 +1,5 @@
 # Haloy
-
-Self-hostable deployments with zero downtime using Docker and HAProxy.
+Haloy is a tool for managing Dockerized applications with zero downtime deployments on your own infrastructure. It uses HAProxy to route traffic to the correct containers based on domain names and provides a configuration file for easy setup.
 
 ## Installation
 
