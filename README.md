@@ -43,8 +43,8 @@ haloy init
 
 This will:
 - Set up the directory structure at `~/.config/haloy/`
-- Create a sample configuration file
-- Set up the HAProxy and manager containers
+- Create a sample configuration file at `~/.config/haloy/apps.yml`
+- Initialize HAProxy
 
 ### Configure Your Apps
 
