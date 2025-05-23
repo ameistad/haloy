@@ -9,6 +9,7 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/fatih/color"
@@ -17,52 +18,47 @@ import (
 
 func StatusAppCmd() *cobra.Command {
 	statusAppCmd := &cobra.Command{
-		Use:   "status <app-name>",
-		Short: "Get the status of an application",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Use:   "status [app-name]",
+		Short: "Show status for all apps or detailed status for a specific app",
+		Long: `Show status for all applications if no app name is provided.
+If an app name is given, show detailed status including DNS configuration.`,
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			if len(args) == 0 {
+				// Show status for all apps
+				configFilePath, err := config.ConfigFilePath()
+				if err != nil {
+					ui.Error("Error: %s", err)
+					return
+				}
+				configFile, err := config.LoadAndValidateConfig(configFilePath)
+				if err != nil {
+					ui.Error("Error: %s", err)
+					return
+				}
+				for i := range configFile.Apps {
+					if err := showAppStatus(&configFile.Apps[i]); err != nil {
+						ui.Error("Error: %s", err)
+					}
+				}
+				return
+			}
+
 			appName := args[0]
 			appConfig, err := config.AppConfigByName(appName)
 			if err != nil {
-				return err
+				ui.Error("Error: %s", err)
+				return
 			}
 
 			if err := showAppStatus(appConfig); err != nil {
-				return err
+				ui.Error("Error: %s", err)
 			}
 
-			return nil
 		},
 	}
 	return statusAppCmd
-}
-
-func StatusAllCmd() *cobra.Command {
-	statusAllCmd := &cobra.Command{
-		Use:   "status-all",
-		Short: "Get the status of all applications in the configuration file",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-
-			configFilePath, err := config.ConfigFilePath()
-			if err != nil {
-				return err
-			}
-			configFile, err := config.LoadAndValidateConfig(configFilePath)
-			if err != nil {
-				return fmt.Errorf("configuration error: %w", err)
-			}
-
-			// Show status for each app.
-			for i := range configFile.Apps {
-				if err := showAppStatus(&configFile.Apps[i]); err != nil {
-					return err
-				}
-			}
-			return nil
-		},
-	}
-	return statusAllCmd
 }
 
 const (
@@ -91,29 +87,29 @@ func showAppStatus(appConfig *config.AppConfig) error {
 		return fmt.Errorf("failed to get container for app %s: %w", appConfig.Name, err)
 	}
 
-	if len(containers) == 0 {
-		return fmt.Errorf("no running container found for app %s", appConfig.Name)
-	}
-
-	runningContainerIds := make([]string, len(containers))
-	for i, c := range containers {
-		if c.State == "running" || c.State == "restarting" {
-			runningContainerIds[i] = helpers.SafeIDPrefix(c.ID)
-		}
-	}
-
-	runningContainerIdsStr := strings.Join(runningContainerIds, ", ")
-
 	state := "Not running"
-	for _, c := range containers {
-		switch c.State {
-		case "running":
-			state = "Running"
-		case "restarting":
-			state = "Restarting"
-		case "exited":
-			state = "Exited"
+	runningContainerIdsStr := "None"
+	if len(containers) > 0 {
+		runningContainerIds := make([]string, len(containers))
+		for i, c := range containers {
+			if c.State == "running" || c.State == "restarting" {
+				runningContainerIds[i] = helpers.SafeIDPrefix(c.ID)
+			}
 		}
+
+		runningContainerIdsStr = strings.Join(runningContainerIds, ", ")
+
+		for _, c := range containers {
+			switch c.State {
+			case "running":
+				state = "Running"
+			case "restarting":
+				state = "Restarting"
+			case "exited":
+				state = "Exited"
+			}
+		}
+
 	}
 
 	// Build domains output.
@@ -158,21 +154,17 @@ func showAppStatus(appConfig *config.AppConfig) error {
 	}
 	envStr := strings.Join(envLines, "\n")
 
-	// Define color functions.
-	header := color.New(color.Bold, color.FgCyan).SprintFunc()
-	label := color.New(color.FgYellow).SprintFunc()
-	success := color.New(color.FgGreen).SprintFunc()
-
-	// Display structured output.
-	// TODO: use ui package instead of fmt
-	fmt.Println(header("-------------------------------------------------"))
-	fmt.Printf("%s: %s\n", label("App"), appConfig.Name)
-	fmt.Printf("%s: %s\n", label("State"), success(state))
-	fmt.Printf("%s:\n%s\n", label("Domains"), domainsStr)
-	fmt.Printf("%s: %s\n", label("Container IDs"), runningContainerIdsStr)
-	if envStr != "" {
-		fmt.Printf("%s:\n%s\n", label("Environment Variables"), envStr)
+	output := []string{
+		fmt.Sprintf("State: %s", state),
+		fmt.Sprintf("Domains:\n%s", domainsStr),
+		fmt.Sprintf("Container IDs: %s", runningContainerIdsStr),
 	}
-	fmt.Println(header("-------------------------------------------------"))
+
+	if envStr != "" {
+		output = append(output, fmt.Sprintf("Environment Variables:\n%s", envStr))
+	}
+	// Create section
+	ui.Section(appConfig.Name, output)
+
 	return nil
 }

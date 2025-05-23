@@ -2,8 +2,8 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/pterm/pterm"
 )
 
@@ -34,8 +34,23 @@ func Warn(format string, a ...any) {
 func Error(format string, a ...any) {
 	pterm.Error.Println(fmt.Sprintf(format, a...))
 }
+
+func BoldText(format string, a ...any) string {
+	return pterm.Bold.Sprint(fmt.Sprintf(format, a...))
+}
+
+var titleStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color("#FAFAFA"))
+
+var lineStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("#FAFAFA"))
+
 func Section(title string, textLines []string) {
-	lines := strings.Join(textLines, "\n")
-	pterm.DefaultSection.Println(title)
-	pterm.Info.Println(lines)
+
+	fmt.Println(titleStyle.Render(title))
+
+	for _, line := range textLines {
+		fmt.Println(lineStyle.Render(line))
+	}
 }
