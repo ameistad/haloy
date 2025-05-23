@@ -62,7 +62,7 @@ If an app name is given, show detailed status including DNS configuration.`,
 }
 
 const (
-	showStatusTimeout = 5 * time.Minute
+	showStatusTimeout = 5 * time.Second
 )
 
 func showAppStatus(appConfig *config.AppConfig) error {
