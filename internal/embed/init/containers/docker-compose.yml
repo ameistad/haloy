@@ -11,6 +11,7 @@ services:
     volumes:
       - ./haproxy-config:/haproxy-config:rw
       - ./cert-storage:/cert-storage:rw
+      - ./logs/:/logs:rw
       # Enable Docker socket access for the golang docker client
       - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:

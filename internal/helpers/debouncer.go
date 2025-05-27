@@ -3,8 +3,6 @@ package helpers
 import (
 	"sync"
 	"time"
-
-	"github.com/rs/zerolog/log"
 )
 
 // DebounceFunc defines the type for the function to be executed after debouncing.
@@ -34,7 +32,6 @@ func (d *Debouncer) Debounce(key string, action DebounceFunc) {
 	// If a timer already exists for this key, stop and reset it.
 	if timer, ok := d.timers[key]; ok {
 		timer.Stop()
-		log.Trace().Str("key", key).Msg("Debouncer: Timer stopped")
 	}
 
 	// Create a new timer.
@@ -46,18 +43,15 @@ func (d *Debouncer) Debounce(key string, action DebounceFunc) {
 		delete(d.timers, key)
 		d.mu.Unlock()
 
-		log.Trace().Str("key", key).Msg("Debouncer: Executing debounced action")
 		// Execute the provided action function.
 		action()
 	})
-	log.Trace().Str("key", key).Dur("delay", d.delay).Msg("Debouncer: Timer set/reset")
 }
 
 // Stop cancels all pending debounced actions.
 func (d *Debouncer) Stop() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	log.Debug().Int("pending_timers", len(d.timers)).Msg("Stopping debouncer and cancelling pending timers")
 	for key, timer := range d.timers {
 		timer.Stop()
 		delete(d.timers, key)

@@ -4,14 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/client"
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -51,13 +48,6 @@ func DeployApp(appConfig *config.AppConfig) error {
 		return fmt.Errorf("failed to ensure dependent services are running: %w", err)
 	}
 	ui.Info("Network and services are running")
-
-	// Use a WaitGroup to wait for the log streamer goroutine to finish
-	var wg sync.WaitGroup
-
-	// Start log streaming in a separate goroutine, passing the primary context
-	wg.Add(1)
-	go streamLogs(deployCtx, &wg, appConfig.Name)
 
 	imageName, err := GetImage(dockerOpCtx, dockerClient, appConfig)
 	if err != nil {
@@ -104,37 +94,9 @@ func DeployApp(appConfig *config.AppConfig) error {
 	// This signals the log streamer to stop.
 	cancelDeploy()
 
-	// Wait for the log streamer goroutine to finish cleanly.
-	wg.Wait()
-
 	ui.Success("Successfully deployed %s", appConfig.Name)
 
 	return nil
-}
-
-func streamLogs(ctx context.Context, wg *sync.WaitGroup, appName string) {
-	defer wg.Done()
-
-	clientConfig := logging.ClientConfig{
-		AppNameFilter: appName,
-		UseDeadline:   true,
-		MinLevel:      zerolog.InfoLevel,
-		Handler:       sharedLogHandler(),
-	}
-
-	client, err := logging.NewLogStreamClient(clientConfig)
-	if err != nil {
-		ui.Warn("Could not connect to log stream from manager: %v. Continuing deployment without live logs.", err)
-		return
-	}
-	defer client.Close()
-
-	err = client.Stream(ctx) // Pass os.Stdout directly
-
-	// Handle stream exit reason
-	if err != nil && !errors.Is(err, context.Canceled) {
-		ui.Error("Log stream error: %v\n", err)
-	}
 }
 
 func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *config.AppConfig) (string, error) {
@@ -149,10 +111,9 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		buildImageParams := docker.BuildImageCLIParams{
 			Context: ctx,
 			// DockerClient: dockerClient,
-			ImageName:  imageName,
-			Source:     appConfig.Source.Dockerfile,
-			EnvVars:    appConfig.Env,
-			LogHandler: sharedLogHandler(),
+			ImageName: imageName,
+			Source:    appConfig.Source.Dockerfile,
+			EnvVars:   appConfig.Env,
 		}
 		if err := docker.BuildImageCLI(buildImageParams); err != nil {
 			// Distinguish between timeout and cancellation
@@ -186,22 +147,4 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		return "", fmt.Errorf("invalid app source configuration: no source type (Dockerfile or Image) defined for app '%s'", appConfig.Name)
 	}
 
-}
-
-func sharedLogHandler() logging.LogHandlerFunc {
-	return func(level zerolog.Level, message string, appName string) {
-		switch level {
-		case zerolog.DebugLevel:
-		case zerolog.InfoLevel:
-			ui.Info("%s", message)
-		case zerolog.WarnLevel:
-			ui.Warn(message, "")
-		case zerolog.ErrorLevel:
-		case zerolog.FatalLevel:
-		case zerolog.PanicLevel:
-			ui.Error("%s", message)
-		default:
-			ui.Info("%s", message)
-		}
-	}
 }

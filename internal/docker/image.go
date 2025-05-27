@@ -14,9 +14,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
-	"github.com/rs/zerolog"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
@@ -30,16 +28,9 @@ type BuildImageParams struct {
 	ImageName    string
 	Source       *config.DockerfileSource
 	EnvVars      []config.EnvVar
-	LogHandler   logging.LogHandlerFunc
 }
 
 func BuildImage(params BuildImageParams) error {
-
-	if params.LogHandler == nil {
-		params.LogHandler = func(level zerolog.Level, message string, appName string) {
-			fmt.Print(message)
-		}
-	}
 
 	absContext, err := filepath.Abs(params.Source.BuildContext)
 	if err != nil {
@@ -156,7 +147,7 @@ func BuildImage(params BuildImageParams) error {
 	if !cacheExists {
 		startMsg += " (this may take a while for first build)"
 	}
-	params.LogHandler(zerolog.InfoLevel, startMsg, "")
+	ui.Info("%s", startMsg)
 
 	// Periodic progress messages.
 	done := make(chan bool)
@@ -166,7 +157,7 @@ func BuildImage(params BuildImageParams) error {
 		for {
 			select {
 			case <-ticker.C:
-				params.LogHandler(zerolog.InfoLevel, "Build still in progress...", "")
+				ui.Info("Build still in progress...")
 			case <-done:
 				return
 			}
@@ -219,7 +210,7 @@ func BuildImage(params BuildImageParams) error {
 		return fmt.Errorf("build failed: %w", lastError)
 	}
 	close(done)
-	params.LogHandler(zerolog.InfoLevel, "Build completed successfully!", "")
+	ui.Success("Build completed successfully!")
 	return nil
 }
 
@@ -312,19 +303,13 @@ func copyFile(src, dst string) error {
 }
 
 type BuildImageCLIParams struct {
-	Context    context.Context
-	ImageName  string
-	Source     *config.DockerfileSource
-	EnvVars    []config.EnvVar
-	LogHandler logging.LogHandlerFunc
+	Context   context.Context
+	ImageName string
+	Source    *config.DockerfileSource
+	EnvVars   []config.EnvVar
 }
 
 func BuildImageCLI(params BuildImageCLIParams) error {
-	if params.LogHandler == nil {
-		params.LogHandler = func(level zerolog.Level, message string, appName string) {
-			fmt.Print(message)
-		}
-	}
 
 	absContext, err := filepath.Abs(params.Source.BuildContext)
 	if err != nil {
@@ -370,8 +355,6 @@ func BuildImageCLI(params BuildImageCLIParams) error {
 	// Add the build context path at the end
 	cmdArgs = append(cmdArgs, absContext)
 
-	params.LogHandler(zerolog.InfoLevel, fmt.Sprintf("Building image '%s' with Docker CLI: docker %s", params.ImageName, strings.Join(cmdArgs, " ")), "")
-
 	cmd := exec.CommandContext(params.Context, "docker", cmdArgs...)
 	cmd.Dir = absContext // Set the working directory for the command
 
@@ -381,7 +364,7 @@ func BuildImageCLI(params BuildImageCLIParams) error {
 
 	if err != nil {
 		// Log the output for debugging
-		params.LogHandler(zerolog.ErrorLevel, fmt.Sprintf("Docker build failed. Output:\n%s", string(output)), "")
+		ui.Debug(fmt.Sprintf("Docker build failed. Output:\n%s", string(output)))
 
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return fmt.Errorf("docker build command failed with exit code %d: %w. Output: %s", exitErr.ExitCode(), err, string(output))
@@ -389,9 +372,7 @@ func BuildImageCLI(params BuildImageCLIParams) error {
 		return fmt.Errorf("failed to execute docker build command: %w. Output: %s", err, string(output))
 	}
 
-	params.LogHandler(zerolog.InfoLevel, fmt.Sprintf("Docker build for '%s' successful.", params.ImageName), "")
-	// Optionally log success output if needed:
-	// params.LogHandler(zerolog.DebugLevel, fmt.Sprintf("Docker build output:\n%s", string(output)), "")
+	ui.Success("Docker build completed successfully for '%s'.", params.ImageName)
 
 	return nil
 }

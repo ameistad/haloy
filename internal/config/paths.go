@@ -65,3 +65,11 @@ func HAProxyConfigFilePath() (string, error) {
 	}
 	return filepath.Join(containersPath, "haproxy-config", HAProxyConfigFileName), nil
 }
+
+func LogsPath() (string, error) {
+	containersPath, err := ConfigContainersPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(containersPath, "logs"), nil
+}

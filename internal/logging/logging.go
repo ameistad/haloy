@@ -1,67 +1,95 @@
 package logging
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
-	"time"
-
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/rs/zerolog/pkgerrors"
+	"path/filepath"
+	"sync"
 )
 
-type LogHandlerFunc func(level zerolog.Level, message string, appName string)
+type Logger struct {
+	writer io.Writer
+	Level  LogLevel
+	mutex  sync.Mutex
+}
 
-var (
-	LogFieldLevel   = zerolog.LevelFieldName   // "level"
-	LogFieldMessage = zerolog.MessageFieldName // "message"
-)
+type LogLevel int
 
 const (
-	LogFieldAppName          = "appName"
-	LogFieldDeploymentStatus = "deployment_status"
-	LogDeploymentCompleted   = "completed"
-	LogDeploymentFailed      = "failed"
-	DefaultStreamAddress     = ":9000"
+	DEBUG LogLevel = iota
+	INFO
+	WARN
+	ERROR
+	FATAL
 )
 
-// Init configures the global zerolog logger and optionally starts the log stream server.
-// It returns the server instance (if created) so its lifecycle can be managed.
-func Init(ctx context.Context, level zerolog.Level) (*Server, error) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
-	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
-	zerolog.SetGlobalLevel(level)
+func NewLogger(level LogLevel) (*Logger, error) {
+	writer := os.Stdout
+	return &Logger{writer: writer, Level: level}, nil
+}
 
-	consoleWriter := zerolog.ConsoleWriter{
-		Out:        os.Stderr,
-		TimeFormat: time.RFC3339,
-		NoColor:    false,
+func (l *Logger) Debug(msg string) {
+	if l.Level <= DEBUG {
+		l.mutex.Lock()
+		defer l.mutex.Unlock()
+		fmt.Fprintf(l.writer, "[DEBUG] %s\n", msg)
 	}
-
-	writers := []io.Writer{consoleWriter}
-	var logServer *Server = nil
-
-	logServer = NewServer(ctx, DefaultStreamAddress)
-	if err := logServer.Listen(); err != nil {
-		// Log using the basic console writer before the global one is fully set
-		tempLogger := zerolog.New(consoleWriter).With().Timestamp().Logger()
-		tempLogger.Error().Err(err).Msg("Log stream server failed to start during init")
-		// Decide if this is fatal or if logging should continue without the stream
-		// Returning the error might be best.
-		return nil, fmt.Errorf("log server failed to start: %w", err)
+}
+func (l *Logger) Info(msg string) {
+	if l.Level <= INFO {
+		l.mutex.Lock()
+		defer l.mutex.Unlock()
+		fmt.Fprintf(l.writer, "%s\n", msg)
 	}
-
-	streamWriter := &LogStreamWriter{Server: logServer, Context: ctx}
-	writers = append(writers, streamWriter)
-
-	multiWriter := zerolog.MultiLevelWriter(writers...)
-
-	// Configure the global logger instance
-	log.Logger = log.Output(multiWriter).With().Timestamp().Logger()
-
-	log.Debug().Msg("Logger initialized")
-
-	return logServer, nil
+}
+func (l *Logger) Warn(msg string, err ...error) {
+	if l.Level <= WARN {
+		l.mutex.Lock()
+		defer l.mutex.Unlock()
+		if len(err) > 0 && err[0] != nil {
+			fmt.Fprintf(l.writer, "[WARN] %s: %v\n", msg, err[0])
+		} else {
+			fmt.Fprintf(l.writer, "[WARN] %s\n", msg)
+		}
+	}
+}
+func (l *Logger) Error(msg string, err ...error) {
+	if l.Level <= ERROR {
+		l.mutex.Lock()
+		defer l.mutex.Unlock()
+		if len(err) > 0 && err[0] != nil {
+			fmt.Fprintf(l.writer, "[ERROR] %s: %v\n", msg, err[0])
+		} else {
+			fmt.Fprintf(l.writer, "[ERROR] %s\n", msg)
+		}
+	}
+}
+func (l *Logger) Fatal(msg string, err ...error) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if len(err) > 0 && err[0] != nil {
+		fmt.Fprintf(l.writer, "[FATAL] %s: %v\n", msg, err[0])
+	} else {
+		fmt.Fprintf(l.writer, "[FATAL] %s\n", msg)
+	}
+	if f, ok := l.writer.(*os.File); ok {
+		f.Sync()
+		f.Close()
+	}
+	os.Exit(1)
+}
+func (l *Logger) SetDeploymentIDFileWriter(logsPath, deploymentID string) error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if deploymentID == "" {
+		return fmt.Errorf("deployment ID cannot be empty")
+	}
+	logFilePath := filepath.Join(logsPath, deploymentID+".log")
+	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	l.writer = file
+	return nil
 }

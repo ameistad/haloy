@@ -11,7 +11,7 @@ docker run --name my-nginx-container-two-${DEPLOYMENT_ID} \
   -l "haloy.domain.0.alias.0=www.domain.com" \
   -l "haloy.health-check-path=/health" \
   -l "haloy.port=80" \
-  -l "haloy.drain-time=15s" \
+  -l "haloy.role=app" \
   -e "NODE_ENV=production" \
   my-nginx
 

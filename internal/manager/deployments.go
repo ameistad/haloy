@@ -3,11 +3,11 @@ package manager
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -29,15 +29,17 @@ type DeploymentManager struct {
 	DockerClient *client.Client
 	// deployments is a map of appName to Deployment, key is the app name.
 	deployments      map[string]Deployment
+	logger           *logging.Logger
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
 }
 
-func NewDeploymentManager(ctx context.Context, dockerClient *client.Client) *DeploymentManager {
+func NewDeploymentManager(ctx context.Context, dockerClient *client.Client, logger *logging.Logger) *DeploymentManager {
 	return &DeploymentManager{
 		Context:      ctx,
 		DockerClient: dockerClient,
 		deployments:  make(map[string]Deployment),
+		logger:       logger,
 	}
 }
 
@@ -62,24 +64,24 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error)
 	for _, containerSummary := range containers {
 		container, err := dm.DockerClient.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
-			log.Printf("Failed to inspect container %s: %v", containerSummary.ID, err)
+			dm.logger.Error(fmt.Sprintf("Failed to inspect container %s", containerSummary.ID), err)
 			continue
 		}
 
 		if !IsAppContainer(container) {
-			log.Printf("Container %s is not eligible for haloy management", containerSummary.ID)
+			dm.logger.Info(fmt.Sprintf("Container %s is not eligible for haloy management", containerSummary.ID))
 			continue
 		}
 
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
-			log.Printf("Failed to parse labels for container %s: %v", containerSummary.ID, err)
+			dm.logger.Error(fmt.Sprintf("Error parsing labels for container %s", containerSummary.ID), err)
 			continue
 		}
 
 		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
 		if err != nil {
-			log.Printf("Failed to get IP address for container %s: %v", container.ID, err)
+			dm.logger.Error(fmt.Sprintf("Error getting IP for container %s", container.ID), err)
 			continue
 		}
 
@@ -137,7 +139,6 @@ func (dm *DeploymentManager) HealthCheckNewContainers() error {
 	for _, deployment := range deploymentsToCheck {
 		for _, instance := range deployment.Instances {
 			if err := docker.HealthCheckContainer(dm.Context, dm.DockerClient, instance.ContainerID); err != nil {
-				log.Printf("Health check failed for container %s: %v", instance.ContainerID, err)
 				return fmt.Errorf("health check failed for container %s: %w", instance.ContainerID, err)
 			}
 		}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"os"
 
 	"github.com/ameistad/haloy/internal/manager"
@@ -16,11 +15,5 @@ func main() {
 	dryRunEnv := os.Getenv("DRY_RUN") == "true"
 	dryRun := *dryRunFlag || dryRunEnv
 
-	if dryRun {
-		fmt.Println("========================")
-		fmt.Println("STARTING IN DRY RUN MODE")
-		fmt.Println("No changes will be made to HAProxy configuration")
-		fmt.Println("========================")
-	}
 	manager.RunManager(dryRun)
 }
