@@ -144,6 +144,83 @@ To use a secret in your app configuration:
 
 Secrets are securely encrypted at rest using [age encryption](https://age-encryption.org) and are only decrypted when needed for deployments.
 
+## Architecture
+
+Haloy is designed to simplify the deployment and management of Dockerized applications with dynamic HAProxy-based load balancing and automated SSL certificate management. Its architecture comprises several key components:
+
+1.  **Haloy CLI (`haloy`):**
+    * The command-line interface used by developers to interact with the Haloy system.
+    * Responsibilities: Initializing Haloy, managing application configurations (`apps.yml`), deploying applications, managing secrets, checking status, etc.
+
+2.  **Haloy Manager (daemon):**
+    * A long-running daemon (typically run as a Docker container itself, e.g., `ghcr.io/ameistad/haloy-manager`).
+    * **Core Responsibilities:**
+        * **Service Discovery:** Continuously monitors Docker for application containers managed by Haloy, identified by specific Docker labels.
+        * **Dynamic HAProxy Configuration:** Generates and applies HAProxy configurations based on the discovered application containers and their labels. It signals HAProxy to reload its configuration gracefully with zero downtime.
+        * **Automated Certificate Management:** Manages SSL/TLS certificates using ACME (Let's Encrypt) for domains specified in application labels. It handles certificate issuance and renewals.
+        * **Event Handling:** Responds to Docker events (e.g., container start/stop) to keep the HAProxy configuration up-to-date.
+
+3.  **HAProxy (daemon):**
+    * A high-performance TCP/HTTP load balancer.
+    * Haloy configures HAProxy to:
+        * Route traffic based on hostnames to the appropriate backend application containers.
+        * Terminate HTTPS connections using certificates managed by the Haloy Manager.
+        * Handle HTTP to HTTPS redirection.
+        * Serve ACME HTTP-01 challenges.
+
+4.  **Application Containers:**
+    * User-provided Dockerized applications.
+    * These containers **must** be deployed with specific Docker labels (see below) for the Haloy Manager to discover and manage them.
+
+### Service Discovery and Configuration via Docker Labels
+
+Docker labels are the cornerstone of how the Haloy Manager identifies and configures services for HAProxy. When you deploy an application through Haloy (based on your `apps.yml` configuration), the resulting containers are automatically assigned these crucial labels.
+
+Haloy uses the following Docker container labels on your application containers:
+
+* `haloy.role`: Identifies the role of the container. For applications managed by Haloy and configured in HAProxy, this should be set to `app`.
+* `haloy.appName`: (Required) The unique name of your application. This is used to group container instances and name HAProxy backends.
+* `haloy.deployment-id`: (Required) An identifier for a specific deployment version of your application (e.g., a timestamp). This helps Haloy manage different versions and is crucial for zero-downtime deployments and rollbacks.
+* `haloy.port`: (Required, defaults to "80" if not specified in app config) The port your application container listens on. HAProxy will forward traffic to this port on the container's IP address.
+* `haloy.health-check-path`: (Required, defaults to "/" if not specified in app config) The HTTP path on your application that Haloy (and HAProxy) can use to check its health.
+* `haloy.acme.email`: (Required) The email address used for ACME (Let's Encrypt) to obtain SSL/TLS certificates for the domains associated with this application. These certificates are then used by HAProxy for HTTPS termination.
+* `haloy.domain.<index>`: (Required, e.g., `haloy.domain.0`) The canonical domain name for a set of hostnames serving your application (e.g., `example.com`). HAProxy uses this for host-based ACLs (Access Control Lists) to route traffic.
+* `haloy.domain.<index>.alias.<alias_index>`: (Optional, e.g., `haloy.domain.0.alias.0`) Defines an alias for the canonical domain at the same `<index>` (e.g., `www.example.com`). HAProxy will typically be configured to redirect traffic from these aliases to the canonical domain over HTTPS.
+
+This mechanism allows Haloy to dynamically adapt the HAProxy configuration without manual intervention as applications are deployed, updated, or scaled.
+
+**Example in `apps.yml` leading to these labels:**
+
+When you define an application in your `apps.yml` like this:
+
+```yaml
+apps:
+  - name: "my-web-app"
+    source:
+      # ... source definition
+    domains:
+      - domain: "myapp.example.com"
+        aliases:
+          - "[www.myapp.example.com](https://www.myapp.example.com)"
+    acmeEmail: "user@example.com"
+    port: "3000"
+    healthCheckPath: "/status"
+    # ... other app config
+```
+Haloy will (upon deployment) create containers with labels similar to:
+
+* `haloy.role`: app
+* `haloy.appName`: my-web-app
+* `haloy.deployment-id`: 20250528210000 (example timestamp)
+* `haloy.port`: 3000
+* `haloy.health-check-path`: /status
+* `haloy.acme.email`: user@example.com
+* `haloy.domain.0`: myapp.example.com
+* `haloy.domain.0.alias.0`: www.myapp.example.com
+
+These labels are then read by the Haloy manager to dynamically generate the HAProxy configuration, ensuring traffic is routed correctly and securely to your application instances.
+
+
 ## Development
 
 ### Building the CLI
@@ -219,19 +296,6 @@ If you need to build releases manually:
    docker build -t ghcr.io/ameistad/haloy-manager:latest -f build/manager/Dockerfile .
    docker push ghcr.io/ameistad/haloy-manager:latest
    ```
-
-
-### List of labels that haloy will use to configure HAProxy.
-
-Haloy uses the following Docker container labels to configure HAProxy:
-- `haloy.appName` - Identifies the application name
-- `haloy.deployment` - Identifies the deployment ID
-- `haloy.domains.all` - A comma-separated list of all domains
-- `haloy.domain.<index>` - The canonical domain name for the specified index
-- `haloy.domain.<index>.alias.<alias_index>` - Domain aliases that should redirect to the canonical domain
-- `haloy.health-check-path` - The path to the health check endpoint
-
-
 ## License
 
 [MIT License](LICENSE)
