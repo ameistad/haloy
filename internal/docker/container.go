@@ -23,8 +23,8 @@ type ContainerRunResult struct {
 	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, dockerClient *client.Client, imageName string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
-	deploymentID := time.Now().Format("20060102150405")
+func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID, imageName string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
+
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
 	// Convert AppConfig to ContainerLabels

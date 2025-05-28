@@ -1,9 +1,13 @@
 package deploy
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
@@ -47,14 +51,16 @@ func DeployApp(appConfig *config.AppConfig) error {
 	if _, err := docker.EnsureServicesIsRunning(dockerClient, dockerOpCtx); err != nil {
 		return fmt.Errorf("failed to ensure dependent services are running: %w", err)
 	}
-	ui.Info("Network and services are running")
 
 	imageName, err := GetImage(dockerOpCtx, dockerClient, appConfig)
 	if err != nil {
 		return err
 	}
 
-	runResult, err := docker.RunContainer(dockerOpCtx, dockerClient, imageName, appConfig)
+	deploymentID := time.Now().Format("20060102150405")
+	ui.Info("Starting deployment for app '%s' with deployment ID: %s", appConfig.Name, deploymentID)
+
+	runResult, err := docker.RunContainer(dockerOpCtx, dockerClient, deploymentID, imageName, appConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("failed to run new container: operation timed out after %v (%w)", DefaultDeployTimeout, err)
@@ -70,7 +76,6 @@ func DeployApp(appConfig *config.AppConfig) error {
 		return fmt.Errorf("failed to run new container: no containers started")
 	}
 
-	deploymentID := runResult[0].DeploymentID
 	ui.Info("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID)
 
 	stoppedIDs, err := docker.StopContainers(dockerOpCtx, dockerClient, appConfig.Name, deploymentID)
@@ -94,7 +99,7 @@ func DeployApp(appConfig *config.AppConfig) error {
 	// This signals the log streamer to stop.
 	cancelDeploy()
 
-	ui.Success("Successfully deployed %s", appConfig.Name)
+	tailDeploymentLog(deploymentID)
 
 	return nil
 }
@@ -147,4 +152,88 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		return "", fmt.Errorf("invalid app source configuration: no source type (Dockerfile or Image) defined for app '%s'", appConfig.Name)
 	}
 
+}
+
+func tailDeploymentLog(deploymentID string) error {
+	if deploymentID == "" {
+		return fmt.Errorf("deployment ID cannot be empty")
+	}
+
+	logsPath, err := config.LogsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get logs path: %w", err)
+	}
+	logFile := filepath.Join(logsPath, deploymentID+".log")
+
+	// Retry logic for opening the log file
+	var file *os.File
+	const maxWait = 10 * time.Second
+	const retryInterval = 300 * time.Millisecond
+	start := time.Now()
+	for {
+		file, err = os.Open(logFile)
+		if err == nil {
+			break
+		}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to open log file: %w", err)
+		}
+		if time.Since(start) > maxWait {
+			return fmt.Errorf("log file %s did not appear after %v", logFile, maxWait)
+		}
+		time.Sleep(retryInterval)
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	timeout := 2 * time.Minute
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	for {
+		lineCh := make(chan string)
+		errCh := make(chan error)
+
+		go func() {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				errCh <- err
+			} else {
+				lineCh <- line
+			}
+		}()
+
+		select {
+		case line := <-lineCh:
+			if !timer.Stop() {
+				<-timer.C
+			}
+			timer.Reset(timeout)
+
+			if line == "[LOG END]\n" || line == "[LOG END]\r\n" {
+				return nil // Stop tailing on log end marker
+			}
+			// Print the log line using the custom print function
+			printLogLine(line)
+		case <-errCh:
+			time.Sleep(300 * time.Millisecond)
+		case <-timer.C:
+			return fmt.Errorf("log tail timed out after %v of inactivity", timeout)
+		}
+	}
+}
+
+func printLogLine(line string) {
+	switch {
+	case len(line) > 7 && line[:7] == "[INFO] ":
+		ui.Info("%s", line[7:])
+	case len(line) > 7 && line[:7] == "[DEBUG] ":
+		ui.Debug("%s", line[7:])
+	case len(line) > 7 && line[:7] == "[WARN] ":
+		ui.Warn("%s", line[7:])
+	case len(line) > 8 && line[:8] == "[ERROR] ":
+		ui.Error("%s", line[8:])
+	default:
+		fmt.Printf("%s", line)
+	}
 }

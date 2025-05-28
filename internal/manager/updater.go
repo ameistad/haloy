@@ -43,6 +43,8 @@ func (u *Updater) Update(ctx context.Context, reason string, logger *logging.Log
 
 	if err := u.deploymentManager.HealthCheckNewContainers(); err != nil {
 		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", reason, err)
+	} else {
+		logger.Info("Health check completed successfully")
 	}
 
 	logger.Debug(fmt.Sprintf("Updater: Deployment changes detected for reason: %s. Triggering cert and HAProxy updates.", reason))

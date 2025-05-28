@@ -14,7 +14,7 @@ import (
 
 	"filippo.io/age"
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/olekukonko/tablewriter"
+	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ func SecretsInitCommand() *cobra.Command {
 			}
 			identityPath := filepath.Join(configDir, config.IdentityFileName)
 			// Create the identity file with restricted permissions (0600 - read/write for owner only)
-				f, err := os.OpenFile(identityPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+			f, err := os.OpenFile(identityPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 			if err != nil {
 				return fmt.Errorf("failed to create identity file: %w", err)
 			}
@@ -115,17 +115,16 @@ func SecretsListCommand() *cobra.Command {
 				return nil
 			}
 
-			// Set up tablewriter.
-			table := tablewriter.NewWriter(os.Stdout)
-			table.SetHeader([]string{"NAME", "DIGEST", "DATE"})
-
+			headers := []string{"NAME", "DIGEST", "DATE"}
+			rows := make([][]string, 0, len(secrets))
 			for key, rec := range secrets {
 				// Compute the digest from the encrypted value using MD5.
 				digest := md5.Sum([]byte(rec.Encrypted))
 				digestStr := hex.EncodeToString(digest[:])
-				table.Append([]string{key, digestStr, rec.Date})
+				rows = append(rows, []string{key, digestStr, rec.Date})
 			}
-			table.Render()
+
+			ui.Table(headers, rows)
 			return nil
 		},
 	}

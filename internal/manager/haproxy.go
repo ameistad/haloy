@@ -208,7 +208,7 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
 
 		// No running container found yet - log on first attempt and halfway through
 		if retry == 0 || retry == maxRetries/2 {
-			hpm.logger.Info(fmt.Sprintf("HAProxyManager: Waiting for HAProxy container to be running, %d of %d", retry+1, maxRetries))
+			hpm.logger.Info(fmt.Sprintf("HAProxyManager: Waiting for HAProxy container to be running. Attempt %d of %d", retry+1, maxRetries))
 		}
 
 		// Wait before retrying

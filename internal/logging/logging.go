@@ -40,7 +40,7 @@ func (l *Logger) Info(msg string) {
 	if l.Level <= INFO {
 		l.mutex.Lock()
 		defer l.mutex.Unlock()
-		fmt.Fprintf(l.writer, "%s\n", msg)
+		fmt.Fprintf(l.writer, "[INFO] %s\n", msg)
 	}
 }
 func (l *Logger) Warn(msg string, err ...error) {
@@ -91,5 +91,17 @@ func (l *Logger) SetDeploymentIDFileWriter(logsPath, deploymentID string) error 
 		return err
 	}
 	l.writer = file
+	return nil
+}
+
+func (l *Logger) CloseLog() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if l.writer != os.Stdout {
+		fmt.Fprintln(l.writer, "[LOG END]")
+		if f, ok := l.writer.(*os.File); ok {
+			return f.Close()
+		}
+	}
 	return nil
 }

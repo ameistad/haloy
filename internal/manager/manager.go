@@ -50,6 +50,8 @@ func RunManager(dryRun bool) {
 		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v", err)
 	}
 
+	logger.Info(fmt.Sprintf("Haloy manager version %s started on network %s...", version.Version, config.DockerNetwork))
+
 	if dryRun {
 		logger.Info("Running in dry-run mode, no changes will be applied to HAProxy")
 		logger.Debug("Debug logging enabled")
@@ -121,7 +123,8 @@ func RunManager(dryRun bool) {
 	refreshTicker := time.NewTicker(RefreshInterval)
 	defer refreshTicker.Stop()
 
-	logger.Info(fmt.Sprintf("Haloy manager version %s started on network %s...", version.Version, config.DockerNetwork))
+	// Track the latest deploymentID per appName. This way we use the latest ID for logging.
+	latestDeploymentID := make(map[string]string)
 
 	// Main event loop
 	for {
@@ -135,35 +138,41 @@ func RunManager(dryRun bool) {
 			return
 		case e := <-eventsChan:
 			appName := e.Labels.AppName
+			deploymentID := e.Labels.DeploymentID
 			reason := fmt.Sprintf("container %s: %s", e.Event.Action, appName)
-			// Define the action to be executed after debouncing
+			if deploymentID > latestDeploymentID[appName] {
+				latestDeploymentID[appName] = deploymentID
+			}
+
+			fmt.Printf("%s: Manager event for deployment ID: %s\n", appName, e.Labels.DeploymentID)
+
 			updateAction := func() {
+				// Create a logger for this specific deployment id. This will write a log file for the specific deployment ID.
+				deploymentLogger, err := logging.NewLogger(logger.Level)
+				if err != nil {
+					logger.Error("Failed to create logger for deployment update", err)
+					return
+				}
+				id := latestDeploymentID[appName]
+				if id != "" {
+					deploymentLogger.SetDeploymentIDFileWriter(LogsPath, id)
+				}
 				// Create a context with a timeout for this specific update task.
 				// Use the main manager context `ctx` as the parent.
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, UpdateTimeout)
 				defer cancelUpdate()
-
-				// Create a logger for this specific deployment id. This will write to the deployment log file.
-				deploymentLogger, err := logging.NewLogger(logger.Level)
-				if e.Labels.DeploymentID != "" {
-					deploymentLogger.SetDeploymentIDFileWriter(LogsPath, e.Labels.DeploymentID)
-				}
-				if err != nil {
-					logger.Error("Failed to create logger for deployment update", err)
-				}
+				defer deploymentLogger.CloseLog()
 				if err := updater.Update(updateCtx, reason, deploymentLogger); err != nil {
 					deploymentLogger.Error("Debounced HAProxy configuration update failed", err)
 				}
 			}
 
-			// Use the generic debouncer, keyed by appName
 			debouncer.Debounce(appName, updateAction)
 
 		case domainUpdated := <-certUpdateSignal:
 			reason := fmt.Sprintf("post-certificate update for %s", domainUpdated)
 			logger.Debug(fmt.Sprintf("Received cert update signal: %s", reason))
 
-			// Launch a background HAProxy update
 			go func(updateReason string) {
 				// Use a timeout context for this specific task
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, 60*time.Second)
@@ -218,9 +227,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 		case <-ctx.Done():
 			return
 		case event := <-events:
-			// Only process events for containers on our network
 			if event.Action == "start" || event.Action == "die" || event.Action == "stop" || event.Action == "kill" {
-
 				container, err := dockerClient.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
 					logger.Error(fmt.Sprintf("Error inspecting container id %s", helpers.SafeIDPrefix(event.Actor.ID)), err)
