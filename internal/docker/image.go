@@ -364,7 +364,7 @@ func BuildImageCLI(params BuildImageCLIParams) error {
 
 	if err != nil {
 		// Log the output for debugging
-		ui.Debug(fmt.Sprintf("Docker build failed. Output:\n%s", string(output)))
+		ui.Debug("Docker build failed. Output:\n%s", string(output))
 
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			return fmt.Errorf("docker build command failed with exit code %d: %w. Output: %s", exitErr.ExitCode(), err, string(output))
