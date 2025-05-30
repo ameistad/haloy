@@ -1,5 +1,5 @@
 # Haloy
-Haloy is a tool for managing Dockerized applications with zero downtime deployments on your own infrastructure. It uses HAProxy to route traffic to the correct containers based on domain names and provides a configuration file for easy setup.
+Haloy is a simple tool for managing Dockerized applications with zero downtime deployments on your own infrastructure.
 
 ## Installation
 
@@ -19,8 +19,7 @@ sudo mv haloy /usr/local/bin/
 
 ## Getting Started
 
-### Prerequisites
-
+### ⚡️ Requirements
 - Docker installed and running
 - A non-root user added to the docker group: `sudo usermod -aG docker $(whoami)`
 - Verify your group membership (you should see “docker” in the output):
