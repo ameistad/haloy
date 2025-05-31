@@ -20,30 +20,58 @@ sudo mv haloy /usr/local/bin/
 ## Getting Started
 
 ### ⚡️ Requirements
-- Docker installed and running
-- A non-root user added to the docker group: `sudo usermod -aG docker $(whoami)`
-- Verify your group membership (you should see “docker” in the output):
-  ```bash
-  id -nG $(whoami)
-  # or
-  groups $(whoami)
-  ```
-- Log out and log back in for group changes to take effect, or run newgrp docker
-- Check that you can run Docker commands without sudo:
-  ```bash
-  docker ps
-  ```
+Before we begin, make sure you have:
+- __Docker installed and running__
+- Your user is part of the docker group. This lets you run Docker commands without sudo.
+    - Add your user: `sudo usermod -aG docker $(whoami)`
+    - Verify (you should see "docker"): `id -nG $(whoami)` or `groups $(whoami)`
+    - Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
+    - Test it: `docker ps` (should work without sudo).
 
-### Initialize Haloy
+### Initialize Haloy 🚀
 
 ```bash
 haloy init
 ```
 
-This will:
-- Set up the directory structure at `~/.config/haloy/`
-- Create a sample configuration file at `~/.config/haloy/apps.yml`
-- Initialize HAProxy
+If you want to quickly test Haloy and see how it works you can set initialize it with a test app that's just a basic nginx docker container serving static html.
+```bash
+haloy init --with-test-app
+```
+
+This command will:
+- Set up the necessary directories under ~/.config/haloy/.
+- Create an initial configuration file at ~/.config/haloy/apps.yml with a sample "test-app".
+- Prompt you for an email address for TLS certificate registration (for the test-app).
+- Start the Haloy manager and HAProxy services.
+
+### DNS Setup: Pointing Your Domain to Your Server 🗺️
+For TLS (HTTPS) to work, you need to set up DNS records.
+
+1. Find Your Server's IP Address: This is the public IP address of your VPS or server where Haloy is running.
+
+2. Go to Your DNS Provider: This is where you registered your domain (e.g., Namecheap, GoDaddy, Cloudflare, Google Domains).
+
+3. Create A Records (for IPv4):
+  - For each domain and subdomain you want to use (e.g., your-awesome-app.com and www.your-awesome-app.com), create an A record.
+  - Type: A
+  - Name/Host:
+    - For the main domain (your-awesome-app.com), this is often @ or left blank (check your provider's docs).
+    - For subdomains (www.your-awesome-app.com), enter the subdomain part (e.g., www).
+  - Value/Points to: YOUR_SERVER_IPV4_ADDRESS
+  - TTL (Time To Live): You can usually leave this at the default (e.g., 1 hour or "Automatic").
+
+    __Example:__
+  - A record for your-awesome-app.com -> YOUR_SERVER_IPV4_ADDRESS
+  - A record for www.your-awesome-app.com -> YOUR_SERVER_IPV4_ADDRESS
+
+4. Create AAAA Records (Optional, for IPv6):
+  - If your server has an IPv6 address, it's good practice to also create AAAA records.
+  - Type: AAAA
+  - Name/Host: Same as for A records.
+  - Value/Points to: YOUR_SERVER_IPV6_ADDRESS
+
+6. Wait a bit. DNS changes can take some time to propagate across the internet (from a few minutes to a few hours, rarely longer). You can use online tools like dnschecker.org to see if your records are updating.
 
 ### Configure Your Apps
 
