@@ -53,17 +53,17 @@ For TLS (HTTPS) to work, you need to set up DNS records.
 2. Go to Your DNS Provider: This is where you registered your domain (e.g., Namecheap, GoDaddy, Cloudflare, Google Domains).
 
 3. Create A Records (for IPv4):
-  - For each domain and subdomain you want to use (e.g., your-awesome-app.com and www.your-awesome-app.com), create an A record.
+  - For each domain and subdomain you want to use (e.g., example.com and www.example.com), create an A record.
   - Type: A
   - Name/Host:
-    - For the main domain (your-awesome-app.com), this is often @ or left blank (check your provider's docs).
-    - For subdomains (www.your-awesome-app.com), enter the subdomain part (e.g., www).
+    - For the main domain (example.com), this is often @ or left blank (check your provider's docs).
+    - For subdomains (www.example.com), enter the subdomain part (e.g., www).
   - Value/Points to: YOUR_SERVER_IPV4_ADDRESS
   - TTL (Time To Live): You can usually leave this at the default (e.g., 1 hour or "Automatic").
 
     __Example:__
-  - A record for your-awesome-app.com -> YOUR_SERVER_IPV4_ADDRESS
-  - A record for www.your-awesome-app.com -> YOUR_SERVER_IPV4_ADDRESS
+  - A record for example.com -> YOUR_SERVER_IPV4_ADDRESS
+  - A record for www.example.com -> YOUR_SERVER_IPV4_ADDRESS
 
 4. Create AAAA Records (Optional, for IPv6):
   - If your server has an IPv6 address, it's good practice to also create AAAA records.
@@ -71,7 +71,7 @@ For TLS (HTTPS) to work, you need to set up DNS records.
   - Name/Host: Same as for A records.
   - Value/Points to: YOUR_SERVER_IPV6_ADDRESS
 
-6. Wait a bit. DNS changes can take some time to propagate across the internet (from a few minutes to a few hours, rarely longer). You can use online tools like dnschecker.org to see if your records are updating.
+6. DNS changes can take some time to propagate across the internet (from a few minutes to a few hours, rarely longer). You can use online tools like dnschecker.org to see if your records are updating.
 
 ### Configure Your Apps
 
