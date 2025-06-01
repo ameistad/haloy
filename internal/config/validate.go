@@ -48,9 +48,6 @@ func ValidateHealthCheckPath(path string) error {
 }
 
 func (ac *AppConfig) Validate() error {
-	if ac.Name == "" {
-		return errors.New("name cannot be empty")
-	}
 
 	if err := ac.Source.Validate(); err != nil {
 		return fmt.Errorf("invalid source: %w", err)
@@ -123,7 +120,20 @@ func (c *Config) Validate() error {
 	if len(c.Apps) == 0 {
 		return errors.New("config: no apps defined")
 	}
+
+	// Keep track of seen app names to ensure uniqueness.
+	seen := make(map[string]struct{})
 	for _, app := range c.Apps {
+		if app.Name == "" {
+			return errors.New("name cannot be empty")
+		}
+
+		if _, exists := seen[app.Name]; exists {
+			return fmt.Errorf("duplicate app name: '%s'", app.Name)
+		}
+
+		seen[app.Name] = struct{}{}
+
 		err := app.Validate()
 		if err != nil {
 			return fmt.Errorf("app '%s': %w", app.Name, err)

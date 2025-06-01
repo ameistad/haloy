@@ -52,5 +52,39 @@ func TestValidateHealthCheckPath(t *testing.T) {
 	}
 }
 
-// TODO: Add tests for AppConfig.Validate() focusing on interactions between fields.
-// TODO: Add tests for Config.Validate().
+func TestConfig_Validate(t *testing.T) {
+	cfg := mockValidConfig("app1", "app2", "app3", "app4", "app5")
+	err := cfg.Validate()
+	if err != nil {
+		t.Errorf("Config.Validate() error = %v, wantErr nil", err)
+	}
+}
+
+func TestConfigValidate_UniqueAppNames(t *testing.T) {
+
+	cfg := mockValidConfig("app1", "app1", "app3")
+	err := cfg.Validate()
+	if err == nil || err.Error() != "duplicate app name: 'app1'" {
+		t.Errorf("expected duplicate app name error, got: %v", err)
+	}
+}
+
+func intPtr(i int) *int { return &i }
+
+func mockValidConfig(appNames ...string) *Config {
+	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
+	apps := make([]AppConfig, len(appNames))
+	for i, name := range appNames {
+		apps[i] = AppConfig{
+			Name: name,
+			Source: Source{
+				Image: imageSourcePtr,
+			},
+			Domains:         []Domain{{Canonical: "example.com"}},
+			ACMEEmail:       "test@example.com",
+			Replicas:        intPtr(1),
+			HealthCheckPath: "/",
+		}
+	}
+	return &Config{Apps: apps}
+}
