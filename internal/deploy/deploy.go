@@ -78,23 +78,6 @@ func DeployApp(appConfig *config.AppConfig) error {
 
 	ui.Info("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID)
 
-	stoppedIDs, err := docker.StopContainers(dockerOpCtx, dockerClient, appConfig.Name, deploymentID)
-	if err != nil {
-		ui.Warn("Failed to stop old containers: %v\n", err)
-	}
-	removeContainersParams := docker.RemoveContainersParams{
-		Context:             dockerOpCtx, // Use dockerOpCtx
-		DockerClient:        dockerClient,
-		AppName:             appConfig.Name,
-		IgnoreDeploymentID:  deploymentID,
-		MaxContainersToKeep: *appConfig.MaxContainersToKeep,
-	}
-	removedContainers, err := docker.RemoveContainers(removeContainersParams)
-	if err != nil {
-		ui.Warn("Failed to remove old containers: %v\n", err)
-	}
-	ui.Info("Cleanup complete:\nStopped %d container(s)\nRemoved %d old container(s)", len(stoppedIDs), len(removedContainers))
-
 	// Explicitly cancel the primary context *before* waiting.
 	// This signals the log streamer to stop.
 	cancelDeploy()

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -101,6 +102,7 @@ func RunManager(dryRun bool) {
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
+		DockerClient:      dockerClient,
 		DeploymentManager: deploymentManager,
 		CertManager:       certManager,
 		HAProxyManager:    haproxyManager,
@@ -108,8 +110,7 @@ func RunManager(dryRun bool) {
 
 	// Perform initial update
 	updater := NewUpdater(updaterConfig)
-	updateReason := "initial update"
-	if err := updater.Update(ctx, updateReason, logger); err != nil {
+	if err := updater.Update(ctx, logger, TriggerReasonInitial, nil); err != nil {
 		logger.Error("Background update failed", err)
 	}
 
@@ -125,6 +126,8 @@ func RunManager(dryRun bool) {
 
 	// Track the latest deploymentID per appName. This way we use the latest ID for logging.
 	latestDeploymentID := make(map[string]string)
+	latestEventAction := make(map[string]events.Action)
+	latestMaxContainersToKeep := make(map[string]int)
 
 	// Main event loop
 	for {
@@ -139,14 +142,19 @@ func RunManager(dryRun bool) {
 		case e := <-eventsChan:
 			appName := e.Labels.AppName
 			deploymentID := e.Labels.DeploymentID
-			reason := fmt.Sprintf("container %s: %s", e.Event.Action, appName)
 			if deploymentID > latestDeploymentID[appName] {
 				latestDeploymentID[appName] = deploymentID
+				latestEventAction[appName] = e.Event.Action
+				i, err := strconv.Atoi(e.Labels.MaxContainersToKeep)
+				if err != nil {
+					logger.Error(fmt.Sprintf("Failed to parse MaxContainersToKeep for app %s: %v", appName, err))
+					i = config.DefaultMaxContainersToKeep // Fallback to default if parsing fails
+				}
+				latestMaxContainersToKeep[appName] = i
 			}
 
-			fmt.Printf("%s: Manager event for deployment ID: %s\n", appName, e.Labels.DeploymentID)
-
 			updateAction := func() {
+				logger.Info(fmt.Sprintf("Received event for app %s with deployment ID %s, event action: %s", appName, latestDeploymentID[appName], latestEventAction[appName]))
 				// Create a logger for this specific deployment id. This will write a log file for the specific deployment ID.
 				deploymentLogger, err := logging.NewLogger(logger.Level)
 				if err != nil {
@@ -162,7 +170,19 @@ func RunManager(dryRun bool) {
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, UpdateTimeout)
 				defer cancelUpdate()
 				defer deploymentLogger.CloseLog()
-				if err := updater.Update(updateCtx, reason, deploymentLogger); err != nil {
+
+				app := &TriggeredByApp{
+					AppName:             appName,
+					latestDeploymentID:  latestDeploymentID[appName],
+					maxContainersToKeep: latestMaxContainersToKeep[appName],
+					dockerEventAction:   latestEventAction[appName],
+				}
+
+				if err := app.Validate(); err != nil {
+					deploymentLogger.Error("Something went wrong getting app data: ", err)
+					return
+				}
+				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
 					deploymentLogger.Error("Debounced HAProxy configuration update failed", err)
 				}
 			}
@@ -170,10 +190,9 @@ func RunManager(dryRun bool) {
 			debouncer.Debounce(appName, updateAction)
 
 		case domainUpdated := <-certUpdateSignal:
-			reason := fmt.Sprintf("post-certificate update for %s", domainUpdated)
-			logger.Debug(fmt.Sprintf("Received cert update signal: %s", reason))
+			logger.Info(fmt.Sprintf("Received cert update signal for domain: %s", domainUpdated))
 
-			go func(updateReason string) {
+			go func() {
 				// Use a timeout context for this specific task
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, 60*time.Second)
 				defer cancelUpdate()
@@ -183,27 +202,24 @@ func RunManager(dryRun bool) {
 				// We assume the deployment state triggering the cert update is still valid.
 				// Get the current deployment state
 				currentDeployments := u.deploymentManager.Deployments()
-				// Directly apply HAProxy config
 				if err := u.haproxyManager.ApplyConfig(updateCtx, currentDeployments); err != nil {
-					logger.Error(fmt.Sprintf("Background HAProxy update failed for reason: %s", updateReason), err)
+					logger.Error(fmt.Sprintf("Background HAProxy update failed for because cert update for domain: %s", domainUpdated), err)
 				}
-			}(reason)
+			}()
 
 		case err := <-errorsChan:
 			logger.Error("Error from docker events", err)
 		case <-refreshTicker.C:
-			reason := "periodic full refresh"
 			logger.Info("Performing Periodic full refresh")
-
-			go func(updateReason string) {
+			go func() {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
 
 				u := updater // Capture updater
-				if err := u.Update(deploymentCtx, updateReason, logger); err != nil {
+				if err := u.Update(deploymentCtx, logger, TriggerPeriodicRefresh, nil); err != nil {
 					logger.Error("Background update failed", err)
 				}
-			}(reason)
+			}()
 		}
 	}
 }
@@ -213,6 +229,15 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 	// Set up filter for container events
 	filterArgs := filters.NewArgs()
 	filterArgs.Add("type", "container")
+
+	// Define allowed actions for event processing
+	allowedActions := map[string]struct{}{
+		"start":   {},
+		"restart": {},
+		"die":     {},
+		"stop":    {},
+		"kill":    {},
+	}
 
 	// Start listening for events
 	eventOptions := events.ListOptions{
@@ -227,7 +252,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 		case <-ctx.Done():
 			return
 		case event := <-events:
-			if event.Action == "start" || event.Action == "die" || event.Action == "stop" || event.Action == "kill" {
+			if _, ok := allowedActions[string(event.Action)]; ok {
 				container, err := dockerClient.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
 					logger.Error(fmt.Sprintf("Error inspecting container id %s", helpers.SafeIDPrefix(event.Actor.ID)), err)

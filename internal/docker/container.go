@@ -2,10 +2,12 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -29,13 +31,14 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 
 	// Convert AppConfig to ContainerLabels
 	cl := config.ContainerLabels{
-		AppName:         appConfig.Name,
-		DeploymentID:    deploymentID,
-		ACMEEmail:       appConfig.ACMEEmail,
-		Port:            appConfig.Port,
-		HealthCheckPath: appConfig.HealthCheckPath,
-		Domains:         appConfig.Domains,
-		Role:            config.AppLabelRole,
+		AppName:             appConfig.Name,
+		DeploymentID:        deploymentID,
+		ACMEEmail:           appConfig.ACMEEmail,
+		Port:                appConfig.Port,
+		HealthCheckPath:     appConfig.HealthCheckPath,
+		Domains:             appConfig.Domains,
+		Role:                config.AppLabelRole,
+		MaxContainersToKeep: strconv.Itoa(*appConfig.MaxContainersToKeep),
 	}
 	labels := cl.ToLabels()
 
@@ -153,58 +156,65 @@ type RemoveContainersResult struct {
 	DeploymentID string
 }
 
-func RemoveContainers(params RemoveContainersParams) ([]RemoveContainersResult, error) {
+// RemoveContainers attempts to remove old containers for a given app,
+// respecting a retention policy (MaxContainersToKeep) and ignoring a specific deployment.
+// It returns a slice of RemoveContainersResult for successfully removed containers
+// and an error if the listing fails or if any of the removal operations fail.
+func RemoveContainers(params RemoveContainersParams) (successfullyRemoved []RemoveContainersResult, err error) {
 	filter := filters.NewArgs()
 	filter.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, params.AppName))
 
-	containerList, err := params.DockerClient.ContainerList(params.Context, container.ListOptions{
+	containerList, listErr := params.DockerClient.ContainerList(params.Context, container.ListOptions{
 		Filters: filter,
 		All:     true,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", err)
+	if listErr != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", listErr)
 	}
 
-	var containers []RemoveContainersResult
-
-	// Filter out the container with IgnoreDeploymentID
+	var candidates []RemoveContainersResult
 	for _, c := range containerList {
 		deploymentID := c.Labels[config.LabelDeploymentID]
 		if deploymentID == params.IgnoreDeploymentID {
 			continue
 		}
-		containers = append(containers, RemoveContainersResult{
+		candidates = append(candidates, RemoveContainersResult{
 			ID:           c.ID,
 			DeploymentID: deploymentID,
 		})
 	}
 
-	// Sort containers by deploymentID (newest/largest timestamp first)
-	sort.Slice(containers, func(i, j int) bool {
-		return containers[i].DeploymentID > containers[j].DeploymentID
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].DeploymentID > candidates[j].DeploymentID
 	})
 
-	// Skip newest containers according to NumberOfContainersToSkip
-	removedContainers := []RemoveContainersResult{}
-	if params.MaxContainersToKeep == 0 {
-		// Remove all containers except the one with IgnoreDeploymentID
-		removedContainers = containers
-	} else if params.MaxContainersToKeep > 0 && len(containers) > params.MaxContainersToKeep {
-		containersToKeep := containers[:params.MaxContainersToKeep]
-		removedContainers = containers[params.MaxContainersToKeep:]
-
-		_ = containersToKeep // just to avoid linter error
+	var containersToAttemptRemoval []RemoveContainersResult
+	if params.MaxContainersToKeep >= 0 && len(candidates) > params.MaxContainersToKeep {
+		containersToAttemptRemoval = candidates[params.MaxContainersToKeep:]
+	} else if params.MaxContainersToKeep == 0 { // Explicitly handle keep 0 when len(candidates) might also be 0
+		containersToAttemptRemoval = candidates
+	} else {
+		containersToAttemptRemoval = nil // No containers to remove from the candidates list
 	}
 
-	// Remove the remaining containers
-	for _, c := range removedContainers {
-		err := params.DockerClient.ContainerRemove(params.Context, c.ID, container.RemoveOptions{Force: true})
-		if err != nil {
-			ui.Warn("Error removing container %s: %v\n", helpers.SafeIDPrefix(c.ID), err)
+	var removalErrors []error
+	successfullyRemoved = make([]RemoveContainersResult, 0, len(containersToAttemptRemoval))
+
+	for _, c := range containersToAttemptRemoval {
+		errRemove := params.DockerClient.ContainerRemove(params.Context, c.ID, container.RemoveOptions{Force: true})
+		if errRemove != nil {
+			ui.Warn("Error removing container %s (DeploymentID: %s): %v\n", helpers.SafeIDPrefix(c.ID), c.DeploymentID, errRemove)
+			removalErrors = append(removalErrors, fmt.Errorf("failed to remove container %s: %w", c.ID, errRemove))
+		} else {
+			successfullyRemoved = append(successfullyRemoved, c)
 		}
 	}
 
-	return removedContainers, nil
+	if len(removalErrors) > 0 {
+		return successfullyRemoved, errors.Join(removalErrors...)
+	}
+
+	return successfullyRemoved, nil
 }
 
 func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, containerID string, initialWaitTime ...time.Duration) error {

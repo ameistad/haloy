@@ -12,8 +12,8 @@ services:
       - ./haproxy-config:/haproxy-config:rw
       - ./cert-storage:/cert-storage:rw
       - ./logs/:/logs:rw
-      # Enable Docker socket access for the golang docker client
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Enable read-write Docker socket access for the golang docker client.
+      - /var/run/docker.sock:/var/run/docker.sock:rw
     ports:
       # Certificates server
       - "127.0.0.1:8080:8080"

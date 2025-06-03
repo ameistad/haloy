@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -23,6 +24,7 @@ const (
 	// Use fmt.Sprintf(LabelDomainAlias, domainIndex, aliasIndex) to get "haloy.domain.<domainIndex>.alias.<aliasIndex>"
 	LabelDomainAlias = "haloy.domain.%d.alias.%d"
 
+	LabelMaxContainersToKeep = "haloy.max-containers-to-keep"
 	// Used to identify the role of the container (e.g., "haproxy", "manager", etc.)
 	LabelRole = "haloy.role"
 )
@@ -34,13 +36,14 @@ const (
 )
 
 type ContainerLabels struct {
-	AppName         string
-	DeploymentID    string
-	HealthCheckPath string
-	ACMEEmail       string
-	Port            string
-	Domains         []Domain
-	Role            string
+	AppName             string
+	DeploymentID        string
+	HealthCheckPath     string
+	ACMEEmail           string
+	Port                string
+	Domains             []Domain
+	Role                string
+	MaxContainersToKeep string
 }
 
 // Parse from docker labels to ContainerLabels struct.
@@ -103,7 +106,14 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 		cl.Domains = append(cl.Domains, *domainMap[i])
 	}
 
-	// Optional: validate the parsed labels.
+	if v, ok := labels[LabelMaxContainersToKeep]; ok {
+		cl.MaxContainersToKeep = v
+	} else {
+		// If label is not present, set it to the default value as a string
+		cl.MaxContainersToKeep = strconv.Itoa(DefaultMaxContainersToKeep)
+	}
+
+	// Validate the parsed labels.
 	if err := cl.IsValid(); err != nil {
 		return nil, err
 	}
@@ -129,6 +139,11 @@ func (cl *ContainerLabels) ToLabels() map[string]string {
 		LabelPort:            cl.Port,
 		LabelACMEEmail:       cl.ACMEEmail,
 		LabelRole:            cl.Role,
+	}
+
+	// Add MaxContainersToKeep to the label map
+	if cl.MaxContainersToKeep != "" { // Only add if it has a value
+		labels[LabelMaxContainersToKeep] = cl.MaxContainersToKeep
 	}
 
 	// Iterate through the domains slice.

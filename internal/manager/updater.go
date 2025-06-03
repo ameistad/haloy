@@ -3,17 +3,23 @@ package manager
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
+	"github.com/docker/docker/api/types/events"
+	"github.com/docker/docker/client"
 )
 
 type Updater struct {
+	dockerClient      *client.Client
 	deploymentManager *DeploymentManager
 	certManager       *CertificatesManager
 	haproxyManager    *HAProxyManager
 }
 
 type UpdaterConfig struct {
+	DockerClient      *client.Client
 	DeploymentManager *DeploymentManager
 	CertManager       *CertificatesManager
 	HAProxyManager    *HAProxyManager
@@ -21,33 +27,88 @@ type UpdaterConfig struct {
 
 func NewUpdater(config UpdaterConfig) *Updater {
 	return &Updater{
+		dockerClient:      config.DockerClient,
 		deploymentManager: config.DeploymentManager,
 		certManager:       config.CertManager,
 		haproxyManager:    config.HAProxyManager,
 	}
 }
 
-func (u *Updater) Update(ctx context.Context, reason string, logger *logging.Logger) error {
+type TriggeredByApp struct {
+	AppName             string
+	latestDeploymentID  string
+	maxContainersToKeep int
+	dockerEventAction   events.Action // Action that triggered the update (e.g., "start", "stop", etc.)
+}
 
-	logger.Debug(fmt.Sprintf("Updater: Starting update process for reason: %s", reason))
+func (tba *TriggeredByApp) Validate() error {
+	if tba.AppName == "" {
+		return fmt.Errorf("triggered by app: app name cannot be empty")
+	}
+	if tba.latestDeploymentID == "" {
+		return fmt.Errorf("triggered by app: latest deployment ID cannot be empty")
+	}
+	if tba.maxContainersToKeep < 0 {
+		return fmt.Errorf("triggered by app: max containers to keep must be non-negative")
+	}
+	if tba.dockerEventAction == "" {
+		return fmt.Errorf("triggered by app: docker event action cannot be empty")
+	}
+	return nil
+}
+
+type TriggerReason int
+
+const (
+	TriggerReasonInitial    TriggerReason = iota // Initial update at startup
+	TriggerReasonAppUpdated                      // An app container was stopped, killed or removed
+	TriggerPeriodicRefresh                       // Periodic refresh (e.g., every 5 minutes)
+)
+
+func (r TriggerReason) String() string {
+	switch r {
+	case TriggerReasonInitial:
+		return "initial update"
+	case TriggerReasonAppUpdated:
+		return "app updated"
+	case TriggerPeriodicRefresh:
+		return "periodic refresh"
+	default:
+		return "unknown"
+	}
+}
+
+func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason TriggerReason, app *TriggeredByApp) error {
+
+	triggerLog := fmt.Sprintf("Updater: Triggered by %s", reason.String())
+	if app != nil {
+		triggerLog += fmt.Sprintf(" for app: %s (latest deployment ID: %s, action: %s)", app.AppName, app.latestDeploymentID, app.dockerEventAction)
+	} else {
+		triggerLog += " (no specific app)"
+	}
+
+	logger.Info(triggerLog)
 
 	// Build Deployments and check if anything has changed (Thread-safe)
 	deploymentsHasChanged, err := u.deploymentManager.BuildDeployments(ctx)
 	if err != nil {
-		return fmt.Errorf("updater: failed to build deployments (%s): %w", reason, err)
+		return fmt.Errorf("updater: failed to build deployments: %w", err)
 	}
 	if !deploymentsHasChanged {
-		logger.Debug(fmt.Sprintf("Updater: No changes detected in deployments for reason: %s", reason))
+		logger.Debug("Updater: No changes detected in deployments, skipping further processing")
 		return nil // Nothing changed, successful exit
 	}
 
-	if err := u.deploymentManager.HealthCheckNewContainers(); err != nil {
-		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", reason, err)
+	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers()
+	if len(failedContainerIDs) > 0 {
+		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", strings.Join(failedContainerIDs, ", "), err)
 	} else {
-		logger.Info("Health check completed successfully")
+		apps := make([]string, 0, len(checkedDeployments))
+		for _, dep := range checkedDeployments {
+			apps = append(apps, dep.Labels.AppName)
+		}
+		logger.Info(fmt.Sprintf("Health check completed successfully for %s", strings.Join(apps, ", ")))
 	}
-
-	logger.Debug(fmt.Sprintf("Updater: Deployment changes detected for reason: %s. Triggering cert and HAProxy updates.", reason))
 
 	// Get domains AFTER checking HasChanged to reflect the latest state
 	certDomains := u.deploymentManager.GetCertificateDomains()
@@ -59,9 +120,29 @@ func (u *Updater) Update(ctx context.Context, reason string, logger *logging.Log
 
 	// Delegate the entire HAProxy update process (lock, generate, write, signal)
 	if err := u.haproxyManager.ApplyConfig(ctx, deployments); err != nil {
-		return fmt.Errorf("failed to apply HAProxy config (%s): %w", reason, err)
+		return fmt.Errorf("failed to apply HAProxy config for app: %w", err)
 	} else {
 		logger.Info("HAProxy configuration updated successfully")
+	}
+
+	// If an app is provided, stop and remove old containers
+	if app != nil {
+		stoppedIDs, err := docker.StopContainers(ctx, u.dockerClient, app.AppName, app.latestDeploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to stop old containers: %w", err)
+		}
+		removeContainersParams := docker.RemoveContainersParams{
+			Context:             ctx,
+			DockerClient:        u.dockerClient,
+			AppName:             app.AppName,
+			IgnoreDeploymentID:  app.latestDeploymentID,
+			MaxContainersToKeep: app.maxContainersToKeep,
+		}
+		removedContainers, err := docker.RemoveContainers(removeContainersParams)
+		if err != nil {
+			return fmt.Errorf("failed to remove old containers: %w", err)
+		}
+		logger.Info(fmt.Sprintf("Stopped %d container(s) and removed %d old container(s)", len(stoppedIDs), len(removedContainers)))
 	}
 	return nil
 }

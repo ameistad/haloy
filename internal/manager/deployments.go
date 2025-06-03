@@ -125,25 +125,23 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error)
 	return hasChanged, nil
 }
 
-func (dm *DeploymentManager) HealthCheckNewContainers() error {
-	deploymentsToCheck := []Deployment{}
-
+func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, failedContainerIDs []string) {
 	for _, deployment := range dm.compareResult.AddedDeployments {
-		deploymentsToCheck = append(deploymentsToCheck, deployment)
+		checked = append(checked, deployment)
 	}
 
 	for _, deployment := range dm.compareResult.UpdatedDeployments {
-		deploymentsToCheck = append(deploymentsToCheck, deployment)
+		checked = append(checked, deployment)
 	}
 
-	for _, deployment := range deploymentsToCheck {
+	for _, deployment := range checked {
 		for _, instance := range deployment.Instances {
 			if err := docker.HealthCheckContainer(dm.Context, dm.DockerClient, instance.ContainerID); err != nil {
-				return fmt.Errorf("health check failed for container %s: %w", instance.ContainerID, err)
+				failedContainerIDs = append(failedContainerIDs, instance.ContainerID)
 			}
 		}
 	}
-	return nil
+	return checked, failedContainerIDs
 }
 
 func (dm *DeploymentManager) Deployments() map[string]Deployment {
