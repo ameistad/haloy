@@ -126,10 +126,10 @@ jobs:
         with:
           files: |
             dist/haloy-linux-amd64
-            # dist/haloy-linux-arm64
-            # dist/haloy-darwin-amd64
-            # dist/haloy-darwin-arm64
-            # dist/haloy-windows-amd64.exe
+            dist/haloy-linux-arm64
+            dist/haloy-darwin-amd64
+            dist/haloy-darwin-arm64
+            dist/haloy-windows-amd64.exe
             dist/checksums.txt
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
