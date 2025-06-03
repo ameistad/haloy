@@ -3,7 +3,20 @@ Haloy is a simple tool for managing Dockerized applications with zero downtime d
 
 ## Installation
 
-Download the latest release from [GitHub Releases](https://github.com/ameistad/haloy/releases).
+You can install Haloy with a single command using the official installer script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
+```
+
+By default, this will install `haloy` to `~/.local/bin` (you can override the install directory by setting the `DIR` environment variable).
+
+Make sure `~/.local/bin` is in your `PATH`:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Alternatively, you can manually download the latest release from [GitHub Releases](https://github.com/ameistad/haloy/releases):
 
 ```bash
 # Linux (AMD64)
