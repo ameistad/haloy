@@ -311,8 +311,6 @@ Haloy uses GitHub Actions for automated builds and releases.
 
 ### Manual Release Process
 
-If you need to build releases manually:
-
 1. Build the CLI for multiple platforms:
    ```bash
    # Linux (AMD64)
