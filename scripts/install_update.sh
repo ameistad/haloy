@@ -37,7 +37,13 @@ GITHUB_URL="https://github.com/ameistad/haloy/releases/download/${GITHUB_LATEST_
 echo "Downloading $BINARY_NAME ($GITHUB_LATEST_VERSION)..."
 curl -L -o haloy "$GITHUB_URL"
 chmod +x haloy
+# Ensure DIR is a directory, not a file path
+if [ -e "$DIR" ] && [ ! -d "$DIR" ]; then
+    echo "Error: DIR ($DIR) exists and is not a directory."
+    exit 1
+fi
 mkdir -p "$DIR"
+
 install -m 755 haloy "$DIR/haloy"
 rm haloy
 
