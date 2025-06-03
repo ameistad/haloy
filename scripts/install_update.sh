@@ -37,7 +37,8 @@ GITHUB_URL="https://github.com/ameistad/haloy/releases/download/${GITHUB_LATEST_
 echo "Downloading $BINARY_NAME ($GITHUB_LATEST_VERSION)..."
 curl -L -o haloy "$GITHUB_URL"
 chmod +x haloy
-install -Dm 755 haloy "$DIR/haloy"
+mkdir -p "$DIR"
+install -m 755 haloy "$DIR/haloy"
 rm haloy
 
 echo "Haloy installed to $DIR/haloy"
