@@ -1,12 +1,24 @@
 # Haloy
-Haloy is a simple tool for managing Dockerized applications with zero downtime deployments on your own infrastructure.
+Haloy simplifies deploying Dockerized apps on your infrastructure, offering zero-downtime deployments, automatic domain/TLS management (Let's Encrypt), and integrated reverse proxy capabilities, all managed through a Docker-centric CLI and YAML workflow.
+
+## ✨ Features
+* 🚀 **Zero-Downtime Deployments:** Gracefully updates applications ensuring continuous availability.
+* 🐳 **Docker-Based:** Leverages Docker for consistent environments and deployments.
+* 🔄 **Dynamic HAProxy Load Balancing:** Automatically configures HAProxy to route traffic to your applications.
+* 🔒 **Automated SSL/TLS:** Integrates with Let's Encrypt (ACME) for hassle-free HTTPS.
+* ⚙️ **Simple YAML Configuration:** Define your applications and their deployment settings in an easy-to-understand `apps.yml` file.
+* 🤫 **Secure Secrets Management:** Built-in support for encrypting and managing sensitive data like API keys using age encryption.
+* 🔎 **Service Discovery:** Automatically discovers and manages application containers via Docker labels.
+* 롤백 **Easy Rollbacks:** Quickly revert to previous deployment versions if needed.
+* 💻 **User-Friendly CLI:** Provides a straightforward command-line interface for all operations.
+* 📊 **Status Monitoring:** Easily check the status of your deployed applications.
 
 ## Installation
 
-You can install (and update) Haloy with a single command:
+You can install and update Haloy with this command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install_update.sh | bash
+curl https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install_update.sh | bash
 ```
 
 By default, this will install `haloy` to `~/.local/bin` (you can override the install directory by setting the `DIR` environment variable).
@@ -41,6 +53,8 @@ Before we begin, make sure you have:
     - Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
     - Test it: `docker ps` (should work without sudo).
 
+> ⚠️ **Note:** Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
+
 ### Initialize Haloy 🚀
 
 ```bash
@@ -48,6 +62,7 @@ haloy init
 ```
 
 If you want to quickly test Haloy and see how it works you can set initialize it with a test app that's just a basic nginx docker container serving static html.
+
 ```bash
 haloy init --with-test-app
 ```
@@ -58,7 +73,7 @@ This command will:
 - Prompt you for an email address for TLS certificate registration (for the test-app).
 - Start the Haloy manager and HAProxy services.
 
-### DNS Setup: Pointing Your Domain to Your Server 🗺️
+### DNS Setup 🗺️ 
 For TLS (HTTPS) to work, you need to set up DNS records.
 
 1. Find Your Server's IP Address: This is the public IP address of your VPS or server where Haloy is running.

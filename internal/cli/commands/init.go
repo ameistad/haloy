@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 
@@ -75,6 +76,17 @@ func InitCmd() *cobra.Command {
 
 			dockerClient, err := docker.NewClient(ctx)
 			if err != nil {
+				if os.IsPermission(err) ||
+					strings.Contains(err.Error(), "permission denied") ||
+					strings.Contains(err.Error(), "connect: permission denied") ||
+					strings.Contains(err.Error(), "Got permission denied while trying to connect to the Docker daemon socket") {
+					ui.Error("%v", err)
+					ui.Warn("It looks like your user does not have permission to access the Docker daemon socket.")
+					ui.Warn("You may need to add your user to the 'docker' group and restart your session:")
+					ui.Warn("  sudo usermod -aG docker $(whoami)")
+					ui.Warn("  # Then log out and log back in, or run: newgrp docker")
+					return
+				}
 				ui.Error("%v", err)
 				return
 			}
