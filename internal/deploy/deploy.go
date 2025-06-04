@@ -20,9 +20,6 @@ const (
 )
 
 func DeployApp(appConfig *config.AppConfig) error {
-
-	// printerDeployStatus, _ := pterm.DefaultSpinner.Start("Starting deployment...")
-
 	// Create the primary context for the whole deployment + log streaming
 	deployCtx, cancelDeploy := context.WithCancel(context.Background())
 	// Ensure cancelDeploy is called eventually to stop the streamer and release resources
@@ -96,14 +93,14 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 
 		ui.Info("Source is Dockerfile, building image '%s'...", imageName)
 		// Not using the dockerClient here, but passing it to the BuildImageCLIParams
-		buildImageParams := docker.BuildImageCLIParams{
+		buildImageParams := docker.BuildImageParams{
 			Context: ctx,
 			// DockerClient: dockerClient,
 			ImageName: imageName,
 			Source:    appConfig.Source.Dockerfile,
 			EnvVars:   appConfig.Env,
 		}
-		if err := docker.BuildImageCLI(buildImageParams); err != nil {
+		if err := docker.BuildImage(buildImageParams); err != nil {
 			// Distinguish between timeout and cancellation
 			if errors.Is(err, context.DeadlineExceeded) {
 				return "", fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultDeployTimeout, err)
@@ -121,14 +118,10 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		return imageName, nil
 
 	case appConfig.Source.Image != nil:
-		// Source is a pre-existing image.
-		imgSource := appConfig.Source.Image
-		imageName := imgSource.Repository
-		tag := imgSource.Tag
-		if tag == "" {
-			tag = "latest" // Default to latest tag if not specified
+		imageName, err := docker.EnsureImageUpToDate(ctx, dockerClient, appConfig.Source.Image)
+		if err != nil {
+			return imageName, err
 		}
-		imageName = imageName + ":" + tag
 		return imageName, nil
 
 	default:

@@ -54,29 +54,41 @@ func SecretsInitCommand() *cobra.Command {
 // SecretsSetCommand encrypts a plain-text value and stores it under the provided key.
 func SecretsSetCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "set <key> <value>",
-		Short: "Encrypt a plain-text value and store it under <key>",
-		Args:  cobra.MinimumNArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Use:     "set <key> <value>",
+		Short:   "Encrypt a plain-text value and store it under <key>",
+		Example: "  haloy secrets set MY_SECRET supersecretvalue\n  haloy secrets set DB_PASSWORD 'p@ssw0rd!'",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				ui.Error("Error: You must provide a <key> and a <value> to store a secret.\n")
+				ui.Info("%s", cmd.UsageString())
+				return fmt.Errorf("requires at least 2 arg(s), only received %d", len(args))
+			}
+			return nil
+		},
+		Run: func(cmd *cobra.Command, args []string) {
 			key := args[0]
 			value := strings.Join(args[1:], " ")
 
 			recipient, err := config.GetAgeRecipient()
 			if err != nil {
-				return err
+				ui.Error("Failed to get age recipient: %v", err)
+				return
 			}
 
 			// Encrypt the value.
 			var rawBuffer bytes.Buffer
 			encryptWriter, err := age.Encrypt(&rawBuffer, recipient)
 			if err != nil {
-				return fmt.Errorf("failed to initialize encryption: %w", err)
+				ui.Error("Failed to initialize encryption: %v", err)
+				return
 			}
 			if _, err = io.WriteString(encryptWriter, value); err != nil {
-				return fmt.Errorf("failed to write plain-text to encryption writer: %w", err)
+				ui.Error("Failed to write plain-text to encryption writer: %v", err)
+				return
 			}
 			if err := encryptWriter.Close(); err != nil {
-				return fmt.Errorf("failed to close encryption writer: %w", err)
+				ui.Error("Failed to close encryption writer: %v", err)
+				return
 			}
 			fullEncrypted := base64.StdEncoding.EncodeToString(rawBuffer.Bytes())
 
@@ -87,14 +99,15 @@ func SecretsSetCommand() *cobra.Command {
 
 			secretRecords, err := config.LoadSecrets()
 			if err != nil {
-				return err
+				ui.Error("Failed to load secrets: %v", err)
+				return
 			}
 			secretRecords[key] = newSecretRecord
 			if err := config.SaveSecrets(secretRecords); err != nil {
-				return err
+				ui.Error("Failed to save secret: %v", err)
+				return
 			}
-			fmt.Printf("Secret stored with key: %s\n", key)
-			return nil
+			ui.Success("Secret stored successfully under key: %s", key)
 		},
 	}
 	return cmd

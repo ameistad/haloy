@@ -184,6 +184,8 @@ func RunManager(dryRun bool) {
 				}
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
 					deploymentLogger.Error("Debounced HAProxy configuration update failed", err)
+				} else {
+					deploymentLogger.Info(fmt.Sprintf("🎉 Successfully deployed %s with deployment ID %s", appName, latestDeploymentID[appName]))
 				}
 			}
 
