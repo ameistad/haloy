@@ -6,12 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
+
+	"github.com/ameistad/haloy/internal/ui"
 )
 
 type Logger struct {
 	writer io.Writer
 	Level  LogLevel
 	mutex  sync.Mutex
+	isCLI  bool // isCLI indicates if the logger is used in a CLI context and should use ui library.
 }
 
 type LogLevel int
@@ -24,23 +28,31 @@ const (
 	FATAL
 )
 
-func NewLogger(level LogLevel) (*Logger, error) {
+func NewLogger(level LogLevel, isCLI bool) (*Logger, error) {
 	writer := os.Stdout
-	return &Logger{writer: writer, Level: level}, nil
+	return &Logger{writer: writer, Level: level, isCLI: isCLI}, nil
 }
 
 func (l *Logger) Debug(msg string) {
 	if l.Level <= DEBUG {
-		l.mutex.Lock()
-		defer l.mutex.Unlock()
-		fmt.Fprintf(l.writer, "[DEBUG] %s\n", msg)
+		if l.isCLI {
+			ui.Debug("%s", msg)
+		} else {
+			l.mutex.Lock()
+			defer l.mutex.Unlock()
+			fmt.Fprintf(l.writer, "[DEBUG] %s\n", msg)
+		}
 	}
 }
 func (l *Logger) Info(msg string) {
 	if l.Level <= INFO {
-		l.mutex.Lock()
-		defer l.mutex.Unlock()
-		fmt.Fprintf(l.writer, "[INFO] %s\n", msg)
+		if l.isCLI {
+			ui.Info("%s", msg)
+		} else {
+			l.mutex.Lock()
+			defer l.mutex.Unlock()
+			fmt.Fprintf(l.writer, "[INFO] %s\n", msg)
+		}
 	}
 }
 func (l *Logger) Warn(msg string, err ...error) {
@@ -101,6 +113,27 @@ func (l *Logger) CloseLog() error {
 		fmt.Fprintln(l.writer, "[LOG END]")
 		if f, ok := l.writer.(*os.File); ok {
 			return f.Close()
+		}
+	}
+	return nil
+}
+
+func CleanOldLogs(logsPath string, maxAgeDays int) error {
+	files, err := os.ReadDir(logsPath)
+	if err != nil {
+		return err
+	}
+	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			os.Remove(filepath.Join(logsPath, file.Name()))
 		}
 	}
 	return nil

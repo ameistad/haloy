@@ -79,16 +79,6 @@ func (r TriggerReason) String() string {
 }
 
 func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason TriggerReason, app *TriggeredByApp) error {
-
-	triggerLog := fmt.Sprintf("Updater: Triggered by %s", reason.String())
-	if app != nil {
-		triggerLog += fmt.Sprintf(" for app: %s (latest deployment ID: %s, action: %s)", app.AppName, app.latestDeploymentID, app.dockerEventAction)
-	} else {
-		triggerLog += " (no specific app)"
-	}
-
-	logger.Info(triggerLog)
-
 	// Build Deployments and check if anything has changed (Thread-safe)
 	deploymentsHasChanged, err := u.deploymentManager.BuildDeployments(ctx)
 	if err != nil {
@@ -96,7 +86,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 	}
 	if !deploymentsHasChanged {
 		logger.Debug("Updater: No changes detected in deployments, skipping further processing")
-		return nil // Nothing changed, successful exit
+		return nil
 	}
 
 	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers()
@@ -107,7 +97,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 		for _, dep := range checkedDeployments {
 			apps = append(apps, dep.Labels.AppName)
 		}
-		logger.Info(fmt.Sprintf("Health check completed successfully for %s", strings.Join(apps, ", ")))
+		logger.Info(fmt.Sprintf("Health check completed for %s", strings.Join(apps, ", ")))
 	}
 
 	// Get domains AFTER checking HasChanged to reflect the latest state
@@ -143,6 +133,8 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}
 		logger.Info(fmt.Sprintf("Stopped %d container(s) and removed %d old container(s)", len(stoppedIDs), len(removedContainers)))
+		logger.Info(fmt.Sprintf("🎉 Successfully deployed %s with deployment ID %s", app.AppName, app.latestDeploymentID))
 	}
+
 	return nil
 }

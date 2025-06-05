@@ -136,7 +136,7 @@ func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, f
 
 	for _, deployment := range checked {
 		for _, instance := range deployment.Instances {
-			if err := docker.HealthCheckContainer(dm.Context, dm.DockerClient, instance.ContainerID); err != nil {
+			if err := docker.HealthCheckContainer(dm.Context, dm.DockerClient, dm.logger, instance.ContainerID); err != nil {
 				failedContainerIDs = append(failedContainerIDs, instance.ContainerID)
 			}
 		}

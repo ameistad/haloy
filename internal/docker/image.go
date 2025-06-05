@@ -11,6 +11,7 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 )
@@ -125,7 +126,17 @@ func BuildImage(params BuildImageParams) error {
 		return fmt.Errorf("failed to execute docker build command: %w. Output: %s", err, string(output))
 	}
 
-	ui.Success("Docker build completed successfully for '%s'.", params.ImageName)
-
 	return nil
+}
+
+// PruneImages removes dangling (unused) Docker images and returns the amount of space reclaimed.
+func PruneImages(ctx context.Context, dockerClient *client.Client) (uint64, error) {
+	report, err := dockerClient.ImagesPrune(ctx, filters.Args{})
+	if err != nil {
+		return 0, fmt.Errorf("failed to prune images: %w", err)
+	}
+	if len(report.ImagesDeleted) > 0 {
+		ui.Info("Pruned %d images, reclaimed %d bytes", len(report.ImagesDeleted), report.SpaceReclaimed)
+	}
+	return report.SpaceReclaimed, nil
 }

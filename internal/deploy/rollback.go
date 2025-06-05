@@ -9,6 +9,7 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -35,6 +36,11 @@ func RollbackApp(appConfig *config.AppConfig, targetDeploymentID string) error {
 
 	targetDeployment := deployments.oldDeployments[0]
 
+	logger, err := logging.NewLogger(logging.INFO, true)
+	if err != nil {
+		return fmt.Errorf("failed to create logger: %w", err)
+	}
+
 	// If a target deployment ID is provided, find the corresponding deployment
 	if targetDeploymentID != "" {
 		found := false
@@ -54,14 +60,14 @@ func RollbackApp(appConfig *config.AppConfig, targetDeploymentID string) error {
 		return fmt.Errorf("target deployment %s is already the current deployment", targetDeployment.ID)
 	}
 
-	if err := RollbackToDeployment(ctx, dockerClient, appConfig.Name, deployments.currentDeployment, targetDeployment); err != nil {
+	if err := RollbackToDeployment(ctx, dockerClient, logger, appConfig.Name, deployments.currentDeployment, targetDeployment); err != nil {
 		return fmt.Errorf("failed to rollback to deployment %s: %w", targetDeployment.ID, err)
 	}
 
 	return nil
 }
 
-func RollbackToDeployment(ctx context.Context, dockerClient *client.Client, appName string, currentDeployment, targetDeployment deploymentInfo) error {
+func RollbackToDeployment(ctx context.Context, dockerClient *client.Client, logger *logging.Logger, appName string, currentDeployment, targetDeployment deploymentInfo) error {
 	// Track which containers we've started so we can clean them up on failure
 	startError := false
 	healthCheckError := false
@@ -80,7 +86,7 @@ func RollbackToDeployment(ctx context.Context, dockerClient *client.Client, appN
 			ui.Info("Checking health of target container %s...", helpers.SafeIDPrefix(targetContainerID))
 			// Give the container some time to start
 			healtCheckDelay := 3 * time.Second
-			if err := docker.HealthCheckContainer(ctx, dockerClient, targetContainerID, healtCheckDelay); err != nil {
+			if err := docker.HealthCheckContainer(ctx, dockerClient, logger, targetContainerID, healtCheckDelay); err != nil {
 				healthCheckError = true
 				ui.Error("target container %s is not healthy: %v", helpers.SafeIDPrefix(targetContainerID), err)
 				break

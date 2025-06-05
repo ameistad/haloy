@@ -239,11 +239,12 @@ func (m *CertificatesManager) AddDomains(managedDomains []CertificatesDomain, lo
 			sort.Strings(existing.Aliases)
 			sort.Strings(md.Aliases)
 			if existing.Email != md.Email || !reflect.DeepEqual(existing.Aliases, md.Aliases) {
-				logger.Debug(fmt.Sprintf("Updating managed domain for (Email or Aliases changd) %s", md.Canonical))
+				logger.Info(fmt.Sprintf("Updating managed domain for (Email or Aliases changd) %s", md.Canonical))
 				m.domains[md.Canonical] = md // Update entry
 				updated++
+			} else {
+				logger.Info(fmt.Sprintf("No change for domain %s, skipping update", md.Canonical))
 			}
-			// If no change, do nothing
 		}
 	}
 
@@ -251,7 +252,7 @@ func (m *CertificatesManager) AddDomains(managedDomains []CertificatesDomain, lo
 	for domain := range m.domains {
 		if _, ok := currentManaged[domain]; !ok {
 			delete(m.domains, domain)
-			logger.Debug(fmt.Sprintf("%s is no longer managed, removing", domain))
+			logger.Info(fmt.Sprintf("%s is no longer managed, removing", domain))
 			removed++
 		}
 	}
@@ -380,7 +381,7 @@ func (m *CertificatesManager) checkRenewals(logger *logging.Logger) {
 					}
 				}
 			}
-		} // end if !needsObtain (checking existing cert)
+		}
 
 		// Trigger obtain if file doesn't exist OR expiry nearing OR SAN list mismatch
 		if needsObtain || needsRenewalDueToExpiry || sanMismatch {

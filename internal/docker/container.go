@@ -12,6 +12,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -112,11 +113,11 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 
 func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) ([]string, error) {
 	stoppedIDs := []string{}
-	filter := filters.NewArgs()
-	filter.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
 
 	containerList, err := dockerClient.ContainerList(ctx, container.ListOptions{
-		Filters: filter,
+		Filters: filterArgs,
 		All:     false, // Only running containers
 	})
 
@@ -161,11 +162,11 @@ type RemoveContainersResult struct {
 // It returns a slice of RemoveContainersResult for successfully removed containers
 // and an error if the listing fails or if any of the removal operations fail.
 func RemoveContainers(params RemoveContainersParams) (successfullyRemoved []RemoveContainersResult, err error) {
-	filter := filters.NewArgs()
-	filter.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, params.AppName))
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, params.AppName))
 
 	containerList, listErr := params.DockerClient.ContainerList(params.Context, container.ListOptions{
-		Filters: filter,
+		Filters: filterArgs,
 		All:     true,
 	})
 	if listErr != nil {
@@ -217,7 +218,7 @@ func RemoveContainers(params RemoveContainersParams) (successfullyRemoved []Remo
 	return successfullyRemoved, nil
 }
 
-func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, containerID string, initialWaitTime ...time.Duration) error {
+func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logger *logging.Logger, containerID string, initialWaitTime ...time.Duration) error {
 	// Check if container is running - wait up to 30 seconds for it to start
 	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -226,7 +227,6 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 	var err error
 
 	// Wait for container to be running
-	ui.Info("Waiting for container %s to be running...", helpers.SafeIDPrefix(containerID))
 	for {
 		containerInfo, err = dockerClient.ContainerInspect(startCtx, containerID)
 		if err != nil {
@@ -246,7 +246,6 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 
 	if len(initialWaitTime) > 0 && initialWaitTime[0] > 0 {
 		waitTime := initialWaitTime[0]
-		ui.Info("Waiting %v for container to initialize...", waitTime)
 
 		waitTimer := time.NewTimer(waitTime)
 		select {
@@ -258,25 +257,16 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 
 	// Check if container has built-in Docker healthcheck
 	if containerInfo.State.Health != nil {
-		ui.Info("Container has built-in health check, status: %s", containerInfo.State.Health.Status)
 
 		// If container has healthcheck and it's healthy, we can skip our manual check
 		if containerInfo.State.Health.Status == "healthy" {
-			ui.Success("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID))
 			return nil
 		}
-	}
-
-	// Check if container has built-in Docker healthcheck
-	if containerInfo.State.Health != nil {
-		ui.Info("Container has built-in health check, status: %s", containerInfo.State.Health.Status)
 
 		// Wait for Docker healthcheck to transition from starting state
 		if containerInfo.State.Health.Status == "starting" {
 			healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-
-			ui.Info("Waiting for built-in health check to complete...")
 			for {
 				containerInfo, err = dockerClient.ContainerInspect(healthCtx, containerID)
 				if err != nil {
@@ -298,7 +288,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 
 		// If container has healthcheck and it's healthy, we can skip our manual check
 		if containerInfo.State.Health.Status == "healthy" {
-			ui.Success("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID))
+			logger.Debug(fmt.Sprintf("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID)))
 			return nil
 		} else if containerInfo.State.Health.Status == "unhealthy" {
 			// Log health check failure details if available
@@ -343,7 +333,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 	// Use traditional for loop for clarity
 	for retry := 0; retry < maxRetries; retry++ {
 		if retry > 0 {
-			ui.Info("Retrying health check in %v... (attempt %d/%d)\n", backoff, retry+1, maxRetries)
+			logger.Info(fmt.Sprintf("Retrying health check in %v... (attempt %d/%d)\n", backoff, retry+1, maxRetries))
 			time.Sleep(backoff)
 			backoff *= 2 // Exponential backoff
 		}
@@ -355,19 +345,32 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, cont
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			ui.Warn("Health check attempt failed: %v", err)
+			logger.Warn("Health check attempt failed", err)
 			continue
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			ui.Success("Health check passed for container %s\n", helpers.SafeIDPrefix(containerID))
 			return nil
 		}
 
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		ui.Warn("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes))
+		logger.Warn(fmt.Sprintf("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes)))
 	}
 
 	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)
+}
+
+// PruneContainers removes stopped containers and returns the number of containers deleted and bytes reclaimed.
+func PruneContainers(ctx context.Context, dockerClient *client.Client) (int, uint64, error) {
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
+	report, err := dockerClient.ContainersPrune(ctx, filterArgs)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to prune containers: %w", err)
+	}
+	if len(report.ContainersDeleted) > 0 {
+		ui.Info("Pruned %d containers, reclaimed %d bytes", len(report.ContainersDeleted), report.SpaceReclaimed)
+	}
+	return len(report.ContainersDeleted), report.SpaceReclaimed, nil
 }

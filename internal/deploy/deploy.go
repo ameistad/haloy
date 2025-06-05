@@ -90,8 +90,6 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 	case appConfig.Source.Dockerfile != nil:
 		// Source is a Dockerfile. The image name is derived from the app name.
 		imageName := appConfig.Name + ":latest" // Convention for locally built images
-
-		ui.Info("Source is Dockerfile, building image '%s'...", imageName)
 		// Not using the dockerClient here, but passing it to the BuildImageCLIParams
 		buildImageParams := docker.BuildImageParams{
 			Context: ctx,
@@ -115,6 +113,7 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 			return "", fmt.Errorf("failed to build image: %w", err)
 		}
 
+		ui.Info("Built image %s successfully", imageName)
 		return imageName, nil
 
 	case appConfig.Source.Image != nil:
@@ -122,6 +121,7 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		if err != nil {
 			return imageName, err
 		}
+		ui.Info("Using pre-built image %s for app '%s'", imageName, appConfig.Name)
 		return imageName, nil
 
 	default:

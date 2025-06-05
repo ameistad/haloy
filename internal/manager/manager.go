@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/version"
@@ -22,13 +23,13 @@ import (
 )
 
 const (
-	RefreshInterval    = 30 * time.Minute
-	HAProxyConfigPath  = "/haproxy-config"
-	CertificatesPath   = "/cert-storage"
-	LogsPath           = "/logs"
-	HTTPProviderPort   = "8080"
-	EventDebounceDelay = 1 * time.Second // Delay for debouncing container events
-	UpdateTimeout      = 2 * time.Minute // Max time for a single update operation
+	MaintenanceInterval = 30 * time.Minute
+	HAProxyConfigPath   = "/haproxy-config"
+	CertificatesPath    = "/cert-storage"
+	LogsPath            = "/logs"
+	HTTPProviderPort    = "8080"
+	EventDebounceDelay  = 3 * time.Second // Delay for debouncing container events
+	UpdateTimeout       = 2 * time.Minute // Max time for a single update operation
 )
 
 type ContainerEvent struct {
@@ -46,7 +47,7 @@ func RunManager(dryRun bool) {
 	if dryRun {
 		logLevel = logging.DEBUG
 	}
-	logger, err := logging.NewLogger(logLevel)
+	logger, err := logging.NewLogger(logLevel, false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v", err)
 	}
@@ -120,11 +121,11 @@ func RunManager(dryRun bool) {
 	// Start Docker event listener
 	go listenForDockerEvents(ctx, dockerClient, eventsChan, errorsChan, logger)
 
-	// Start periodic full refresh
-	refreshTicker := time.NewTicker(RefreshInterval)
-	defer refreshTicker.Stop()
+	// Start periodic maintenance ticker
+	maintenanceTicker := time.NewTicker(MaintenanceInterval)
+	defer maintenanceTicker.Stop()
 
-	// Track the latest deploymentID per appName. This way we use the latest ID for logging.
+	// Track the latest deployment ID, event action, and max containers to keep for each app so we use the latest event when we debounce.
 	latestDeploymentID := make(map[string]string)
 	latestEventAction := make(map[string]events.Action)
 	latestMaxContainersToKeep := make(map[string]int)
@@ -139,6 +140,7 @@ func RunManager(dryRun bool) {
 			}
 			cancel()
 			return
+		// Handle Docker events
 		case e := <-eventsChan:
 			appName := e.Labels.AppName
 			deploymentID := e.Labels.DeploymentID
@@ -156,7 +158,7 @@ func RunManager(dryRun bool) {
 			updateAction := func() {
 				logger.Info(fmt.Sprintf("Received event for app %s with deployment ID %s, event action: %s", appName, latestDeploymentID[appName], latestEventAction[appName]))
 				// Create a logger for this specific deployment id. This will write a log file for the specific deployment ID.
-				deploymentLogger, err := logging.NewLogger(logger.Level)
+				deploymentLogger, err := logging.NewLogger(logger.Level, false)
 				if err != nil {
 					logger.Error("Failed to create logger for deployment update", err)
 					return
@@ -184,8 +186,6 @@ func RunManager(dryRun bool) {
 				}
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
 					deploymentLogger.Error("Debounced HAProxy configuration update failed", err)
-				} else {
-					deploymentLogger.Info(fmt.Sprintf("🎉 Successfully deployed %s with deployment ID %s", appName, latestDeploymentID[appName]))
 				}
 			}
 
@@ -199,8 +199,8 @@ func RunManager(dryRun bool) {
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, 60*time.Second)
 				defer cancelUpdate()
 
-				u := updater // Capture updater
-				// Important: Update only needs to apply config, not full build/check
+				u := updater
+				// Update only needs to apply config, not full build/check
 				// We assume the deployment state triggering the cert update is still valid.
 				// Get the current deployment state
 				currentDeployments := u.deploymentManager.Deployments()
@@ -211,8 +211,22 @@ func RunManager(dryRun bool) {
 
 		case err := <-errorsChan:
 			logger.Error("Error from docker events", err)
-		case <-refreshTicker.C:
-			logger.Info("Performing Periodic full refresh")
+		case <-maintenanceTicker.C:
+			logger.Info("Performing periodic maintenance...")
+			// Clean up old logs (e.g., older than 30 days)
+			if err := logging.CleanOldLogs(LogsPath, 30); err != nil {
+				logger.Warn(fmt.Sprintf("Failed to clean old logs: %v", err))
+			}
+
+			// Prune dangling images and containers
+			_, err := docker.PruneImages(ctx, dockerClient)
+			if err != nil {
+				logger.Warn(fmt.Sprintf("Failed to prune images: %v", err))
+			}
+			_, _, err = docker.PruneContainers(ctx, dockerClient)
+			if err != nil {
+				logger.Warn(fmt.Sprintf("Failed to prune containers: %v", err))
+			}
 			go func() {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
@@ -265,6 +279,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 				// We'll only process events for containers that have been marked with haloy labels.
 				if eligible {
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
+					fmt.Printf("Container is eligible for haloy management:\n event:  %s \n  container id: %s \n deployment id: %s", string(event.Action), helpers.SafeIDPrefix(event.Actor.ID), labels.DeploymentID)
 					if err != nil {
 						logger.Error("Error parsing container labels", err)
 						return
@@ -277,7 +292,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 					}
 					eventsChan <- containerEvent
 				} else {
-					logger.Info(fmt.Sprintf("Container %s is not eligible for haloy management", helpers.SafeIDPrefix(event.Actor.ID)))
+					logger.Debug(fmt.Sprintf("Container %s is not eligible for haloy management", helpers.SafeIDPrefix(event.Actor.ID)))
 				}
 			}
 		case err := <-errs:
