@@ -2,17 +2,20 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/pterm/pterm"
 )
 
 // Colors
 var (
-	White     = lipgloss.Color("#FAFAFA")
+	White     = lipgloss.Color("#fafafa")
 	Gray      = lipgloss.Color("245")
+	Green     = lipgloss.Color("#4ade80")
 	LightGray = lipgloss.Color("241")
+	Red       = lipgloss.Color("#f87171")
+	Yellow    = lipgloss.Color("#fef08a")
 )
 
 // Styles
@@ -20,27 +23,25 @@ var titleStyle = lipgloss.NewStyle().
 	Bold(true).
 	Foreground(White)
 
+var baseStyle = lipgloss.NewStyle()
+
 func Success(format string, a ...any) {
-	pterm.Success.Println(fmt.Sprintf(format, a...))
+	printStyledLines(baseStyle.Foreground(Green).Bold(true), format, a...)
 }
 func Info(format string, a ...any) {
-	pterm.Info.Println(fmt.Sprintf(format, a...))
+	printStyledLines(baseStyle.Foreground(White), format, a...)
 }
 
 func Debug(format string, a ...any) {
-	pterm.Debug.Println(fmt.Sprintf(format, a...))
+	printStyledLines(baseStyle.Foreground(LightGray), format, a...)
 }
 
 func Warn(format string, a ...any) {
-	pterm.Warning.Println(fmt.Sprintf(format, a...))
+	printStyledLines(baseStyle.Foreground(Yellow), format, a...)
 }
 
 func Error(format string, a ...any) {
-	pterm.Error.Println(fmt.Sprintf(format, a...))
-}
-
-func BoldText(format string, a ...any) string {
-	return pterm.Bold.Sprint(fmt.Sprintf(format, a...))
+	printStyledLines(baseStyle.Foreground(Red), format, a...)
 }
 
 var lineStyle = lipgloss.NewStyle().
@@ -65,7 +66,8 @@ func Table(headers []string, rows [][]string) {
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch {
 			case row == table.HeaderRow:
-				return titleStyle.Align(lipgloss.Center)
+				// return titleStyle.Align(lipgloss.Center)
+				return titleStyle
 			case row%2 == 0:
 				return cellStyle.Foreground(LightGray)
 			default:
@@ -75,4 +77,14 @@ func Table(headers []string, rows [][]string) {
 		Headers(headers...).
 		Rows(rows...)
 	fmt.Println(t)
+}
+
+func printStyledLines(style lipgloss.Style, format string, a ...any) {
+	msg := fmt.Sprintf(format, a...)
+	lines := strings.Split(msg, "\n")
+	for _, line := range lines {
+		if line != "" {
+			fmt.Println(style.Render(line))
+		}
+	}
 }

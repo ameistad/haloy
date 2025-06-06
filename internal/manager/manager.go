@@ -144,9 +144,10 @@ func RunManager(dryRun bool) {
 		case e := <-eventsChan:
 			appName := e.Labels.AppName
 			deploymentID := e.Labels.DeploymentID
-			if deploymentID > latestDeploymentID[appName] {
+			eventAction := e.Event.Action
+			if deploymentID >= latestDeploymentID[appName] {
 				latestDeploymentID[appName] = deploymentID
-				latestEventAction[appName] = e.Event.Action
+				latestEventAction[appName] = eventAction
 				i, err := strconv.Atoi(e.Labels.MaxContainersToKeep)
 				if err != nil {
 					logger.Error(fmt.Sprintf("Failed to parse MaxContainersToKeep for app %s: %v", appName, err))
@@ -164,7 +165,9 @@ func RunManager(dryRun bool) {
 					return
 				}
 				id := latestDeploymentID[appName]
-				if id != "" {
+
+				// Only log to file on start events
+				if id != "" && eventAction == "start" {
 					deploymentLogger.SetDeploymentIDFileWriter(LogsPath, id)
 				}
 				// Create a context with a timeout for this specific update task.
