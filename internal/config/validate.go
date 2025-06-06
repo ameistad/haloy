@@ -49,6 +49,10 @@ func ValidateHealthCheckPath(path string) error {
 
 func (ac *AppConfig) Validate() error {
 
+	if isValidAppName(ac.Name) {
+		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
+	}
+
 	if err := ac.Source.Validate(); err != nil {
 		return fmt.Errorf("invalid source: %w", err)
 	}
@@ -183,4 +187,14 @@ func CheckUnknownFields(node *yaml.Node, expectedFields map[string]bool, context
 	}
 
 	return nil
+}
+
+func isValidAppName(name string) bool {
+	// Only allow alphanumeric, hyphens, and underscores
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
+	if err != nil {
+		// If regex fails, treat as invalid
+		return true
+	}
+	return !matched
 }

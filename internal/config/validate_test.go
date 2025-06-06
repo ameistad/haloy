@@ -4,6 +4,32 @@ import (
 	"testing"
 )
 
+func TestIsValidAppName(t *testing.T) {
+	tests := []struct {
+		name    string
+		appName string
+		wantErr bool // true if invalid
+	}{
+		{"valid simple", "myapp", false},
+		{"valid with hyphen", "my-app", false},
+		{"valid with underscore", "my_app", false},
+		{"valid with numbers", "app123", false},
+		{"invalid with space", "my app", true},
+		{"invalid with dot", "my.app", true},
+		{"invalid with special char", "my@app", true},
+		{"invalid empty", "", true},
+		{"invalid with slash", "my/app", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidAppName(tt.appName)
+			if got != tt.wantErr {
+				t.Errorf("isValidAppName(%q) = %v, want %v", tt.appName, got, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestValidateDomain(t *testing.T) {
 	tests := []struct {
 		name    string
