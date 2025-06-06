@@ -7,9 +7,9 @@ import (
 )
 
 // NewValidateCmd creates a new validate command
-func ValidateCmd() *cobra.Command {
+func ValidateConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "validate",
+		Use:   "validate-config",
 		Short: "Validate the config file",
 		Run: func(cmd *cobra.Command, args []string) {
 			confFilePath, err := config.ConfigFilePath()
