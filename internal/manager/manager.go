@@ -55,8 +55,7 @@ func RunManager(dryRun bool) {
 	logger.Info(fmt.Sprintf("Haloy manager version %s started on network %s...", version.Version, config.DockerNetwork))
 
 	if dryRun {
-		logger.Info("Running in dry-run mode, no changes will be applied to HAProxy")
-		logger.Debug("Debug logging enabled")
+		logger.Info("Dry-run mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains. This run is for testing and validation only.")
 	}
 
 	// Initialize Docker client
