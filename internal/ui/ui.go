@@ -12,7 +12,7 @@ import (
 var (
 	White     = lipgloss.Color("#fafafa")
 	Gray      = lipgloss.Color("245")
-	Green     = lipgloss.Color("#4ade80")
+	Green     = lipgloss.Color("#22c55e")
 	LightGray = lipgloss.Color("241")
 	Red       = lipgloss.Color("#f87171")
 	Yellow    = lipgloss.Color("#fef08a")
@@ -66,8 +66,7 @@ func Table(headers []string, rows [][]string) {
 		StyleFunc(func(row, col int) lipgloss.Style {
 			switch {
 			case row == table.HeaderRow:
-				// return titleStyle.Align(lipgloss.Center)
-				return titleStyle
+				return titleStyle.Align(lipgloss.Center)
 			case row%2 == 0:
 				return cellStyle.Foreground(LightGray)
 			default:
