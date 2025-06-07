@@ -2,16 +2,13 @@
 Haloy simplifies deploying Dockerized apps on your infrastructure, offering zero-downtime deployments, automatic domain/TLS management (Let's Encrypt), and integrated reverse proxy capabilities, all managed through a Docker-centric CLI and YAML workflow.
 
 ## ✨ Features
-* 🚀 **Zero-Downtime Deployments:** Gracefully updates applications ensuring continuous availability.
-* 🐳 **Docker-Based:** Leverages Docker for consistent environments and deployments.
-* 🔄 **Dynamic HAProxy Load Balancing:** Automatically configures HAProxy to route traffic to your applications.
+* 🚀 **Zero-Downtime deployments with rollbacks:** Gracefully deploy and rollback applications ensuring continuous availability.
+* 🔄 **Automatic HAProxy Load Balancing:** Automatically configures HAProxy to route traffic to your applications.
 * 🔒 **Automated SSL/TLS:** Integrates with Let's Encrypt (ACME) for hassle-free HTTPS.
 * ⚙️ **Simple YAML Configuration:** Define your applications and their deployment settings in an easy-to-understand `apps.yml` file.
 * 🤫 **Secure Secrets Management:** Built-in support for encrypting and managing sensitive data like API keys using age encryption.
 * 🔎 **Service Discovery:** Automatically discovers and manages application containers via Docker labels.
-* 롤백 **Easy Rollbacks:** Quickly revert to previous deployment versions if needed.
 * 💻 **User-Friendly CLI:** Provides a straightforward command-line interface for all operations.
-* 📊 **Status Monitoring:** Easily check the status of your deployed applications.
 
 ## Installation
 
