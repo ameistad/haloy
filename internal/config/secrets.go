@@ -87,22 +87,22 @@ func LoadSecrets() (map[string]SecretRecord, error) {
 	return secrets, nil
 }
 
-// SaveSecrets writes the secrets map to secrets.json.
-func SaveSecrets(secrets map[string]SecretRecord) error {
-	configDir, err := ConfigDirPath()
+// EncryptSecret encrypts a plain-text value using the provided age recipient.
+// It returns the encrypted value as a base64-encoded string for storage.
+func EncryptSecret(value string, recipient age.Recipient) (string, error) {
+	var rawBuffer bytes.Buffer
+	encryptWriter, err := age.Encrypt(&rawBuffer, recipient)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("failed to initialize encryptor: %w", err)
 	}
-	secretsPath := filepath.Join(configDir, SecretsFileName)
-	data, err := json.MarshalIndent(secrets, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to encode secrets as JSON: %w", err)
+	if _, err = io.WriteString(encryptWriter, value); err != nil {
+		return "", fmt.Errorf("failed to write value to encryption writer: %w", err)
 	}
-	// Write with restricted permissions (0600 - read/write for owner only)
-	if err := os.WriteFile(secretsPath, data, 0600); err != nil {
-		return fmt.Errorf("failed to write secrets file: %w", err)
+	if err := encryptWriter.Close(); err != nil {
+		return "", fmt.Errorf("failed to close encryption writer: %w", err)
 	}
-	return nil
+	encodedValue := base64.StdEncoding.EncodeToString(rawBuffer.Bytes())
+	return encodedValue, nil
 }
 
 // DecryptSecret decrypts a base64-encoded secret using the provided age identity.
@@ -125,4 +125,22 @@ func DecryptSecret(secret string, identity age.Identity) (string, error) {
 	}
 
 	return decryptedBuf.String(), nil
+}
+
+// SaveSecrets writes the secrets map to secrets.json.
+func SaveSecrets(secrets map[string]SecretRecord) error {
+	configDir, err := ConfigDirPath()
+	if err != nil {
+		return err
+	}
+	secretsPath := filepath.Join(configDir, SecretsFileName)
+	data, err := json.MarshalIndent(secrets, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode secrets as JSON: %w", err)
+	}
+	// Write with restricted permissions (0600 - read/write for owner only)
+	if err := os.WriteFile(secretsPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write secrets file: %w", err)
+	}
+	return nil
 }

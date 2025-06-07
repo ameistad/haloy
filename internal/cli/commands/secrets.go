@@ -1,12 +1,9 @@
 package commands
 
 import (
-	"bytes"
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,25 +72,14 @@ func SecretsSetCommand() *cobra.Command {
 				return
 			}
 
-			// Encrypt the value.
-			var rawBuffer bytes.Buffer
-			encryptWriter, err := age.Encrypt(&rawBuffer, recipient)
+			encryptedValue, err := config.EncryptSecret(value, recipient)
 			if err != nil {
-				ui.Error("Failed to initialize encryption: %v", err)
+				ui.Error("Failed to encrypt secret: %v", err)
 				return
 			}
-			if _, err = io.WriteString(encryptWriter, value); err != nil {
-				ui.Error("Failed to write plain-text to encryption writer: %v", err)
-				return
-			}
-			if err := encryptWriter.Close(); err != nil {
-				ui.Error("Failed to close encryption writer: %v", err)
-				return
-			}
-			fullEncrypted := base64.StdEncoding.EncodeToString(rawBuffer.Bytes())
 
 			newSecretRecord := config.SecretRecord{
-				Encrypted: fullEncrypted,
+				Encrypted: encryptedValue,
 				Date:      time.Now().Format(time.RFC3339),
 			}
 
