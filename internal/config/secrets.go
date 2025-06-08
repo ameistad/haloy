@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	IdentityFileName = "age_identity.txt"
-	SecretsFileName  = "secrets.json"
+	IdentityFileName  = "age_identity.txt"
+	SecretsFileName   = "secrets.json"
+	EnvVarAgeIdentity = "HALOY_AGE_IDENTITY"
 )
 
 type SecretRecord struct {
@@ -46,6 +47,16 @@ func GetAgeRecipient() (age.Recipient, error) {
 }
 
 func GetAgeIdentity() (age.Identity, error) {
+
+	// First, check for the environment variable
+	if identityStr := os.Getenv(EnvVarAgeIdentity); identityStr != "" {
+		identity, err := age.ParseX25519Identity(identityStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse age identity from %s environment variable: %w", EnvVarAgeIdentity, err)
+		}
+		return identity, nil
+	}
+
 	configDir, err := ConfigDirPath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get config directory: %w", err)

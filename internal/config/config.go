@@ -9,13 +9,13 @@ import (
 )
 
 const (
-	DockerNetwork = "haloy-public"
+	DockerNetwork              = "haloy-public"
 	DefaultMaxContainersToKeep = 3
-	DefaultHealthCheckPath = "/"
-	DefaultContainerPort = "80"
-	DefaultReplicas = 1
-	ConfigFileName = "apps.yml"
-	HAProxyConfigFileName = "haproxy.cfg"
+	DefaultHealthCheckPath     = "/"
+	DefaultContainerPort       = "80"
+	DefaultReplicas            = 1
+	ConfigFileName             = "apps.yml"
+	HAProxyConfigFileName      = "haproxy.cfg"
 )
 
 type Config struct {
