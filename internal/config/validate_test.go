@@ -1,8 +1,27 @@
 package config
 
 import (
+	"fmt"
 	"testing"
 )
+
+func intPtr(i int) *int { return &i }
+
+// baseAppConfig can be used by multiple test functions
+func baseAppConfig(name string) AppConfig {
+	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
+	return AppConfig{
+		Name: name,
+		Source: Source{
+			Image: imageSourcePtr,
+		},
+		// Add a default domain to prevent "no domains defined" error in unrelated tests
+		Domains:         []Domain{{Canonical: fmt.Sprintf("%s.example.com", name)}},
+		ACMEEmail:       "test@example.com",
+		Replicas:        intPtr(1),
+		HealthCheckPath: "/",
+	}
+}
 
 func TestIsValidAppName(t *testing.T) {
 	tests := []struct {
@@ -79,55 +98,85 @@ func TestValidateHealthCheckPath(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
-	cfg := mockConfig("app1", "app2", "app3", "app4", "app5")
+	apps := []AppConfig{
+		func() AppConfig {
+			app := baseAppConfig("app1")
+			app.Domains = []Domain{{Canonical: "app1.example.com"}}
+			return app
+		}(),
+		func() AppConfig {
+			app := baseAppConfig("app2")
+			app.Domains = []Domain{{Canonical: "app2.example.com"}}
+			return app
+		}(),
+		func() AppConfig {
+			app := baseAppConfig("app3")
+			app.Domains = []Domain{{Canonical: "app3.example.com"}}
+			return app
+		}(),
+	}
+	cfg := &Config{Apps: apps}
 	err := cfg.Validate()
 	if err != nil {
 		t.Errorf("Config.Validate() error = %v, wantErr nil", err)
 	}
 }
 
-func TestConfigValidate_UniqueAppNames(t *testing.T) {
-
-	cfg := mockConfig("app1", "app1", "app3")
+func TestConfigValidate_NoApps(t *testing.T) {
+	cfg := &Config{Apps: []AppConfig{}}
 	err := cfg.Validate()
+	if err == nil || err.Error() != "config: no apps defined" {
+		t.Errorf("expected 'no apps defined' error, got: %v", err)
+	}
+}
+
+func TestConfigValidate_EmptyAppName(t *testing.T) {
+	apps := []AppConfig{
+		baseAppConfig("app1"), // Valid app, now has a default domain
+		baseAppConfig(""),     // App with empty name, now also has a (likely invalid due to empty name) default domain
+	}
+	// Ensure the empty name app also gets some domain to pass its own validation if it checks for empty domains.
+	// The primary check here is for the empty app name at the Config level.
+	apps[1].Domains = []Domain{{Canonical: "problem.example.com"}} // Or handle domain generation for empty name in baseAppConfig
+
+	cfg := &Config{Apps: apps}
+	err := cfg.Validate()
+	if err == nil || err.Error() != "name cannot be empty" {
+		t.Errorf("expected 'name cannot be empty' error, got: %v", err)
+	}
+}
+
+// ...existing code...
+func TestConfigValidate_UniqueAppNames(t *testing.T) {
+	apps := []AppConfig{
+		func() AppConfig {
+			app := baseAppConfig("app1")
+			// app.Domains is already set by baseAppConfig
+			return app
+		}(),
+		func() AppConfig {
+			app := baseAppConfig("app1") // Duplicate name
+			// app.Domains is already set by baseAppConfig, ensure it's different if needed for clarity
+			app.Domains = []Domain{{Canonical: "app1-again.example.com"}}
+			return app
+		}(),
+		func() AppConfig {
+			app := baseAppConfig("app3")
+			// app.Domains is already set by baseAppConfig
+			return app
+		}(),
+	}
+	cfg := &Config{Apps: apps}
+	err := cfg.Validate()
+	// Adjust the expected error message to match the actual output
 	if err == nil || err.Error() != "duplicate app name: 'app1'" {
 		t.Errorf("expected duplicate app name error, got: %v", err)
 	}
 }
 
-func intPtr(i int) *int { return &i }
-
-func mockConfig(appNames ...string) *Config {
-	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
-	apps := make([]AppConfig, len(appNames))
-	for i, name := range appNames {
-		apps[i] = AppConfig{
-			Name: name,
-			Source: Source{
-				Image: imageSourcePtr,
-			},
-			Domains:         []Domain{{Canonical: "example.com"}},
-			ACMEEmail:       "test@example.com",
-			Replicas:        intPtr(1),
-			HealthCheckPath: "/",
-		}
-	}
-	return &Config{Apps: apps}
-}
-
 func TestConfigValidate_DomainUniqueness(t *testing.T) {
-	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
-	baseAppConfig := func(name string) AppConfig {
-		return AppConfig{
-			Name: name,
-			Source: Source{
-				Image: imageSourcePtr,
-			},
-			ACMEEmail:       "test@example.com",
-			Replicas:        intPtr(1),
-			HealthCheckPath: "/",
-		}
-	}
+	// baseAppConfig is now defined at the package level, so no need to redefine imageSourcePtr here
+	// The existing baseAppConfig helper is used directly.
 
 	tests := []struct {
 		name        string
@@ -224,15 +273,12 @@ func TestConfigValidate_DomainUniqueness(t *testing.T) {
 			apps: []AppConfig{
 				func() AppConfig {
 					app := baseAppConfig("app1")
-					// This specific case (canonical being an alias in its *own* domain list)
-					// might be caught by Domain.Validate() if you add such a check there.
-					// Here, we test the cross-app validation.
 					app.Domains = []Domain{{Canonical: "app1.com", Aliases: []string{"www.app1.com"}}}
 					return app
 				}(),
 				func() AppConfig {
 					app := baseAppConfig("app2")
-					app.Domains = []Domain{{Canonical: "www.app1.com"}} // This app2.canonical conflicts with app1.alias
+					app.Domains = []Domain{{Canonical: "www.app1.com"}}
 					return app
 				}(),
 			},
