@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/docker/docker/api/types/events"
@@ -35,17 +36,26 @@ func NewUpdater(config UpdaterConfig) *Updater {
 }
 
 type TriggeredByApp struct {
-	AppName             string
-	latestDeploymentID  string
+	appName             string
+	domains             []config.Domain
+	deploymentID        string
 	maxContainersToKeep int
 	dockerEventAction   events.Action // Action that triggered the update (e.g., "start", "stop", etc.)
 }
 
 func (tba *TriggeredByApp) Validate() error {
-	if tba.AppName == "" {
+	if tba.appName == "" {
 		return fmt.Errorf("triggered by app: app name cannot be empty")
 	}
-	if tba.latestDeploymentID == "" {
+	if len(tba.domains) == 0 {
+		return fmt.Errorf("triggered by app: domains cannot be empty")
+	}
+	for i, domain := range tba.domains {
+		if domain.Canonical == "" {
+			return fmt.Errorf("triggered by app: Canonical name cannot be empty in index %d", i)
+		}
+	}
+	if tba.deploymentID == "" {
 		return fmt.Errorf("triggered by app: latest deployment ID cannot be empty")
 	}
 	if tba.maxContainersToKeep < 0 {
@@ -100,16 +110,31 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 		logger.Info(fmt.Sprintf("Health check completed for %s", strings.Join(apps, ", ")))
 	}
 
-	// Get domains AFTER checking HasChanged to reflect the latest state
 	certDomains := u.deploymentManager.GetCertificateDomains()
-	u.certManager.AddDomains(certDomains, logger)
 
 	// If an app is provided we refresh the certs synchronously so we can log the result.
 	// Otherwise, we refresh them asynchronously to avoid blocking the main update process.
+	// We also refresh the certs for that app only.
 	if app != nil {
-		u.certManager.RefreshSync(logger)
+		appCanonicalDomains := make(map[string]struct{}, len(app.domains))
+		for _, domain := range app.domains {
+			appCanonicalDomains[domain.Canonical] = struct{}{}
+		}
+
+		var appCertDomains []CertificatesDomain
+		for _, certDomain := range certDomains {
+			if _, ok := appCanonicalDomains[certDomain.Canonical]; ok {
+				appCertDomains = append(appCertDomains, certDomain)
+			}
+		}
+		u.certManager.RefreshSync(logger, appCertDomains)
 	} else {
-		u.certManager.Refresh(logger)
+		u.certManager.Refresh(logger, certDomains)
+	}
+
+	// Periodically clean up expired certificates
+	if reason == TriggerPeriodicRefresh {
+		u.certManager.CleanupExpiredCertificates(logger, certDomains)
 	}
 
 	// Get deployments AFTER checking HasChanged
@@ -122,17 +147,20 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 		logger.Info("HAProxy configuration updated successfully")
 	}
 
-	// If an app is provided, stop and remove old containers
+	// If an app is provided:
+	// - stop old containers, remove and log the result.
+	// - log successful deployment for app.
+
 	if app != nil {
-		stoppedIDs, err := docker.StopContainers(ctx, u.dockerClient, app.AppName, app.latestDeploymentID)
+		stoppedIDs, err := docker.StopContainers(ctx, u.dockerClient, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to stop old containers: %w", err)
 		}
 		removeContainersParams := docker.RemoveContainersParams{
 			Context:             ctx,
 			DockerClient:        u.dockerClient,
-			AppName:             app.AppName,
-			IgnoreDeploymentID:  app.latestDeploymentID,
+			AppName:             app.appName,
+			IgnoreDeploymentID:  app.deploymentID,
 			MaxContainersToKeep: app.maxContainersToKeep,
 		}
 		removedContainers, err := docker.RemoveContainers(removeContainersParams)
@@ -140,7 +168,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}
 		logger.Info(fmt.Sprintf("Stopped %d container(s) and removed %d old container(s)", len(stoppedIDs), len(removedContainers)))
-		logger.Info(fmt.Sprintf("🎉 Successfully deployed %s with deployment ID %s", app.AppName, app.latestDeploymentID))
+		logger.Info(fmt.Sprintf("🎉 Successfully deployed %s with deployment ID %s", app.appName, app.deploymentID))
 	}
 
 	return nil

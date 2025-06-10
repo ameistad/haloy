@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	MaintenanceInterval = 30 * time.Minute
+	MaintenanceInterval = 12 * time.Hour // Interval for periodic maintenance tasks
 	HAProxyConfigPath   = "/haproxy-config"
 	CertificatesPath    = "/cert-storage"
 	LogsPath            = "/logs"
@@ -128,6 +128,7 @@ func RunManager(dryRun bool) {
 	latestDeploymentID := make(map[string]string)
 	latestEventAction := make(map[string]events.Action)
 	latestMaxContainersToKeep := make(map[string]int)
+	latestDomains := make(map[string][]config.Domain)
 
 	// Main event loop
 	for {
@@ -147,6 +148,7 @@ func RunManager(dryRun bool) {
 			if deploymentID >= latestDeploymentID[appName] {
 				latestDeploymentID[appName] = deploymentID
 				latestEventAction[appName] = eventAction
+				latestDomains[appName] = e.Labels.Domains
 				i, err := strconv.Atoi(e.Labels.MaxContainersToKeep)
 				if err != nil {
 					logger.Error(fmt.Sprintf("Failed to parse MaxContainersToKeep for app %s: %v", appName, err))
@@ -176,8 +178,9 @@ func RunManager(dryRun bool) {
 				defer deploymentLogger.CloseLog()
 
 				app := &TriggeredByApp{
-					AppName:             appName,
-					latestDeploymentID:  latestDeploymentID[appName],
+					appName:             appName,
+					domains:             latestDomains[appName],
+					deploymentID:        latestDeploymentID[appName],
 					maxContainersToKeep: latestMaxContainersToKeep[appName],
 					dockerEventAction:   latestEventAction[appName],
 				}
@@ -233,7 +236,10 @@ func RunManager(dryRun bool) {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
 
-				u := updater // Capture updater
+				// Perform a background update to ensure the system is in sync
+				// This will check the running containers and update HAProxy and certificates if needed.
+				// It will also cleanup expired certificates.
+				u := updater
 				if err := u.Update(deploymentCtx, logger, TriggerPeriodicRefresh, nil); err != nil {
 					logger.Error("Background update failed", err)
 				}

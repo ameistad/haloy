@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -81,7 +80,6 @@ func NewCertificatesClientManager(certDir string, tlsStaging bool, httpProviderP
 }
 
 func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.Client, error) {
-
 	// Return client early if it exists
 	cm.clientsMutex.RLock()
 	client, ok := cm.clients[email]
@@ -155,8 +153,6 @@ type CertificatesDomain struct {
 
 type CertificatesManager struct {
 	config        CertificatesManagerConfig
-	domains       map[string]CertificatesDomain
-	domainMutex   sync.RWMutex
 	checkMutex    sync.Mutex
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -181,7 +177,6 @@ func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<
 
 	m := &CertificatesManager{
 		config:        config,
-		domains:       make(map[string]CertificatesDomain),
 		ctx:           ctx,
 		cancel:        cancel,
 		clientManager: clientManager,
@@ -192,80 +187,14 @@ func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<
 	return m, nil
 }
 
-func (m *CertificatesManager) Start(logger *logging.Logger) {
-	// Initial check might still be direct if desired on immediate startup
-	// go m.checkRenewals() // Or use Refresh() if debounce on startup is ok
-	go m.renewalLoop(logger)
-	go m.cleanupLoop(logger)
-}
-
 func (m *CertificatesManager) Stop() {
 	m.cancel()
 	m.debouncer.Stop() // Stop the debouncer to clean up any pending timers
 }
 
-// AddDomains updates the set of domains managed by the certificate manager.
-// It adds new domains, updates existing ones if aliases or email change,
-// and removes domains that are no longer present in the input list.
-func (m *CertificatesManager) AddDomains(managedDomains []CertificatesDomain, logger *logging.Logger) {
-	m.domainMutex.Lock()
-	defer m.domainMutex.Unlock()
-
-	added := 0
-	updated := 0
-	removed := 0
-	currentManaged := make(map[string]struct{}, len(managedDomains)) // Track for removal check
-
-	for _, md := range managedDomains {
-		if md.Canonical == "" {
-			continue
-		} // Skip invalid entries (no canonical domain)
-		currentManaged[md.Canonical] = struct{}{} // Mark as required
-
-		existing, exists := m.domains[md.Canonical]
-		if !exists {
-			// Ensure Aliases slice is initialized even if empty
-			if md.Aliases == nil {
-				md.Aliases = []string{}
-			}
-			m.domains[md.Canonical] = md // Add new domain
-			added++
-		} else {
-			// Ensure new Aliases slice is initialized if needed
-			if md.Aliases == nil {
-				md.Aliases = []string{}
-			}
-			// Check if update needed (compare email and sorted aliases)
-			sort.Strings(existing.Aliases)
-			sort.Strings(md.Aliases)
-			if existing.Email != md.Email || !reflect.DeepEqual(existing.Aliases, md.Aliases) {
-				logger.Info(fmt.Sprintf("Updating managed domain for (Email or Aliases changd) %s", md.Canonical))
-				m.domains[md.Canonical] = md // Update entry
-				updated++
-			} else {
-				logger.Info(fmt.Sprintf("No action needed for domain %s.", md.Canonical))
-			}
-		}
-	}
-
-	// Remove domains from m.domains that are no longer in the input list
-	for domain := range m.domains {
-		if _, ok := currentManaged[domain]; !ok {
-			delete(m.domains, domain)
-			logger.Info(fmt.Sprintf("%s is no longer managed, removing", domain))
-			removed++
-		}
-	}
-
-	// Log summary of changes
-	if added > 0 || updated > 0 || removed > 0 {
-		// Trigger a refresh check - Refresh itself is non-blocking
-		m.Refresh(logger)
-	}
-}
-
-func (m *CertificatesManager) RefreshSync(logger *logging.Logger) {
-	renewedDomains, err := m.checkRenewals(logger)
+// RefereshSync is used for synchronous refreshes of certificates for app updates.
+func (cm *CertificatesManager) RefreshSync(logger *logging.Logger, domains []CertificatesDomain) {
+	renewedDomains, err := cm.checkRenewals(logger, domains)
 	if err != nil {
 		logger.Error("Certificate refresh failed", err)
 	}
@@ -276,12 +205,13 @@ func (m *CertificatesManager) RefreshSync(logger *logging.Logger) {
 	}
 }
 
-func (m *CertificatesManager) Refresh(logger *logging.Logger) {
+// Refresh is used for periodoc refreshes of certificates.
+func (cm *CertificatesManager) Refresh(logger *logging.Logger, domains []CertificatesDomain) {
 	logger.Debug("Refresh requested for certificate manager, using debouncer.")
 
 	// Define the action to perform after the debounce delay
 	refreshAction := func() {
-		renewedDomains, err := m.checkRenewals(logger)
+		renewedDomains, err := cm.checkRenewals(logger, domains)
 		if err != nil {
 			logger.Error("Certificate refresh failed", err)
 			return
@@ -292,8 +222,8 @@ func (m *CertificatesManager) Refresh(logger *logging.Logger) {
 			for _, domain := range renewedDomains {
 				logger.Info(fmt.Sprintf("CertificatesManager: Renewed certificate for %s and aliases %s", domain.Canonical, strings.Join(domain.Aliases, ", ")))
 			}
-			if m.updateSignal != nil {
-				m.updateSignal <- "certificates_renewed"
+			if cm.updateSignal != nil {
+				cm.updateSignal <- "certificates_renewed"
 			}
 		} else {
 			logger.Debug("CertificatesManager: No certificates needed renewal at this time.")
@@ -301,67 +231,24 @@ func (m *CertificatesManager) Refresh(logger *logging.Logger) {
 	}
 
 	// Use the generic debouncer with a specific key for certificate refreshes
-	m.debouncer.Debounce(refreshDebounceKey, refreshAction)
+	cm.debouncer.Debounce(refreshDebounceKey, refreshAction)
 }
 
-// renewalLoop periodically checks for certificates that need renewal
-func (m *CertificatesManager) renewalLoop(logger *logging.Logger) {
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-
-	// Do an initial check after a short delay to allow startup/discovery
-	time.Sleep(30 * time.Second) // Delay initial check slightly
-	m.checkRenewals(logger)
-
-	for {
-		select {
-		case <-ticker.C:
-			m.checkRenewals(logger)
-		case <-m.ctx.Done():
-			return
-		}
-	}
-}
-
-// cleanupLoop periodically checks for and removes expired certificates
-func (m *CertificatesManager) cleanupLoop(logger *logging.Logger) {
-	ticker := time.NewTicker(24 * time.Hour) // Check once a day
-	defer ticker.Stop()
-
-	time.Sleep(60 * time.Second) // Delay initial check slightly
-	m.cleanupExpiredCertificates(logger)
-
-	for {
-		select {
-		case <-ticker.C:
-			m.cleanupExpiredCertificates(logger)
-		case <-m.ctx.Done():
-			return
-		}
-	}
-}
-
-func (m *CertificatesManager) checkRenewals(logger *logging.Logger) (renewedDomains []CertificatesDomain, err error) {
-	m.checkMutex.Lock()
+func (cm *CertificatesManager) checkRenewals(logger *logging.Logger, domains []CertificatesDomain) (renewedDomains []CertificatesDomain, err error) {
+	cm.checkMutex.Lock()
 	defer func() {
-		m.checkMutex.Unlock()
+		cm.checkMutex.Unlock()
 	}()
 
-	m.domainMutex.RLock()
-	domainsToCheck := make(map[string]CertificatesDomain, len(m.domains))
-	if len(m.domains) > 0 {
-		maps.Copy(domainsToCheck, m.domains)
-	}
-	m.domainMutex.RUnlock()
-	if len(domainsToCheck) == 0 {
+	if len(domains) == 0 {
 		return renewedDomains, nil
 	}
 
-	for domain, managedDomainInfo := range domainsToCheck {
-		// File paths always use the canonical domain name (map key)
-		certFilePath := filepath.Join(m.config.CertDir, domain+".crt")
+	for _, domain := range domains {
+		// File paths always use the canonical domain name
+		certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt")
 		// Combined file used by HAProxy
-		combinedCertKeyPath := filepath.Join(m.config.CertDir, domain+".crt.key")
+		combinedCertKeyPath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt.key")
 
 		_, err := os.Stat(combinedCertKeyPath) // Check for the combined file HAProxy needs
 		needsObtain := os.IsNotExist(err)
@@ -390,9 +277,9 @@ func (m *CertificatesManager) checkRenewals(logger *logging.Logger) (renewedDoma
 					}
 
 					// Build the list of required domains (canonical + aliases)
-					requiredDomains := []string{managedDomainInfo.Canonical}
-					if len(managedDomainInfo.Aliases) > 0 {
-						requiredDomains = append(requiredDomains, managedDomainInfo.Aliases...)
+					requiredDomains := []string{domain.Canonical}
+					if len(domain.Aliases) > 0 {
+						requiredDomains = append(requiredDomains, domain.Aliases...)
 					}
 
 					currentDomains := parsedCert.DNSNames // Get SANs from loaded cert
@@ -414,15 +301,17 @@ func (m *CertificatesManager) checkRenewals(logger *logging.Logger) (renewedDoma
 
 		// Trigger obtain if file doesn't exist OR expiry nearing OR SAN list mismatch
 		if needsObtain || needsRenewalDueToExpiry || sanMismatch {
-			// Pass the full info needed for the request
-			obtainedDomain, err := m.obtainCertificate(managedDomainInfo, logger)
+			obtainedDomain, err := cm.obtainCertificate(domain, logger)
 			if err != nil {
 				logger.Error(fmt.Sprintf("Failed to obtain certificate for %s: %v", domain, err))
 			} else {
 				renewedDomains = append(renewedDomains, obtainedDomain)
 			}
 		} else if !os.IsNotExist(err) { // Only log skipping if we actually checked a cert file
-			logger.Info(fmt.Sprintf("Certificates for %s and aliases %s are valid.", domain, strings.Join(managedDomainInfo.Aliases, ", ")))
+			logger.Info(fmt.Sprintf("Skipping renewal for %s: certificate is valid and SANs match.", domain.Canonical))
+			if len(domain.Aliases) > 0 {
+				logger.Info(fmt.Sprintf("Aliases: %s", strings.Join(domain.Aliases, ", ")))
+			}
 		}
 	}
 
@@ -508,7 +397,7 @@ func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.R
 	return nil
 }
 
-func (m *CertificatesManager) cleanupExpiredCertificates(logger *logging.Logger) {
+func (m *CertificatesManager) CleanupExpiredCertificates(logger *logging.Logger, domains []CertificatesDomain) {
 	logger.Debug("Starting certificate cleanup check")
 
 	files, err := os.ReadDir(m.config.CertDir)
@@ -519,12 +408,10 @@ func (m *CertificatesManager) cleanupExpiredCertificates(logger *logging.Logger)
 
 	deleted := 0
 
-	m.domainMutex.RLock()
-	managedDomainsMap := make(map[string]struct{}, len(m.domains))
-	for domain := range m.domains { // Keys are canonical domains
-		managedDomainsMap[domain] = struct{}{}
+	managedDomainsMap := make(map[string]struct{}, len(domains))
+	for _, domain := range domains { // Keys are canonical domains
+		managedDomainsMap[domain.Canonical] = struct{}{}
 	}
-	m.domainMutex.RUnlock()
 
 	for _, file := range files {
 		// Look for the combined file HAProxy uses
@@ -569,7 +456,7 @@ func (m *CertificatesManager) cleanupExpiredCertificates(logger *logging.Logger)
 				deleted++
 			}
 		}
-	} // end loop over files
+	}
 
 	logger.Debug("Certificate cleanup complete. Deleted expired/orphaned certificate sets for unmanaged domains")
 }

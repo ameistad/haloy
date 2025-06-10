@@ -125,22 +125,47 @@ func (c *Config) Validate() error {
 		return errors.New("config: no apps defined")
 	}
 
-	// Keep track of seen app names to ensure uniqueness.
-	seen := make(map[string]struct{})
+	// Keep track of appNames and domains to ensure uniqueness.
+	seenAppNames := make(map[string]struct{})
+	allCanonicals := make(map[string]string) // Stores canonical -> appName
+	allAliases := make(map[string]string)    // Stores alias -> appName
 	for _, app := range c.Apps {
 		if app.Name == "" {
 			return errors.New("name cannot be empty")
 		}
 
-		if _, exists := seen[app.Name]; exists {
+		if _, exists := seenAppNames[app.Name]; exists {
 			return fmt.Errorf("duplicate app name: '%s'", app.Name)
 		}
 
-		seen[app.Name] = struct{}{}
+		seenAppNames[app.Name] = struct{}{}
 
 		err := app.Validate()
 		if err != nil {
 			return fmt.Errorf("app '%s': %w", app.Name, err)
+		}
+
+		// Check for unique domains across all apps
+		for _, domain := range app.Domains {
+			// Check canonical domain
+			if conflictingApp, exists := allCanonicals[domain.Canonical]; exists {
+				return fmt.Errorf("config: canonical domain '%s' in app '%s' is already used as a canonical domain in app '%s'", domain.Canonical, app.Name, conflictingApp)
+			}
+			if conflictingApp, exists := allAliases[domain.Canonical]; exists {
+				return fmt.Errorf("config: canonical domain '%s' in app '%s' is already used as an alias in app '%s'", domain.Canonical, app.Name, conflictingApp)
+			}
+			allCanonicals[domain.Canonical] = app.Name
+
+			// Check aliases
+			for _, alias := range domain.Aliases {
+				if conflictingApp, exists := allAliases[alias]; exists {
+					return fmt.Errorf("config: alias '%s' in app '%s' is already used as an alias in app '%s'", alias, app.Name, conflictingApp)
+				}
+				if conflictingApp, exists := allCanonicals[alias]; exists {
+					return fmt.Errorf("config: alias '%s' in app '%s' is already used as a canonical domain in app '%s'", alias, app.Name, conflictingApp)
+				}
+				allAliases[alias] = app.Name
+			}
 		}
 	}
 	return nil

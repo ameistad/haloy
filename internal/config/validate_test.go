@@ -79,7 +79,7 @@ func TestValidateHealthCheckPath(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
-	cfg := mockValidConfig("app1", "app2", "app3", "app4", "app5")
+	cfg := mockConfig("app1", "app2", "app3", "app4", "app5")
 	err := cfg.Validate()
 	if err != nil {
 		t.Errorf("Config.Validate() error = %v, wantErr nil", err)
@@ -88,7 +88,7 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestConfigValidate_UniqueAppNames(t *testing.T) {
 
-	cfg := mockValidConfig("app1", "app1", "app3")
+	cfg := mockConfig("app1", "app1", "app3")
 	err := cfg.Validate()
 	if err == nil || err.Error() != "duplicate app name: 'app1'" {
 		t.Errorf("expected duplicate app name error, got: %v", err)
@@ -97,7 +97,7 @@ func TestConfigValidate_UniqueAppNames(t *testing.T) {
 
 func intPtr(i int) *int { return &i }
 
-func mockValidConfig(appNames ...string) *Config {
+func mockConfig(appNames ...string) *Config {
 	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
 	apps := make([]AppConfig, len(appNames))
 	for i, name := range appNames {
@@ -113,4 +113,150 @@ func mockValidConfig(appNames ...string) *Config {
 		}
 	}
 	return &Config{Apps: apps}
+}
+
+func TestConfigValidate_DomainUniqueness(t *testing.T) {
+	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
+	baseAppConfig := func(name string) AppConfig {
+		return AppConfig{
+			Name: name,
+			Source: Source{
+				Image: imageSourcePtr,
+			},
+			ACMEEmail:       "test@example.com",
+			Replicas:        intPtr(1),
+			HealthCheckPath: "/",
+		}
+	}
+
+	tests := []struct {
+		name        string
+		apps        []AppConfig
+		wantErrMsg  string
+		expectError bool
+	}{
+		{
+			name: "valid unique domains",
+			apps: []AppConfig{
+				func() AppConfig {
+					app := baseAppConfig("app1")
+					app.Domains = []Domain{{Canonical: "app1.com", Aliases: []string{"www.app1.com"}}}
+					return app
+				}(),
+				func() AppConfig {
+					app := baseAppConfig("app2")
+					app.Domains = []Domain{{Canonical: "app2.com", Aliases: []string{"www.app2.com"}}}
+					return app
+				}(),
+			},
+			expectError: false,
+		},
+		{
+			name: "duplicate canonical domain",
+			apps: []AppConfig{
+				func() AppConfig {
+					app := baseAppConfig("app1")
+					app.Domains = []Domain{{Canonical: "shared.com"}}
+					return app
+				}(),
+				func() AppConfig {
+					app := baseAppConfig("app2")
+					app.Domains = []Domain{{Canonical: "shared.com"}}
+					return app
+				}(),
+			},
+			wantErrMsg:  "config: canonical domain 'shared.com' in app 'app2' is already used as a canonical domain in app 'app1'",
+			expectError: true,
+		},
+		{
+			name: "canonical domain as alias in another app",
+			apps: []AppConfig{
+				func() AppConfig {
+					app := baseAppConfig("app1")
+					app.Domains = []Domain{{Canonical: "main.com"}}
+					return app
+				}(),
+				func() AppConfig {
+					app := baseAppConfig("app2")
+					app.Domains = []Domain{{Canonical: "other.com", Aliases: []string{"main.com"}}}
+					return app
+				}(),
+			},
+			wantErrMsg:  "config: alias 'main.com' in app 'app2' is already used as a canonical domain in app 'app1'",
+			expectError: true,
+		},
+		{
+			name: "alias as canonical domain in another app",
+			apps: []AppConfig{
+				func() AppConfig {
+					app := baseAppConfig("app1")
+					app.Domains = []Domain{{Canonical: "app1.com", Aliases: []string{"shared-alias.com"}}}
+					return app
+				}(),
+				func() AppConfig {
+					app := baseAppConfig("app2")
+					app.Domains = []Domain{{Canonical: "shared-alias.com"}}
+					return app
+				}(),
+			},
+			wantErrMsg:  "config: canonical domain 'shared-alias.com' in app 'app2' is already used as an alias in app 'app1'",
+			expectError: true,
+		},
+		{
+			name: "duplicate alias across apps",
+			apps: []AppConfig{
+				func() AppConfig {
+					app := baseAppConfig("app1")
+					app.Domains = []Domain{{Canonical: "app1.com", Aliases: []string{"shared-alias.com"}}}
+					return app
+				}(),
+				func() AppConfig {
+					app := baseAppConfig("app2")
+					app.Domains = []Domain{{Canonical: "app2.com", Aliases: []string{"shared-alias.com"}}}
+					return app
+				}(),
+			},
+			wantErrMsg:  "config: alias 'shared-alias.com' in app 'app2' is already used as an alias in app 'app1'",
+			expectError: true,
+		},
+		{
+			name: "canonical domain of one app is alias of itself (should be fine within same app, but caught by canonical vs alias check if across apps)",
+			apps: []AppConfig{
+				func() AppConfig {
+					app := baseAppConfig("app1")
+					// This specific case (canonical being an alias in its *own* domain list)
+					// might be caught by Domain.Validate() if you add such a check there.
+					// Here, we test the cross-app validation.
+					app.Domains = []Domain{{Canonical: "app1.com", Aliases: []string{"www.app1.com"}}}
+					return app
+				}(),
+				func() AppConfig {
+					app := baseAppConfig("app2")
+					app.Domains = []Domain{{Canonical: "www.app1.com"}} // This app2.canonical conflicts with app1.alias
+					return app
+				}(),
+			},
+			wantErrMsg:  "config: canonical domain 'www.app1.com' in app 'app2' is already used as an alias in app 'app1'",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Apps: tt.apps}
+			err := cfg.Validate()
+
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("Config.Validate() expected an error, but got nil")
+				} else if err.Error() != tt.wantErrMsg {
+					t.Errorf("Config.Validate() error = %q, wantErrMsg %q", err.Error(), tt.wantErrMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Config.Validate() error = %v, wantErr nil", err)
+				}
+			}
+		})
+	}
 }
