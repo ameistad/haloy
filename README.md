@@ -1,24 +1,21 @@
 # Haloy
-Haloy simplifies deploying Dockerized apps on your infrastructure, offering zero-downtime deployments, automatic domain/TLS management (Let's Encrypt), and integrated reverse proxy capabilities, all managed through a Docker-centric CLI and YAML workflow.
+Haloy simplifies deploying Dockerized apps on your infrastructure, offering zero-downtime deployments, automatic domain/TLS management (Let's Encrypt), and integrated reverse proxy using HAProxy.
+
+Haloy is ideal for developers and small teams who want a simple, PaaS-like deployment experience on their own server without the complexity of Kubernetes.
 
 ## ✨ Features
+* 🔄 **HAProxy reverse proxy:** Automatically configures [HAProxy](https://www.haproxy.org/) to route traffic to your applications.
 * 🚀 **Zero-Downtime deployments with rollbacks:** Gracefully deploy and rollback applications ensuring continuous availability.
-* 🔄 **Automatic HAProxy Load Balancing:** Automatically configures HAProxy to route traffic to your applications.
 * 🔒 **Automated SSL/TLS:** Integrates with Let's Encrypt (ACME) for hassle-free HTTPS.
-* ⚙️ **Simple YAML Configuration:** Define your applications and their deployment settings in an easy-to-understand `apps.yml` file.
-* 🤫 **Secure Secrets Management:** Built-in support for encrypting and managing sensitive data like API keys using age encryption.
-* 🔎 **Service Discovery:** Automatically discovers and manages application containers via Docker labels.
 * 💻 **User-Friendly CLI:** Provides a straightforward command-line interface for all operations.
 
 ## Installation
 
-You can install and update Haloy with this command:
+The script will download and install the latest Haloy binary into `~/.local/bin`. For manual installation, see the steps below.
 
 ```bash
 curl https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install_update.sh | bash
 ```
-
-By default, this will install `haloy` to `~/.local/bin` (you can override the install directory by setting the `DIR` environment variable).
 
 Make sure `~/.local/bin` is in your `PATH`:
 ```bash
@@ -42,7 +39,7 @@ sudo mv haloy /usr/local/bin/
 ## Getting Started
 
 ### ⚡️ Requirements
-Before we begin, make sure you have:
+Make sure you have:
 - __Docker installed and running__
 - Your user is part of the docker group. This lets you run Docker commands without sudo.
     - Add your user: `sudo usermod -aG docker $(whoami)`
@@ -58,51 +55,28 @@ Before we begin, make sure you have:
 haloy init
 ```
 
-If you want to quickly test Haloy and see how it works you can set initialize it with a test app that's just a basic nginx docker container serving static html.
+If you want to quickly test Haloy and see how it works you can start init with test app that's just a basic nginx docker container serving static html.
 
 ```bash
 haloy init --with-test-app
 ```
 
 This command will:
-- Set up the necessary directories under ~/.config/haloy/.
-- Create an initial configuration file at ~/.config/haloy/apps.yml with a sample "test-app".
+- Set up the necessary directories under `~/.config/haloy/`. (you can override by setting the `HALOY_CONFIG_PATH` environment variable)
+- Create an initial configuration file at `~/.config/haloy/apps.yml` with a sample "test-app".
 - Prompt you for an email address for TLS certificate registration (for the test-app).
 - Start the Haloy manager and HAProxy services.
 
-### DNS Setup 🗺️ 
-For TLS (HTTPS) to work, you need to set up DNS records.
-
-1. Find Your Server's IP Address: This is the public IP address of your VPS or server where Haloy is running.
-
-2. Go to Your DNS Provider: This is where you registered your domain (e.g., Namecheap, GoDaddy, Cloudflare, Google Domains).
-
-3. Create A Records (for IPv4):
-  - For each domain and subdomain you want to use (e.g., example.com and www.example.com), create an A record.
-  - Type: A
-  - Name/Host:
-    - For the main domain (example.com), this is often @ or left blank (check your provider's docs).
-    - For subdomains (www.example.com), enter the subdomain part (e.g., www).
-  - Value/Points to: YOUR_SERVER_IPV4_ADDRESS
-  - TTL (Time To Live): You can usually leave this at the default (e.g., 1 hour or "Automatic").
-
-    __Example:__
-  - A record for example.com -> YOUR_SERVER_IPV4_ADDRESS
-  - A record for www.example.com -> YOUR_SERVER_IPV4_ADDRESS
-
-4. Create AAAA Records (Optional, for IPv6):
-  - If your server has an IPv6 address, it's good practice to also create AAAA records.
-  - Type: AAAA
-  - Name/Host: Same as for A records.
-  - Value/Points to: YOUR_SERVER_IPV6_ADDRESS
-
-6. DNS changes can take some time to propagate across the internet (from a few minutes to a few hours, rarely longer). You can use online tools like dnschecker.org to see if your records are updating.
+### DNS Setup 🗺️
+For TLS (HTTPS) to work, you need to set up DNS records pointing to your server's public IP address for each domain you plan to use. You can typically do this in your domain registrar's control panel by creating A (for IPv4) or AAAA (for IPv6) records.
 
 ### Configure Your Apps
 
-Edit the configuration file at `~/.config/haloy/apps.yml`:
+Edit the configuration file at `~/.config/haloy/apps.yml`. Haloy needs to know where to get your application's code, which is defined under the `source` property. You can either build from a local `Dockerfile` or pull a pre-built `image` from a registry.
 
-Example configuration:
+#### Example 1: Building from a local Dockerfile
+Use this when you have the code available on the machine Haloy is running on. 
+
 ```yaml
 apps:
   - name: "example-app"
@@ -110,61 +84,127 @@ apps:
       dockerfile:
          path: "/path/to/your/Dockerfile"
          buildContext: "/path/to/your/app"
-         buildArgs:
-           - "ARG1=value1"
-           - "ARG2=value2"
     domains:
       - domain: "example.com"
         aliases:
           - "www.example.com"
       - domain: "api.example.com"
-    port: 8080 # Optional: Default is 80
-    env: # Optional
-      - name: "NODE_ENV"
-        value: "production"
-      - name: "API_KEY" 
-        secretName: "api-key" # Reference to a secret stored with 'haloy secrets set'
-   maxContainersToKeep: 5 # Optional: Default is 3
-   volumes: # Optional
-      - "/host/path:/container/path"
-   healthCheckPath: "/health" # Optional: Default is "/"
+    acmeEmail: "your-email@example.com"
 ```
 
-### Deploy Your Apps
+#### Example 2: Pulling a pre-built image from a registry
+This is ideal for deploying applications built by your CI/CD pipeline.
+```yaml
+apps:
+  - name: "example-app"
+    source:
+      image:
+        repository: "ghcr.io/ameistad/example-app"
+        tag: "latest"
+    domains:
+      - domain: "example.com"
+    acmeEmail: "your-email@example.com"
+```
+
+### Deploy
 
 ```bash
-# Deploy a single app
+# Deploy app
 haloy deploy example-app
 
-# Deploy all apps
-haloy deploy-all
-
-# Check the status of your deployments
-haloy status
-
-# List all deployed containers
-haloy list
+# Check the status
+haloy status example-app
 
 # Roll back to a previous deployment
 haloy rollback example-app
 ```
 
+## Full List of Commands
+
+| Command | Description |
+| :--- | :--- |
+| `haloy init` | Initialize configuration files and prepare HAProxy for production. |
+| `haloy start` | Start the haloy services, including HAProxy and haloy-manager. |
+| `haloy stop <app-name>` | Stop an application's running containers. |
+| `haloy status [app-name]` | Show status for all apps or detailed status for a specific app. |
+| `haloy list` | List all apps from the configuration file. |
+| `haloy deploy <app-name>` | Deploy a single application by name. |
+| `haloy deploy-all` | Deploy all applications defined in the configuration file. |
+| `haloy rollback <app-name>` | Rollback an application to a previous deployment. |
+| `haloy validate-config` | Validate the configuration file. |
+| `haloy secrets` | Manage secrets using age encryption (`init`, `set`, `list`, `delete`). |
+| `haloy version` | Print the current version of Haloy. |
+| `haloy completion` | Generate shell completion scripts (bash, zsh, etc.). |
+
 ## Configuration
 ### App Configuration
 
-Each app in the `apps` array can have the following properties:
+Each app in the `apps` list can have the following properties:
 
-- `name`: Unique name for the app (required)
-- `domains`: List of domains for the app (required) 
-  - With aliases: `{ domain: "example.com", aliases: ["www.example.com"] }`
-- `dockerfile`: Path to your Dockerfile (required)
-- `buildContext`: Build context directory for Docker (required)
-- `env`: Environment variables for the container
-  - Plain values: `{ name: "NODE_ENV", value: "production" }`
-  - Secret values: `{ name: "API_KEY", secretName: "api-key" }` (references a stored secret)
-- `maxContainersToKeep`: Number of old containers to keep after deployment (default: 3)
+- `name`: (Required) Unique name for the app.
+- `source`: (Required) Defines where to get your application's Docker image. See the [Source Configuration](#source) below.
+- `domains`: (Required) A list of domains for the app. Can be a simple list of strings or a map with aliases. Aliases will automatically be redirected to the main (canonical) domain.
+  - Example:
+    ```yaml
+    domains:
+    - domain: "example.com"
+      aliases:
+        - "www.example.com"
+    - domain: "api.example.com"
+    ```
+- `acmeEmail`: (Required) The email address to use for Let's Encrypt TLS certificate registration.
+- `env`: (Optional) Environment variables for the container
+  - Example:
+    ```yaml
+      env:
+        - name: "NODE_ENV"
+          value: "production" # plain text value
+        - name: "API_SECRET_KEY"
+          secretName: "my-secret-key" # Reference to a secret. 
+      ```
+- `maxContainersToKeep`: (Optional) Number of old containers to keep after deployment (default: 3)
+- `port`: (Optional) The port your application container listens on. Haloy needs this to configure HAProxy correctly. (Default: "80")
+- `replicas`: (Optional) The number of container instances to run for this application. When thera are more than one replicas, Haloy starts multiple identical containers and automatically configures HAProxy to distribute traffic between them using round-robin load balancing. (Default: 1)
 - `volumes`: Docker volumes to mount
-- `healthCheckPath`: HTTP path for health checks (default: "/")
+- `healthCheckPath`: (Optional) The HTTP path that Haloy will check for a 2xx status code to determine if your application is healthy. This is used as a fallback if you don't define a HEALTHCHECK instruction in your Dockerfile. (Default: "/")
+
+### Source Configuration
+The `source` property is mandatory and tells Haloy how to obtain your application's Docker image. You must specify exactly one of the following two options:
+
+#### Option 1: `dockerfile`
+Builds the image from a local Dockerfile.
+
+```yaml
+source:
+  dockerfile:
+    path: "/path/to/your/app/Dockerfile"
+    buildContext: "/path/to/your/app"
+```
+- `path`: (Required) The absolute path to the Dockerfile.
+- `buildContext`: (Required) The absolute path to the directory to use as the Docker build context.
+
+#### Option 2: `image`
+Pulls a pre-built image from a Docker registry. This is perfect for deploying third-party applications or apps from your own CI/CD pipeline.
+```yaml
+source:
+  image:
+    repository: "nginx" # Can be e.g., ghcr.io/my-org/my-app
+    tag: "1.21-alpine" # Optional, defaults to "latest"
+    registry: # Optional, for private registries
+      server: "ghcr.io"
+      username:
+        type: "env" # or "secret" or "plain"
+        value: "GITHUB_USER"
+      password:
+        type: "secret"
+        value: "github-token"
+```
+- `repository`: (Required) The name of the image repository (e.g., nginx, my-org/my-app).
+- `tag`: (Optional) The image tag to pull. Defaults to latest. (optional)
+- `registry`: (Optional) Authentication details for pulling from a private registry. The server is optional and will be inferred from the repository if omitted (e.g., for Docker Hub). The `username` and `password` sources can be:
+  - `type: "plain"`: The `value` is the literal username/password.
+  - `type: "env"`: The `value` is the name of an environment variable to read from.
+  - `type: "secret"`: The `value` is the name of a secret stored in Haloy.
 
 ### Secrets Management
 
@@ -195,6 +235,70 @@ To use a secret in your app configuration:
    ```
 
 Secrets are securely encrypted at rest using [age encryption](https://age-encryption.org) and are only decrypted when needed for deployments.
+
+
+#### Storing AGE-SECRET-KEY (private key)
+By default the key used to decrypt secrets is stored in `~/.config/haloy/age_identity.txt` with strict permissions set. Instead of relying on the ~/.config/haloy/age_identity.txt file, you can provide the private key directly via the `HALOY_AGE_IDENTITY` environment variable.
+
+1. Get your private key. You can display it by reading the identity file:
+```bash
+cat ~/.config/haloy/age_identity.txt
+```
+
+2. Set the `HALOY_AGE_IDENTITY` environment variable in your shell environment with the value of the key.
+
+```bash
+export HALOY_AGE_IDENTITY="AGE-SECRET-KEY-1..."
+```
+Haloy will automatically use this environment variable for decrypting secrets if it is set.
+
+## Preparing Images for Haloy
+To ensure smooth, reliable deployments, your application images should be built with a few best practices in mind.
+
+### Health Checks
+Haloy checks the health of new containers before finalizing a deployment and switching traffic. This is crucial for achieving zero-downtime deployments. Haloy uses two methods to determine if an application is ready:
+
+__1. Recommended Method. `HEALTHCHECK` in Dockerfile__
+
+The most reliable way to report your application's status is by using the native `HEALTHCHECK` instruction in your Dockerfile. Haloy respects this instruction and will wait for the container's status to become healthy before proceeding with the deployment.
+
+Example Dockerfile:
+```dockerfile
+FROM node:18-alpine
+
+# ... (rest of your app setup) ...
+
+# This command checks if the app is responding on port 3000 at the /healthz endpoint.
+# It should return exit code 0 on success or 1 on failure.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://localhost:3000/healthz || exit 1
+
+CMD [ "node", "server.js" ]
+```
+
+__2. Fallback Method: `healthCheckPath` in `apps.yml`__
+If your Docker image does not include a `HEALTHCHECK` instruction, Haloy will fall back to performing an HTTP GET request. It will send the request to the endpoint you specify in the `healthCheckPath` property of your `apps.yml` file. Haloy considers the application healthy if it receives any `2xx` status code in response.
+
+## Horizontal Scaling with Replicas
+Haloy supports horizontal scaling out-of-the-box through the replicas property in your apps.yml configuration. By setting this value to more than one, you instruct Haloy to start multiple identical instances of your application's container for a single deployment.
+
+When you run multiple replicas, Haloy automatically configures the HAProxy backend to load balance traffic across all healthy instances of your application. By default, it uses a round-robin strategy to distribute incoming requests evenly. This setup enhances both performance and availability, as traffic will be redirected away from any instance that fails its health check.
+
+This property allows you to easily scale your application to handle more traffic and improve its fault tolerance without any manual configuration of the load balancer. The default is 1 replica if the property is not specified.
+
+__Example__: Here’s how you would configure an application to run with three replicas:
+```yaml
+apps:
+  - name: "my-scalable-app"
+    source:
+      image:
+        repository: "my-org/my-app"
+        tag: "1.2.0"
+    replicas: 3 # Haloy will start 3 instances of this container
+    domains:
+      - domain: "api.example.com"
+    acmeEmail: "your-email@example.com"
+```
 
 ## Architecture
 
@@ -230,7 +334,7 @@ Docker labels are the cornerstone of how the Haloy Manager identifies and config
 
 Haloy uses the following Docker container labels on your application containers:
 
-* `haloy.role`: Identifies the role of the container. For applications managed by Haloy and configured in HAProxy, this should be set to `app`.
+* `haloy.role`: (Required) Identifies the role of the container. For applications managed by Haloy and configured in HAProxy, this should be set to `app`.
 * `haloy.appName`: (Required) The unique name of your application. This is used to group container instances and name HAProxy backends.
 * `haloy.deployment-id`: (Required) An identifier for a specific deployment version of your application (e.g., a timestamp). This helps Haloy manage different versions and is crucial for zero-downtime deployments and rollbacks.
 * `haloy.port`: (Required, defaults to "80" if not specified in app config) The port your application container listens on. HAProxy will forward traffic to this port on the container's IP address.
@@ -249,11 +353,11 @@ When you define an application in your `apps.yml` like this:
 apps:
   - name: "my-web-app"
     source:
-      # ... source definition
+      # ... source definition isn't defined in labels
     domains:
       - domain: "myapp.example.com"
         aliases:
-          - "[www.myapp.example.com](https://www.myapp.example.com)"
+          - "www.myapp.example.com"
     acmeEmail: "user@example.com"
     port: "3000"
     healthCheckPath: "/status"

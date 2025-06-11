@@ -54,10 +54,10 @@ type AppConfig struct {
 	Env       []EnvVar `yaml:"env,omitempty"`
 	// Using pointer to allow nil value
 	MaxContainersToKeep *int     `yaml:"maxContainersToKeep,omitempty"`
-	Volumes             []string `yaml:"volumes,omitempty"`
 	HealthCheckPath     string   `yaml:"healthCheckPath,omitempty"`
 	Port                string   `yaml:"port,omitempty"`
 	Replicas            *int     `yaml:"replicas,omitempty"`
+	Volumes             []string `yaml:"volumes,omitempty"`
 }
 
 func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
