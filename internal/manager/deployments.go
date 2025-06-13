@@ -7,6 +7,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -22,6 +23,13 @@ type DeploymentInstance struct {
 type Deployment struct {
 	Labels    *config.ContainerLabels
 	Instances []DeploymentInstance
+}
+
+// FailedContainerInfo holds information about a container that failed processing.
+type FailedContainerInfo struct {
+	ContainerID string
+	Error       string
+	Labels      *config.ContainerLabels
 }
 
 type DeploymentManager struct {
@@ -47,7 +55,7 @@ func NewDeploymentManager(ctx context.Context, dockerClient *client.Client, logg
 // current deployments in the system. It compares the new deployment state with the previous state
 // to determine if any changes have occurred (additions, removals, or updates to deployments).
 // Returns true if the deployment state has changed, along with any error encountered.
-func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error) {
+func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged bool, failedContainers []FailedContainerInfo, err error) {
 	newDeployments := make(map[string]Deployment)
 
 	// Filter for containers with the app label
@@ -58,13 +66,18 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error)
 		All:     false, // Only running containers
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to get containers: %w", err)
+		return hasChanged, failedContainers, fmt.Errorf("failed to get containers: %w", err)
 	}
 
 	for _, containerSummary := range containers {
 		container, err := dm.DockerClient.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
 			dm.logger.Error(fmt.Sprintf("Failed to inspect container %s", containerSummary.ID), err)
+			failedContainers = append(failedContainers, FailedContainerInfo{
+				ContainerID: containerSummary.ID,
+				Error:       err.Error(),
+				Labels:      nil, // No labels if inspection failed
+			})
 			continue
 		}
 
@@ -76,12 +89,22 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error)
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
 			dm.logger.Error(fmt.Sprintf("Error parsing labels for container %s", containerSummary.ID), err)
+			failedContainers = append(failedContainers, FailedContainerInfo{
+				ContainerID: containerSummary.ID,
+				Error:       err.Error(),
+				Labels:      nil, // No labels if parsing failed
+			})
 			continue
 		}
 
 		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Error getting IP for container %s", container.ID), err)
+			dm.logger.Error(fmt.Sprintf("Error getting IP for container %s", helpers.SafeIDPrefix(container.ID)), err)
+			failedContainers = append(failedContainers, FailedContainerInfo{
+				ContainerID: container.ID,
+				Error:       err.Error(),
+				Labels:      labels,
+			})
 			continue
 		}
 
@@ -117,12 +140,12 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (bool, error)
 	dm.deployments = newDeployments
 
 	compareResult := compareDeployments(oldDeployments, newDeployments)
-	hasChanged := len(compareResult.AddedDeployments) > 0 ||
+	hasChanged = len(compareResult.AddedDeployments) > 0 ||
 		len(compareResult.RemovedDeployments) > 0 ||
 		len(compareResult.UpdatedDeployments) > 0
 
 	dm.compareResult = compareResult
-	return hasChanged, nil
+	return hasChanged, failedContainers, nil
 }
 
 func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, failedContainerIDs []string) {

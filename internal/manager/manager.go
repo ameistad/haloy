@@ -158,7 +158,7 @@ func RunManager(dryRun bool) {
 			}
 
 			updateAction := func() {
-				logger.Info(fmt.Sprintf("Received event for app %s with deployment ID %s, event action: %s", appName, latestDeploymentID[appName], latestEventAction[appName]))
+				logger.Info(fmt.Sprintf("Running updateAction for %s with deployment ID %s, event action: %s\n", appName, latestDeploymentID[appName], latestEventAction[appName]))
 				// Create a logger for this specific deployment id. This will write a log file for the specific deployment ID.
 				deploymentLogger, err := logging.NewLogger(logger.Level, false)
 				if err != nil {
@@ -166,9 +166,7 @@ func RunManager(dryRun bool) {
 					return
 				}
 				id := latestDeploymentID[appName]
-
-				// Only log to file on start events
-				if id != "" && eventAction == "start" {
+				if id != "" {
 					deploymentLogger.SetDeploymentIDFileWriter(LogsPath, id)
 				}
 				// Create a context with a timeout for this specific update task.
@@ -186,7 +184,7 @@ func RunManager(dryRun bool) {
 				}
 
 				if err := app.Validate(); err != nil {
-					deploymentLogger.Error("Something went wrong getting app data: ", err)
+					deploymentLogger.Error("App data not valid: ", err)
 					return
 				}
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
@@ -197,7 +195,7 @@ func RunManager(dryRun bool) {
 			debouncer.Debounce(appName, updateAction)
 
 		case domainUpdated := <-certUpdateSignal:
-			logger.Info(fmt.Sprintf("Received cert update signal for domain: %s", domainUpdated))
+			logger.Info(fmt.Sprintf("Received cert update signal for domain: %s\n", domainUpdated))
 
 			go func() {
 				// Use a timeout context for this specific task
@@ -287,7 +285,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 				// We'll only process events for containers that have been marked with haloy labels.
 				if eligible {
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
-					fmt.Printf("Container is eligible for haloy management:\n event:  %s \n  container id: %s \n deployment id: %s", string(event.Action), helpers.SafeIDPrefix(event.Actor.ID), labels.DeploymentID)
+					fmt.Printf("Container is eligible: event: %s - container id: %s - deployment id: %s\n", string(event.Action), helpers.SafeIDPrefix(event.Actor.ID), labels.DeploymentID)
 					if err != nil {
 						logger.Error("Error parsing container labels", err)
 						return

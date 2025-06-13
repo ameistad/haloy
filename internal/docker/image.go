@@ -33,7 +33,6 @@ func EnsureImageUpToDate(ctx context.Context, dockerClient *client.Client, image
 			for _, rd := range local.RepoDigests {
 				// rd is "repo@sha256:..."
 				if strings.HasSuffix(rd, "@"+remoteDigest) {
-					ui.Info("Image %s is already at latest (%s)", imageName, remoteDigest)
 					return imageName, nil
 				}
 			}
@@ -52,7 +51,7 @@ func EnsureImageUpToDate(ctx context.Context, dockerClient *client.Client, image
 	if _, err := io.Copy(io.Discard, r); err != nil {
 		return imageName, fmt.Errorf("error reading pull response: %w", err)
 	}
-	ui.Success("Pulled %s", imageName)
+	ui.Info("Successfully pulled %s", imageName)
 	return imageName, nil
 }
 

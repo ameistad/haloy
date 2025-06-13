@@ -7,7 +7,10 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
+	"github.com/ameistad/haloy/internal/ui"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
 )
@@ -90,10 +93,51 @@ func (r TriggerReason) String() string {
 
 func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason TriggerReason, app *TriggeredByApp) error {
 	// Build Deployments and check if anything has changed (Thread-safe)
-	deploymentsHasChanged, err := u.deploymentManager.BuildDeployments(ctx)
+	deploymentsHasChanged, failedContainers, err := u.deploymentManager.BuildDeployments(ctx)
 	if err != nil {
 		return fmt.Errorf("updater: failed to build deployments: %w", err)
 	}
+
+	// If we have failed containers, we log them and stop them. We'll do that even if no changes were detected.
+	if len(failedContainers) > 0 {
+		for _, failedContainer := range failedContainers {
+			if failedContainer.Labels != nil {
+				logger.Info(fmt.Sprintf(
+					"Error: Container %s [App: %s, DeploymentID: %s] failed to start. Verify the container's configuration and label settings.",
+					helpers.SafeIDPrefix(failedContainer.ContainerID),
+					failedContainer.Labels.AppName,
+					failedContainer.Labels.DeploymentID,
+				))
+			} else {
+				logger.Info(fmt.Sprintf(
+					"Error: Container %s failed to start and no label info is available. Please check the container configuration.",
+					helpers.SafeIDPrefix(failedContainer.ContainerID),
+				))
+			}
+
+			logger.Info(fmt.Sprintf(
+				"Attempting to stop container %s due to error: %s. This error could be caused by network issues or misconfiguration. Check if the container is attached to the correct network.",
+				helpers.SafeIDPrefix(failedContainer.ContainerID),
+				failedContainer.Error,
+			))
+
+			err := u.dockerClient.ContainerStop(ctx, failedContainer.ContainerID, container.StopOptions{})
+			if err != nil {
+				ui.Error(fmt.Sprintf(
+					"Critical: Failed to stop container %s. Manual intervention may be required. Check docker logs and container status.",
+					helpers.SafeIDPrefix(failedContainer.ContainerID),
+				), err)
+			} else {
+				logger.Info(fmt.Sprintf(
+					"Stop command issued successfully for container %s. For further details, review logs with: docker logs %s",
+					helpers.SafeIDPrefix(failedContainer.ContainerID),
+					helpers.SafeIDPrefix(failedContainer.ContainerID),
+				))
+			}
+		}
+	}
+
+	// If no changes were detected, we skip further processing.
 	if !deploymentsHasChanged {
 		logger.Debug("Updater: No changes detected in deployments, skipping further processing")
 		return nil
