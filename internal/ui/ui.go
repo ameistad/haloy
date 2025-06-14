@@ -10,38 +10,36 @@ import (
 
 // Colors
 var (
+	Amber     = lipgloss.Color("#F59E0B")
+	Blue      = lipgloss.Color("#3B82F6")
 	White     = lipgloss.Color("#fafafa")
-	Gray      = lipgloss.Color("245")
-	Green     = lipgloss.Color("#22c55e")
+	Gray      = lipgloss.Color("#6B7280")
+	Green     = lipgloss.Color("#10B981")
 	LightGray = lipgloss.Color("241")
 	Red       = lipgloss.Color("#f87171")
-	Yellow    = lipgloss.Color("#fef08a")
+	Purple    = lipgloss.Color("#8B5CF6")
 )
 
 // Styles
-var titleStyle = lipgloss.NewStyle().
-	Bold(true).
-	Foreground(White)
+var s = lipgloss.NewStyle()
+var titleStyle = s.Bold(true).Foreground(White)
 
-var baseStyle = lipgloss.NewStyle()
-
-func Success(format string, a ...any) {
-	printStyledLines(baseStyle.Foreground(Green).Bold(true), format, a...)
-}
 func Info(format string, a ...any) {
-	printStyledLines(baseStyle.Foreground(White), format, a...)
+	printStyledLines(s.Foreground(Blue).Render("●"), s.Foreground(White), format, a...)
 }
-
+func Success(format string, a ...any) {
+	printStyledLines(s.Foreground(Green).Render("●"), s.Foreground(White).Bold(true), format, a...)
+}
 func Debug(format string, a ...any) {
-	printStyledLines(baseStyle.Foreground(LightGray), format, a...)
+	printStyledLines(s.Foreground(Purple).Render("◆"), s.Foreground(White), format, a...)
 }
 
 func Warn(format string, a ...any) {
-	printStyledLines(baseStyle.Foreground(Yellow), format, a...)
+	printStyledLines(s.Foreground(Amber).Render("⚠"), s.Foreground(White), format, a...)
 }
 
 func Error(format string, a ...any) {
-	printStyledLines(baseStyle.Foreground(Red), format, a...)
+	printStyledLines(s.Foreground(Red).Render("✖"), s.Foreground(White), format, a...)
 }
 
 var lineStyle = lipgloss.NewStyle().
@@ -78,12 +76,13 @@ func Table(headers []string, rows [][]string) {
 	fmt.Println(t)
 }
 
-func printStyledLines(style lipgloss.Style, format string, a ...any) {
+func printStyledLines(prefix string, style lipgloss.Style, format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	lines := strings.Split(msg, "\n")
 	for _, line := range lines {
 		if line != "" {
-			fmt.Println(style.Render(line))
+			prefixedLine := fmt.Sprintf("%s %s", prefix, style.Render(line))
+			fmt.Println(prefixedLine)
 		}
 	}
 }
