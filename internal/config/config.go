@@ -49,8 +49,8 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 type AppConfig struct {
 	Name      string   `yaml:"name"`
 	Source    Source   `yaml:"source"`
-	Domains   []Domain `yaml:"domains"`
-	ACMEEmail string   `yaml:"acmeEmail"`
+	Domains   []Domain `yaml:"domains,omitempty"`
+	ACMEEmail string   `yaml:"acmeEmail,omitempty"`
 	Env       []EnvVar `yaml:"env,omitempty"`
 	// Using pointer to allow nil value
 	MaxContainersToKeep *int     `yaml:"maxContainersToKeep,omitempty"`
@@ -58,6 +58,7 @@ type AppConfig struct {
 	Port                string   `yaml:"port,omitempty"`
 	Replicas            *int     `yaml:"replicas,omitempty"`
 	Volumes             []string `yaml:"volumes,omitempty"`
+	NetworkMode         string   `yaml:"networkMode,omitempty"` // Defaults to "bridge".
 }
 
 func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
@@ -100,53 +101,6 @@ func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
 	*a = AppConfig(alias)
 
 	return nil
-}
-
-type Domain struct {
-	Canonical string   `yaml:"domain"`
-	Aliases   []string `yaml:"aliases,omitempty"`
-}
-
-func (d *Domain) ToSlice() []string {
-	return append([]string{d.Canonical}, d.Aliases...)
-}
-func (d *Domain) UnmarshalYAML(value *yaml.Node) error {
-	// If the YAML node is a scalar, treat it as a simple canonical domain.
-	if value.Kind == yaml.ScalarNode {
-		d.Canonical = value.Value
-		d.Aliases = []string{}
-		return nil
-	}
-
-	// If the node is a mapping, check for unknown fields
-	if value.Kind == yaml.MappingNode {
-		expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*d))
-
-		if err := CheckUnknownFields(value, expectedFields, "domain: "); err != nil {
-			return err
-		}
-
-		// Use type alias to avoid infinite recursion
-		type DomainAlias Domain
-		var alias DomainAlias
-
-		// Unmarshal to the alias type
-		if err := value.Decode(&alias); err != nil {
-			return err
-		}
-
-		// Copy data back to original struct
-		*d = Domain(alias)
-
-		// Ensure Aliases is not nil
-		if d.Aliases == nil {
-			d.Aliases = []string{}
-		}
-
-		return nil
-	}
-
-	return fmt.Errorf("unexpected YAML node kind %d for Domain", value.Kind)
 }
 
 // NormalizeConfig sets default values for the loaded configuration.

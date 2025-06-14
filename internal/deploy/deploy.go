@@ -15,10 +15,6 @@ import (
 	"github.com/docker/docker/client"
 )
 
-const (
-	LogStreamAddress = "localhost:9000" // Address of the manager's log stream server
-)
-
 func DeployApp(appConfig *config.AppConfig) error {
 	// Create the primary context for the whole deployment + log streaming
 	deployCtx, cancelDeploy := context.WithCancel(context.Background())
@@ -203,6 +199,8 @@ func printLogLine(line string) {
 	switch {
 	case len(line) > 7 && line[:7] == "[INFO] ":
 		ui.Info("%s", line[7:])
+	case len(line) > 10 && line[:10] == "[SUCCESS] ":
+		ui.Success("%s", line[10:])
 	case len(line) > 7 && line[:7] == "[DEBUG] ":
 		ui.Debug("%s", line[7:])
 	case len(line) > 7 && line[:7] == "[WARN] ":

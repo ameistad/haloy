@@ -171,20 +171,24 @@ func (cl *ContainerLabels) IsValid() error {
 		return fmt.Errorf("deploymentID is required")
 	}
 
-	if cl.ACMEEmail == "" {
-		return fmt.Errorf("ACME email is required")
-	}
+	if len(cl.Domains) > 0 {
+		for _, domain := range cl.Domains {
+			if err := domain.Validate(); err != nil {
+				return fmt.Errorf("domain validation failed: %w", err)
+			}
+		}
 
-	if !helpers.IsValidEmail(cl.ACMEEmail) {
-		return fmt.Errorf("ACME email is not valid")
+		if cl.ACMEEmail == "" {
+			return fmt.Errorf("ACME email must be set if domains are defined")
+		}
+
+		if !helpers.IsValidEmail(cl.ACMEEmail) {
+			return fmt.Errorf("ACME email is not valid")
+		}
 	}
 
 	if cl.Port == "" {
 		return fmt.Errorf("port is required")
-	}
-
-	if len(cl.Domains) == 0 {
-		return fmt.Errorf("at least one domain is required")
 	}
 
 	if cl.Role != AppLabelRole {

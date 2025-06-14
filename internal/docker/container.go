@@ -16,7 +16,6 @@ import (
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 )
 
@@ -57,17 +56,16 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 		envVars = append(envVars, fmt.Sprintf("%s=%s", v.Name, value))
 	}
 
+	networkMode := container.NetworkMode(config.DockerNetwork)
+	if appConfig.NetworkMode != "" {
+		networkMode = container.NetworkMode(appConfig.NetworkMode)
+	}
+	// Attach to the default docker network if not specified. If not using default network HAProxy will not work.
 	// Prepare host configuration - set restart policy and volumes to mount.
 	hostConfig := &container.HostConfig{
+		NetworkMode:   networkMode,
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
 		Binds:         appConfig.Volumes,
-	}
-
-	// Attach the container to the predefined network
-	networkingConfig := &network.NetworkingConfig{
-		EndpointsConfig: map[string]*network.EndpointSettings{
-			config.DockerNetwork: {},
-		},
 	}
 
 	for i := range make([]struct{}, *appConfig.Replicas) {
@@ -78,7 +76,7 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 			Env:    envVars,
 		}
 		containerName := fmt.Sprintf("%s-haloy-%s-replica-%d", appConfig.Name, deploymentID, i+1)
-		resp, err := dockerClient.ContainerCreate(ctx, containerConfig, hostConfig, networkingConfig, nil, containerName)
+		resp, err := dockerClient.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 		if err != nil {
 			return result, fmt.Errorf("failed to create container: %w", err)
 		}

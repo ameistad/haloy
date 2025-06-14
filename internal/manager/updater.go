@@ -159,7 +159,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 	// If an app is provided we refresh the certs synchronously so we can log the result.
 	// Otherwise, we refresh them asynchronously to avoid blocking the main update process.
 	// We also refresh the certs for that app only.
-	if app != nil {
+	if app != nil && len(app.domains) > 0 {
 		appCanonicalDomains := make(map[string]struct{}, len(app.domains))
 		for _, domain := range app.domains {
 			appCanonicalDomains[domain.Canonical] = struct{}{}
@@ -212,7 +212,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}
 		logger.Info(fmt.Sprintf("Stopped %d container(s) and removed %d old container(s)", len(stoppedIDs), len(removedContainers)))
-		logger.Info(fmt.Sprintf("🎉 Successfully deployed %s with deployment ID %s", app.appName, app.deploymentID))
+		logger.Success(fmt.Sprintf("Successfully deployed %s with deployment ID %s", app.appName, app.deploymentID))
 	}
 
 	return nil

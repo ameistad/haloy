@@ -23,6 +23,7 @@ type LogLevel int
 const (
 	DEBUG LogLevel = iota
 	INFO
+	SUCCESS
 	WARN
 	ERROR
 	FATAL
@@ -55,6 +56,19 @@ func (l *Logger) Info(msg string) {
 		}
 	}
 }
+
+func (l *Logger) Success(msg string) {
+	if l.Level <= SUCCESS {
+		if l.isCLI {
+			ui.Success("%s", msg)
+		} else {
+			l.mutex.Lock()
+			defer l.mutex.Unlock()
+			fmt.Fprintf(l.writer, "[SUCCESS] %s\n", msg)
+		}
+	}
+}
+
 func (l *Logger) Warn(msg string, err ...error) {
 	if l.Level <= WARN {
 		l.mutex.Lock()

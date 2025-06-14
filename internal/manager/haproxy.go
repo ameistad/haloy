@@ -109,6 +109,11 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 		backendName := appName
 		var canonicalACLs []string
 
+		// Skip processing if no domains are set for this deployment.
+		if len(d.Labels.Domains) == 0 {
+			continue
+		}
+
 		for _, domain := range d.Labels.Domains {
 			if domain.Canonical != "" {
 				canonicalKey := strings.ReplaceAll(domain.Canonical, ".", "_")

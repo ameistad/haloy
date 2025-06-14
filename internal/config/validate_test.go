@@ -73,6 +73,16 @@ func TestValidateDomain(t *testing.T) {
 	}
 }
 
+func TestValidate_NoDomainsAndNoACMEEmail(t *testing.T) {
+	app := baseAppConfig("nodomains")
+	// Remove domains and ACME email to test that validation passes.
+	app.Domains = []Domain{}
+	app.ACMEEmail = ""
+	if err := app.Validate(); err != nil {
+		t.Errorf("expected valid configuration with no domains and no ACME email; got error: %v", err)
+	}
+}
+
 func TestValidateHealthCheckPath(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -308,10 +308,11 @@ func (cm *CertificatesManager) checkRenewals(logger *logging.Logger, domains []C
 				renewedDomains = append(renewedDomains, obtainedDomain)
 			}
 		} else if !os.IsNotExist(err) { // Only log skipping if we actually checked a cert file
-			logger.Info(fmt.Sprintf("Skipping renewal for %s: certificate is valid and SANs match.", domain.Canonical))
+			var aliasMsg string
 			if len(domain.Aliases) > 0 {
-				logger.Info(fmt.Sprintf("Aliases: %s", strings.Join(domain.Aliases, ", ")))
+				aliasMsg = fmt.Sprintf(" (aliases: %s)", strings.Join(domain.Aliases, ", "))
 			}
+			logger.Info(fmt.Sprintf("Skipping renewal for %s%s: certificate is valid.", domain.Canonical, aliasMsg))
 		}
 	}
 
