@@ -75,7 +75,11 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 			Labels: labels,
 			Env:    envVars,
 		}
-		containerName := fmt.Sprintf("%s-haloy-%s-replica-%d", appConfig.Name, deploymentID, i+1)
+		containerName := fmt.Sprintf("%s-haloy-%s", appConfig.Name, deploymentID)
+		if *appConfig.Replicas > 1 {
+			containerName += fmt.Sprintf("-replica-%d", i+1)
+		}
+
 		resp, err := dockerClient.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 		if err != nil {
 			return result, fmt.Errorf("failed to create container: %w", err)
@@ -357,18 +361,4 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logg
 	}
 
 	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)
-}
-
-// PruneContainers removes stopped containers and returns the number of containers deleted and bytes reclaimed.
-func PruneContainers(ctx context.Context, dockerClient *client.Client) (int, uint64, error) {
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
-	report, err := dockerClient.ContainersPrune(ctx, filterArgs)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to prune containers: %w", err)
-	}
-	if len(report.ContainersDeleted) > 0 {
-		ui.Info("Pruned %d containers, reclaimed %d bytes", len(report.ContainersDeleted), report.SpaceReclaimed)
-	}
-	return len(report.ContainersDeleted), report.SpaceReclaimed, nil
 }

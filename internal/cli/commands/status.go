@@ -75,12 +75,16 @@ const (
 )
 
 type initialStatus struct {
-	state            string
-	containerIDs     []string
-	domains          []config.Domain
-	formattedDomains []string
-	envVars          []config.EnvVar
-	formattedEnvVars []string
+	state                         string
+	runningContainerIDs           []string
+	availableRollbackContainerIDs []string
+	domains                       []config.Domain
+	formattedDomains              []string
+	envVars                       []config.EnvVar
+	formattedEnvVars              []string
+
+	// all formatted fields for better output
+	formattedOutput []string
 }
 
 func getInitialStatus(dockerClient *client.Client, context context.Context, appConfig *config.AppConfig) (initialStatus, error) {
@@ -91,29 +95,53 @@ func getInitialStatus(dockerClient *client.Client, context context.Context, appC
 
 	containers, err := dockerClient.ContainerList(context, container.ListOptions{
 		Filters: filtersArgs,
-		All:     false,
+		All:     true,
 	})
 	if err != nil {
 		return status, fmt.Errorf("failed to get container for app %s: %w", appConfig.Name, err)
 	}
 
 	state := "Not running"
-	containerIDs := make([]string, len(containers))
-	if len(containers) > 0 {
-		for i, c := range containers {
-			if c.State == "running" || c.State == "restarting" {
-				containerIDs[i] = helpers.SafeIDPrefix(c.ID)
-			}
+	var runningDeploymentID string
+	runningContainerIDs := make([]string, 0, len(containers))
+	availableRollbackContainerIDs := make([]string, 0, len(containers))
+
+	// First pass: find running containers and determine the highest deploymentID.
+	for _, c := range containers {
+		labels, err := config.ParseContainerLabels(c.Labels)
+		if err != nil {
+			return status, fmt.Errorf("failed to parse labels for container %s: %w", helpers.SafeIDPrefix(c.ID), err)
 		}
 
-		for _, c := range containers {
-			switch c.State {
-			case "running":
+		if c.State == "running" || c.State == "restarting" {
+			if labels.DeploymentID > runningDeploymentID {
+				runningDeploymentID = labels.DeploymentID
+			}
+			runningContainerIDs = append(runningContainerIDs, helpers.SafeIDPrefix(c.ID))
+			if c.State == "running" {
 				state = "Running"
-			case "restarting":
+			} else if state != "Running" {
 				state = "Restarting"
-			case "exited":
-				state = "Exited"
+			}
+		}
+	}
+	// Second pass: count rollback containers.
+	for _, c := range containers {
+		labels, err := config.ParseContainerLabels(c.Labels)
+		if err != nil {
+			return status, fmt.Errorf("failed to parse labels for container %s: %w", helpers.SafeIDPrefix(c.ID), err)
+		}
+
+		// If a running deployment exists, only count those with a lower deploymentID.
+		if runningDeploymentID != "" {
+			if c.State != "running" && c.State != "restarting" && labels.DeploymentID < runningDeploymentID {
+				availableRollbackContainerIDs = append(availableRollbackContainerIDs, helpers.SafeIDPrefix(c.ID))
+			}
+		} else {
+			// No running container found: decide how to handle rollback.
+			// For example, count all stopped containers as available for rollback.
+			if c.State != "running" && c.State != "restarting" {
+				availableRollbackContainerIDs = append(availableRollbackContainerIDs, helpers.SafeIDPrefix(c.ID))
 			}
 		}
 	}
@@ -148,13 +176,33 @@ func getInitialStatus(dockerClient *client.Client, context context.Context, appC
 		}
 	}
 
+	var rollbackMsg string
+	if len(availableRollbackContainerIDs) == 1 {
+		rollbackMsg = "1 rollback container available"
+	} else {
+		rollbackMsg = fmt.Sprintf("%d rollback containers available", len(availableRollbackContainerIDs))
+	}
+
+	formattedOutput := []string{
+		fmt.Sprintf("State: %s", state),
+		fmt.Sprintf("Domains:\n%s", strings.Join(formattedDomains, "\n")),
+		fmt.Sprintf("Running container(s): %s", strings.Join(runningContainerIDs, ", ")),
+		rollbackMsg,
+	}
+
+	if len(formattedEnvVars) > 0 {
+		formattedOutput = append(formattedOutput, fmt.Sprintf("Environment Variables:\n%s", strings.Join(formattedEnvVars, "\n")))
+	}
+
 	status = initialStatus{
-		state:            state,
-		containerIDs:     containerIDs,
-		domains:          appConfig.Domains,
-		formattedDomains: formattedDomains,
-		envVars:          appConfig.Env,
-		formattedEnvVars: formattedEnvVars,
+		state:                         state,
+		runningContainerIDs:           runningContainerIDs,
+		availableRollbackContainerIDs: availableRollbackContainerIDs,
+		domains:                       appConfig.Domains,
+		formattedDomains:              formattedDomains,
+		envVars:                       appConfig.Env,
+		formattedEnvVars:              formattedEnvVars,
+		formattedOutput:               formattedOutput,
 	}
 
 	return status, nil
@@ -167,17 +215,7 @@ func showAppStatusDetailed(dockerClient *client.Client, context context.Context,
 		return err
 	}
 
-	output := []string{
-		fmt.Sprintf("State: %s", status.state),
-		fmt.Sprintf("Domains:\n%s", strings.Join(status.formattedDomains, "\n")),
-		fmt.Sprintf("Container IDs: %s", strings.Join(status.containerIDs, ", ")),
-	}
-
-	if len(status.formattedEnvVars) > 0 {
-		output = append(output, fmt.Sprintf("Environment Variables:\n%s", strings.Join(status.formattedEnvVars, "\n")))
-	}
-	// Create section
-	ui.Section(fmt.Sprintf("%s (detailed status)", appConfig.Name), output)
+	ui.Section(fmt.Sprintf("%s (detailed status)", appConfig.Name), status.formattedOutput)
 
 	return nil
 }
@@ -188,17 +226,7 @@ func showAppStatus(dockerClient *client.Client, context context.Context, appConf
 		return err
 	}
 
-	output := []string{
-		fmt.Sprintf("State: %s", status.state),
-		fmt.Sprintf("Domains:\n%s", strings.Join(status.formattedDomains, "\n")),
-		fmt.Sprintf("Container IDs: %s", strings.Join(status.containerIDs, ", ")),
-	}
-
-	if len(status.formattedEnvVars) > 0 {
-		output = append(output, fmt.Sprintf("Environment Variables:\n%s", strings.Join(status.formattedEnvVars, "\n")))
-	}
-	// Create section
-	ui.Section(appConfig.Name, output)
+	ui.Section(fmt.Sprintf("%s (detailed status)", appConfig.Name), status.formattedOutput)
 
 	return nil
 }

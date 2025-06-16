@@ -226,10 +226,6 @@ func RunManager(dryRun bool) {
 			if err != nil {
 				logger.Warn(fmt.Sprintf("Failed to prune images: %v", err))
 			}
-			_, _, err = docker.PruneContainers(ctx, dockerClient)
-			if err != nil {
-				logger.Warn(fmt.Sprintf("Failed to prune containers: %v", err))
-			}
 			go func() {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
