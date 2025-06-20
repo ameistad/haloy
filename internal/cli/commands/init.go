@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -68,6 +69,16 @@ func InitCmd() *cobra.Command {
 			ui.Info("Creating configuration directory: %s\n", configDirPath)
 			if err := os.MkdirAll(configDirPath, 0755); err != nil {
 				ui.Error("Failed to create config directory '%s': %v\n", configDirPath, err)
+				return
+			}
+
+			// Check if Docker is installed and available in PATH.
+			_, err = exec.LookPath("docker")
+			if err != nil {
+				ui.Error("Docker executable not found.\n" +
+					"Please ensure Docker is installed and that its binary is in your system's PATH.\n" +
+					"You can download and install Docker from: https://www.docker.com/get-started\n" +
+					"If Docker is installed, verify your PATH environment variable includes the directory where Docker is located.")
 				return
 			}
 
