@@ -23,15 +23,15 @@ func StartCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 			defer cancel()
-			dockerClient, err := docker.NewClient(ctx)
+			cli, err := docker.NewClient(ctx)
 			if err != nil {
 				ui.Error("%v", err)
 				return
 			}
-			defer dockerClient.Close()
+			defer cli.Close()
 
 			// Start the haloy services
-			status, err := docker.EnsureServicesIsRunning(dockerClient, ctx)
+			status, err := docker.EnsureServicesIsRunning(cli, ctx)
 			if err != nil {
 				ui.Error("Failed to start services: %v", err)
 				return

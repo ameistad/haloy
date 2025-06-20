@@ -16,14 +16,14 @@ import (
 )
 
 type Updater struct {
-	dockerClient      *client.Client
+	cli               *client.Client
 	deploymentManager *DeploymentManager
 	certManager       *CertificatesManager
 	haproxyManager    *HAProxyManager
 }
 
 type UpdaterConfig struct {
-	DockerClient      *client.Client
+	Cli               *client.Client
 	DeploymentManager *DeploymentManager
 	CertManager       *CertificatesManager
 	HAProxyManager    *HAProxyManager
@@ -31,7 +31,7 @@ type UpdaterConfig struct {
 
 func NewUpdater(config UpdaterConfig) *Updater {
 	return &Updater{
-		dockerClient:      config.DockerClient,
+		cli:               config.Cli,
 		deploymentManager: config.DeploymentManager,
 		certManager:       config.CertManager,
 		haproxyManager:    config.HAProxyManager,
@@ -117,7 +117,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 				failedContainer.Error,
 			))
 
-			err := u.dockerClient.ContainerStop(ctx, failedContainer.ContainerID, container.StopOptions{})
+			err := u.cli.ContainerStop(ctx, failedContainer.ContainerID, container.StopOptions{})
 			if err != nil {
 				ui.Error(fmt.Sprintf(
 					"Critical: Failed to stop container %s. Manual intervention may be required. Check docker logs and container status.",
@@ -192,11 +192,11 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 	// - log successful deployment for app.
 
 	if app != nil {
-		_, err := docker.StopContainers(ctx, u.dockerClient, app.appName, app.deploymentID)
+		_, err := docker.StopContainers(ctx, u.cli, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to stop old containers: %w", err)
 		}
-		_, err = docker.RemoveContainers(ctx, u.dockerClient, app.appName, app.deploymentID)
+		_, err = docker.RemoveContainers(ctx, u.cli, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}

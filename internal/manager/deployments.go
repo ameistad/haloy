@@ -33,8 +33,8 @@ type FailedContainerInfo struct {
 }
 
 type DeploymentManager struct {
-	Context      context.Context
-	DockerClient *client.Client
+	Context context.Context
+	Cli     *client.Client
 	// deployments is a map of appName to Deployment, key is the app name.
 	deployments      map[string]Deployment
 	logger           *logging.Logger
@@ -42,12 +42,12 @@ type DeploymentManager struct {
 	deploymentsMutex sync.RWMutex
 }
 
-func NewDeploymentManager(ctx context.Context, dockerClient *client.Client, logger *logging.Logger) *DeploymentManager {
+func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *logging.Logger) *DeploymentManager {
 	return &DeploymentManager{
-		Context:      ctx,
-		DockerClient: dockerClient,
-		deployments:  make(map[string]Deployment),
-		logger:       logger,
+		Context:     ctx,
+		Cli:         cli,
+		deployments: make(map[string]Deployment),
+		logger:      logger,
 	}
 }
 
@@ -61,7 +61,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 	// Filter for containers with the app label
 	filtersArgs := filters.NewArgs()
 	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
-	containers, err := dm.DockerClient.ContainerList(ctx, container.ListOptions{
+	containers, err := dm.Cli.ContainerList(ctx, container.ListOptions{
 		Filters: filtersArgs,
 		All:     false, // Only running containers
 	})
@@ -70,7 +70,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 	}
 
 	for _, containerSummary := range containers {
-		container, err := dm.DockerClient.ContainerInspect(ctx, containerSummary.ID)
+		container, err := dm.Cli.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
 			dm.logger.Error(fmt.Sprintf("Failed to inspect container %s", containerSummary.ID), err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
@@ -159,7 +159,7 @@ func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, f
 
 	for _, deployment := range checked {
 		for _, instance := range deployment.Instances {
-			if err := docker.HealthCheckContainer(dm.Context, dm.DockerClient, dm.logger, instance.ContainerID); err != nil {
+			if err := docker.HealthCheckContainer(dm.Context, dm.Cli, dm.logger, instance.ContainerID); err != nil {
 				failedContainerIDs = append(failedContainerIDs, instance.ContainerID)
 			}
 		}

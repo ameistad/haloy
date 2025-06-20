@@ -32,14 +32,14 @@ type ServiceStatus struct {
 	Details         string
 }
 
-func EnsureServicesIsRunning(dockerClient *client.Client, ctx context.Context) (ServiceStatus, error) {
+func EnsureServicesIsRunning(cli *client.Client, ctx context.Context) (ServiceStatus, error) {
 	requiredRoles := []string{config.HAProxyLabelRole, config.ManagerLabelRole}
 	status := ServiceStatus{
 		RunningServices: make(map[string]bool),
 	}
 
 	// Check if containers are running
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{All: true})
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
 		return status, fmt.Errorf("failed to list containers: %w", err)
 	}

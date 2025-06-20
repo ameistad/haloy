@@ -27,12 +27,12 @@ If an app name is given, show detailed status including DNS configuration.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			context, cancel := context.WithTimeout(context.Background(), showStatusTimeout)
 			defer cancel()
-			dockerClient, err := docker.NewClient(context)
+			cli, err := docker.NewClient(context)
 			if err != nil {
 				ui.Error("Error: %s", err)
 				return
 			}
-			defer dockerClient.Close()
+			defer cli.Close()
 
 			if len(args) == 0 {
 				// Show status for all apps
@@ -47,7 +47,7 @@ If an app name is given, show detailed status including DNS configuration.`,
 					return
 				}
 				for i := range configFile.Apps {
-					if err := showAppStatus(dockerClient, context, &configFile.Apps[i]); err != nil {
+					if err := showAppStatus(cli, context, &configFile.Apps[i]); err != nil {
 						ui.Error("Error: %s", err)
 					}
 				}
@@ -61,7 +61,7 @@ If an app name is given, show detailed status including DNS configuration.`,
 				return
 			}
 
-			if err := showAppStatusDetailed(dockerClient, context, appConfig); err != nil {
+			if err := showAppStatusDetailed(cli, context, appConfig); err != nil {
 				ui.Error("Error: %s", err)
 			}
 
@@ -87,13 +87,13 @@ type initialStatus struct {
 	formattedOutput []string
 }
 
-func getInitialStatus(dockerClient *client.Client, context context.Context, appConfig *config.AppConfig) (initialStatus, error) {
+func getInitialStatus(cli *client.Client, context context.Context, appConfig *config.AppConfig) (initialStatus, error) {
 	status := initialStatus{}
 	filtersArgs := filters.NewArgs()
 	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
 	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appConfig.Name))
 
-	containers, err := dockerClient.ContainerList(context, container.ListOptions{
+	containers, err := cli.ContainerList(context, container.ListOptions{
 		Filters: filtersArgs,
 		All:     true,
 	})
@@ -208,9 +208,9 @@ func getInitialStatus(dockerClient *client.Client, context context.Context, appC
 	return status, nil
 }
 
-func showAppStatusDetailed(dockerClient *client.Client, context context.Context, appConfig *config.AppConfig) error {
+func showAppStatusDetailed(cli *client.Client, context context.Context, appConfig *config.AppConfig) error {
 
-	status, err := getInitialStatus(dockerClient, context, appConfig)
+	status, err := getInitialStatus(cli, context, appConfig)
 	if err != nil {
 		return err
 	}
@@ -220,8 +220,8 @@ func showAppStatusDetailed(dockerClient *client.Client, context context.Context,
 	return nil
 }
 
-func showAppStatus(dockerClient *client.Client, context context.Context, appConfig *config.AppConfig) error {
-	status, err := getInitialStatus(dockerClient, context, appConfig)
+func showAppStatus(cli *client.Client, context context.Context, appConfig *config.AppConfig) error {
+	status, err := getInitialStatus(cli, context, appConfig)
 	if err != nil {
 		return err
 	}

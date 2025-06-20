@@ -74,7 +74,7 @@ func InitCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
 			defer cancel()
 
-			dockerClient, err := docker.NewClient(ctx)
+			cli, err := docker.NewClient(ctx)
 			if err != nil {
 				if os.IsPermission(err) ||
 					strings.Contains(err.Error(), "permission denied") ||
@@ -90,7 +90,7 @@ func InitCmd() *cobra.Command {
 				ui.Error("%v", err)
 				return
 			}
-			defer dockerClient.Close()
+			defer cli.Close()
 
 			var emptyDirs = []string{
 				"containers/cert-storage",
@@ -109,14 +109,14 @@ func InitCmd() *cobra.Command {
 			}
 
 			// Ensure default Docker network exists.
-			if err := docker.EnsureNetwork(dockerClient, ctx); err != nil {
+			if err := docker.EnsureNetwork(cli, ctx); err != nil {
 				ui.Warn("Failed to ensure Docker network exists: %v\n", err)
 				ui.Warn("You can manually create it with:\n")
 				ui.Warn("docker network create --driver bridge %s", config.DockerNetwork)
 			}
 
 			if !skipServices {
-				if _, err := docker.EnsureServicesIsRunning(dockerClient, ctx); err != nil {
+				if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
 					ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
 					return
 				}

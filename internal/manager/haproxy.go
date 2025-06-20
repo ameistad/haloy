@@ -21,26 +21,26 @@ import (
 )
 
 type HAProxyManager struct {
-	dockerClient *client.Client
-	logger       *logging.Logger
-	configDir    string
-	dryRun       bool
-	updateMutex  sync.Mutex // Mutex protects config writing and reload signaling
+	cli         *client.Client
+	logger      *logging.Logger
+	configDir   string
+	dryRun      bool
+	updateMutex sync.Mutex // Mutex protects config writing and reload signaling
 }
 
 type HAProxyManagerConfig struct {
-	DockerClient *client.Client
-	Logger       *logging.Logger
-	ConfigDir    string
-	DryRun       bool
+	Cli       *client.Client
+	Logger    *logging.Logger
+	ConfigDir string
+	DryRun    bool
 }
 
 func NewHAProxyManager(config HAProxyManagerConfig) *HAProxyManager {
 	return &HAProxyManager{
-		dockerClient: config.DockerClient,
-		logger:       config.Logger,
-		configDir:    config.ConfigDir,
-		dryRun:       config.DryRun,
+		cli:       config.Cli,
+		logger:    config.Logger,
+		configDir: config.ConfigDir,
+		dryRun:    config.DryRun,
 	}
 }
 
@@ -84,7 +84,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[stri
 
 	// 4. Signal HAProxy Reload
 	hpm.logger.Debug("HAProxyManager: Sending SIGUSR2 signal to HAProxy container...")
-	err = hpm.dockerClient.ContainerKill(ctx, haproxyID, "SIGUSR2")
+	err = hpm.cli.ContainerKill(ctx, haproxyID, "SIGUSR2")
 	if err != nil {
 		// Log error but potentially don't fail the whole update if signal fails? Or return error?
 		// Let's return error for now.
@@ -197,7 +197,7 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
 		filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole))
 		filtersArgs.Add("status", "running") // Only consider running containers
 
-		containers, err := hpm.dockerClient.ContainerList(ctx, container.ListOptions{
+		containers, err := hpm.cli.ContainerList(ctx, container.ListOptions{
 			Filters: filtersArgs,
 			Limit:   1, // We only expect one HAProxy container managed by haloy
 		})

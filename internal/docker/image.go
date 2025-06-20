@@ -18,7 +18,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func EnsureImageUpToDate(ctx context.Context, dockerClient *client.Client, imageSource *config.ImageSource) (imageName string, err error) {
+func EnsureImageUpToDate(ctx context.Context, cli *client.Client, imageSource *config.ImageSource) (imageName string, err error) {
 	imageName = imageSource.Repository
 	imageRef := imageSource.ImageRef()
 	registryAuth, err := imageSource.RegistryAuthString()
@@ -26,10 +26,10 @@ func EnsureImageUpToDate(ctx context.Context, dockerClient *client.Client, image
 		return imageName, fmt.Errorf("failed to resolve registry auth for image %s: %w", imageName, err)
 	}
 	// Try inspecting local image
-	local, err := dockerClient.ImageInspect(ctx, imageName)
+	local, err := cli.ImageInspect(ctx, imageName)
 	if err == nil {
 		// Inspect remote manifest (HEAD)
-		remote, err := dockerClient.DistributionInspect(ctx, imageRef, registryAuth)
+		remote, err := cli.DistributionInspect(ctx, imageRef, registryAuth)
 		if err == nil {
 			remoteDigest := remote.Descriptor.Digest.String()
 			for _, rd := range local.RepoDigests {
@@ -42,7 +42,7 @@ func EnsureImageUpToDate(ctx context.Context, dockerClient *client.Client, image
 	}
 	// If we reach here, either the image doesn't exist locally or the remote digest doesn't match
 	ui.Info("Pulling image %s...", imageName)
-	r, err := dockerClient.ImagePull(ctx, imageName, image.PullOptions{
+	r, err := cli.ImagePull(ctx, imageName, image.PullOptions{
 		RegistryAuth: registryAuth,
 	})
 	if err != nil {
@@ -131,8 +131,8 @@ func BuildImage(params BuildImageParams) error {
 }
 
 // PruneImages removes dangling (unused) Docker images and returns the amount of space reclaimed.
-func PruneImages(ctx context.Context, dockerClient *client.Client) (uint64, error) {
-	report, err := dockerClient.ImagesPrune(ctx, filters.Args{})
+func PruneImages(ctx context.Context, cli *client.Client) (uint64, error) {
+	report, err := cli.ImagesPrune(ctx, filters.Args{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune images: %w", err)
 	}

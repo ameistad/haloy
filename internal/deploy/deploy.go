@@ -88,29 +88,29 @@ func DeployApp(ctx context.Context, cli *client.Client, appConfig *config.AppCon
 	return nil
 }
 
-func tagImage(ctx context.Context, dockerClient *client.Client, srcRef, appName, deploymentID string) (string, error) {
+func tagImage(ctx context.Context, cli *client.Client, srcRef, appName, deploymentID string) (string, error) {
 	dstRef := fmt.Sprintf("%s:%s", appName, deploymentID)
 
 	if srcRef == dstRef { // already tagged
 		return dstRef, nil
 	}
 
-	if err := dockerClient.ImageTag(ctx, srcRef, dstRef); err != nil {
+	if err := cli.ImageTag(ctx, srcRef, dstRef); err != nil {
 		return dstRef, fmt.Errorf("tag image: %w", err)
 	}
 	return dstRef, nil
 }
 
-func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *config.AppConfig) (string, error) {
+func GetImage(ctx context.Context, cli *client.Client, appConfig *config.AppConfig) (string, error) {
 
 	switch true {
 	case appConfig.Source.Dockerfile != nil:
 		// Source is a Dockerfile. The image name is derived from the app name.
 		imageName := appConfig.Name + ":latest" // Convention for locally built images
-		// Not using the dockerClient here, but passing it to the BuildImageCLIParams
+		// Not using the cli here, but passing it to the BuildImageCLIParams
 		buildImageParams := docker.BuildImageParams{
 			Context: ctx,
-			// DockerClient: dockerClient,
+			// Cli: cli,
 			ImageName: imageName,
 			Source:    appConfig.Source.Dockerfile,
 			EnvVars:   appConfig.Env,
@@ -134,7 +134,7 @@ func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *confi
 		return imageName, nil
 
 	case appConfig.Source.Image != nil:
-		imageName, err := docker.EnsureImageUpToDate(ctx, dockerClient, appConfig.Source.Image)
+		imageName, err := docker.EnsureImageUpToDate(ctx, cli, appConfig.Source.Image)
 		if err != nil {
 			return imageName, err
 		}

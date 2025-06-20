@@ -109,9 +109,9 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTa
 	return result, nil
 }
 
-func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
+func StopContainers(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
 	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
-	containerList, err := dockerClient.ContainerList(ctx, container.ListOptions{
+	containerList, err := cli.ContainerList(ctx, container.ListOptions{
 		Filters: filterArgs,
 		All:     false, // Only running containers
 	})
@@ -129,7 +129,7 @@ func StopContainers(ctx context.Context, dockerClient *client.Client, appName, i
 		stopOptions := container.StopOptions{
 			Timeout: &timeout,
 		}
-		err := dockerClient.ContainerStop(ctx, containerInfo.ID, stopOptions)
+		err := cli.ContainerStop(ctx, containerInfo.ID, stopOptions)
 		if err != nil {
 			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		} else {
@@ -145,11 +145,11 @@ type RemoveContainersResult struct {
 }
 
 // RemoveContainers attempts to remove old containers for a given app and ignoring a specific deployment.
-func RemoveContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) (removedIDs []string, err error) {
+func RemoveContainers(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string) (removedIDs []string, err error) {
 	filterArgs := filters.NewArgs()
 	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
 
-	containerList, err := dockerClient.ContainerList(ctx, container.ListOptions{
+	containerList, err := cli.ContainerList(ctx, container.ListOptions{
 		Filters: filterArgs,
 		All:     true,
 	})
@@ -163,7 +163,7 @@ func RemoveContainers(ctx context.Context, dockerClient *client.Client, appName,
 			continue
 		}
 
-		err := dockerClient.ContainerRemove(ctx, containerInfo.ID, container.RemoveOptions{Force: true})
+		err := cli.ContainerRemove(ctx, containerInfo.ID, container.RemoveOptions{Force: true})
 		if err != nil {
 			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		} else {
@@ -174,7 +174,7 @@ func RemoveContainers(ctx context.Context, dockerClient *client.Client, appName,
 	return removedIDs, nil
 }
 
-func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logger *logging.Logger, containerID string, initialWaitTime ...time.Duration) error {
+func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *logging.Logger, containerID string, initialWaitTime ...time.Duration) error {
 	// Check if container is running - wait up to 30 seconds for it to start
 	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -184,7 +184,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logg
 
 	// Wait for container to be running
 	for {
-		containerInfo, err = dockerClient.ContainerInspect(startCtx, containerID)
+		containerInfo, err = cli.ContainerInspect(startCtx, containerID)
 		if err != nil {
 			return fmt.Errorf("failed to inspect container %s: %w", helpers.SafeIDPrefix(containerID), err)
 		}
@@ -224,7 +224,7 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logg
 			healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
 			for {
-				containerInfo, err = dockerClient.ContainerInspect(healthCtx, containerID)
+				containerInfo, err = cli.ContainerInspect(healthCtx, containerID)
 				if err != nil {
 					return fmt.Errorf("failed to re-inspect container: %w", err)
 				}

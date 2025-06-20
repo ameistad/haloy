@@ -35,14 +35,14 @@ Optionally, it can also remove the containers after stopping them.`,
 			ctx, cancel := context.WithTimeout(context.Background(), stopAppTimeout)
 			defer cancel()
 
-			dockerClient, err := docker.NewClient(ctx)
+			cli, err := docker.NewClient(ctx)
 			if err != nil {
 				ui.Error("Failed to create Docker client: %v\n", err)
 				return
 			}
-			defer dockerClient.Close()
+			defer cli.Close()
 
-			stoppedIDs, err := docker.StopContainers(ctx, dockerClient, appName, "")
+			stoppedIDs, err := docker.StopContainers(ctx, cli, appName, "")
 			if err != nil {
 				ui.Error("Error while stopping containers for app %q: %v\n", appName, err)
 				// If stopping failed and nothing was stopped, it's probably best to return.
@@ -59,7 +59,7 @@ Optionally, it can also remove the containers after stopping them.`,
 
 			if removeContainersFlag {
 				ui.Info("Attempting to remove containers for app %q...\n", appName)
-				removedIDs, removeErr := docker.RemoveContainers(ctx, dockerClient, appName, "")
+				removedIDs, removeErr := docker.RemoveContainers(ctx, cli, appName, "")
 				if removeErr != nil {
 					ui.Error("Error while removing containers for app %q: %v\n", appName, removeErr)
 				}

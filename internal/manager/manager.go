@@ -60,11 +60,11 @@ func RunManager(dryRun bool) {
 	}
 
 	// Initialize Docker client
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		logger.Fatal("Failed to create Docker client", err)
 	}
-	defer dockerClient.Close()
+	defer cli.Close()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -78,7 +78,7 @@ func RunManager(dryRun bool) {
 	certUpdateSignal := make(chan string, 5)
 
 	// Create deployment manager
-	deploymentManager := NewDeploymentManager(ctx, dockerClient, logger)
+	deploymentManager := NewDeploymentManager(ctx, cli, logger)
 
 	// Create and start the certifications manager
 	certManagerConfig := CertificatesManagerConfig{
@@ -94,16 +94,16 @@ func RunManager(dryRun bool) {
 
 	// Create the HAProxy manager
 	haproxyManagerConfig := HAProxyManagerConfig{
-		DockerClient: dockerClient,
-		Logger:       logger,
-		ConfigDir:    HAProxyConfigPath,
-		DryRun:       dryRun,
+		Cli:       cli,
+		Logger:    logger,
+		ConfigDir: HAProxyConfigPath,
+		DryRun:    dryRun,
 	}
 	haproxyManager := NewHAProxyManager(haproxyManagerConfig)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
-		DockerClient:      dockerClient,
+		Cli:               cli,
 		DeploymentManager: deploymentManager,
 		CertManager:       certManager,
 		HAProxyManager:    haproxyManager,
@@ -119,7 +119,7 @@ func RunManager(dryRun bool) {
 	debouncer := helpers.NewDebouncer(EventDebounceDelay)
 
 	// Start Docker event listener
-	go listenForDockerEvents(ctx, dockerClient, eventsChan, errorsChan, logger)
+	go listenForDockerEvents(ctx, cli, eventsChan, errorsChan, logger)
 
 	// Start periodic maintenance ticker
 	maintenanceTicker := time.NewTicker(MaintenanceInterval)
@@ -218,7 +218,7 @@ func RunManager(dryRun bool) {
 			}
 
 			// Prune dangling images and containers
-			_, err := docker.PruneImages(ctx, dockerClient)
+			_, err := docker.PruneImages(ctx, cli)
 			if err != nil {
 				logger.Warn(fmt.Sprintf("Failed to prune images: %v", err))
 			}
@@ -239,7 +239,7 @@ func RunManager(dryRun bool) {
 }
 
 // listenForDockerEvents sets up a listener for Docker events
-func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eventsChan chan ContainerEvent, errorsChan chan error, logger *logging.Logger) {
+func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan chan ContainerEvent, errorsChan chan error, logger *logging.Logger) {
 	// Set up filter for container events
 	filterArgs := filters.NewArgs()
 	filterArgs.Add("type", "container")
@@ -258,7 +258,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 		Filters: filterArgs,
 	}
 
-	events, errs := dockerClient.Events(ctx, eventOptions)
+	events, errs := cli.Events(ctx, eventOptions)
 
 	// Forward events and errors to our channels
 	for {
@@ -267,7 +267,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 			return
 		case event := <-events:
 			if _, ok := allowedActions[string(event.Action)]; ok {
-				container, err := dockerClient.ContainerInspect(ctx, event.Actor.ID)
+				container, err := cli.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
 					logger.Error(fmt.Sprintf("Error inspecting container id %s", helpers.SafeIDPrefix(event.Actor.ID)), err)
 					continue
@@ -300,7 +300,7 @@ func listenForDockerEvents(ctx context.Context, dockerClient *client.Client, eve
 				if err != io.EOF && !strings.Contains(err.Error(), "connection refused") {
 					// Attempt to reconnect
 					time.Sleep(5 * time.Second)
-					events, errs = dockerClient.Events(ctx, eventOptions)
+					events, errs = cli.Events(ctx, eventOptions)
 					continue
 				}
 			}

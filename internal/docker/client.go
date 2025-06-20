@@ -13,18 +13,18 @@ func NewClient(ctx context.Context) (*client.Client, error) {
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
-	_, err = dockerClient.Ping(pingCtx)
+	_, err = cli.Ping(pingCtx)
 	if err != nil {
-		_ = dockerClient.Close() // Best effort close, ignore error
+		_ = cli.Close() // Best effort close, ignore error
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("failed to connect to Docker daemon (timeout during ping): %w", err)
 		}
 		return nil, fmt.Errorf("failed to connect to Docker daemon (ping failed): %w", err)
 	}
-	return dockerClient, nil
+	return cli, nil
 }
