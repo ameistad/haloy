@@ -24,6 +24,9 @@ var (
 var s = lipgloss.NewStyle()
 var titleStyle = s.Bold(true).Foreground(White)
 
+func Basic(format string, a ...any) {
+	printStyledLines("", s.Foreground(White), format, a...)
+}
 func Info(format string, a ...any) {
 	printStyledLines(s.Foreground(Blue).Render("●"), s.Foreground(White), format, a...)
 }

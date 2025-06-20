@@ -11,6 +11,7 @@ import (
 
 	"filippo.io/age"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -120,7 +121,12 @@ func SecretsListCommand() *cobra.Command {
 				// Compute the digest from the encrypted value using MD5.
 				digest := md5.Sum([]byte(rec.Encrypted))
 				digestStr := hex.EncodeToString(digest[:])
-				rows = append(rows, []string{key, digestStr, rec.Date})
+
+				date, err := helpers.FormatDateString(rec.Date)
+				if err != nil {
+					date = rec.Date // Fallback to raw date if formatting fails
+				}
+				rows = append(rows, []string{key, digestStr, date})
 			}
 
 			ui.Table(headers, rows)

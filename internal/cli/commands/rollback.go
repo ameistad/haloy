@@ -5,6 +5,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
@@ -99,14 +100,21 @@ func listRollbackTargets(ctx context.Context, cli *client.Client, appName string
 		return
 	}
 
-	ui.Info("Available rollback targets for %q:", appName)
+	headers := []string{"DEPLOYMENT ID", "IMAGE ID", "DATE"}
+	rows := make([][]string, 0, len(targets))
 	for _, t := range targets {
-		ui.Info("Deployment ID: %s, Image: %s, Latest: %v", t.DeploymentID, t.ImageTag, t.IsLatest)
+		date, err := helpers.FormatDateString(t.DeploymentID)
+		if err != nil {
+			ui.Error("failed to parse deployment ID %q: %v", t.DeploymentID, err)
+			continue
+		}
+		rows = append(rows, []string{
+			t.DeploymentID,
+			t.ImageTag,
+			date,
+		})
 	}
-	ui.Info("You can specify a deployment ID to rollback to a specific target.")
-	if len(targets) > 0 {
-		ui.Info("Use 'haloy rollback %s <deployment-id>' to rollback to a specific deployment.", appName)
-	} else {
-		ui.Info("No rollback targets available for %q.", appName)
-	}
+	ui.Table(headers, rows)
+	ui.Basic("You can specify a deployment ID to rollback to a specific target.")
+	ui.Basic("Use 'haloy rollback %s <deployment-id>' to rollback to a specific deployment.", appName)
 }
