@@ -9,13 +9,13 @@ import (
 )
 
 const (
-	DockerNetwork              = "haloy-public"
-	DefaultMaxContainersToKeep = 3
-	DefaultHealthCheckPath     = "/"
-	DefaultContainerPort       = "80"
-	DefaultReplicas            = 1
-	ConfigFileName             = "apps.yml"
-	HAProxyConfigFileName      = "haproxy.cfg"
+	DockerNetwork            = "haloy-public"
+	DefaultDeploymentsToKeep = 5
+	DefaultHealthCheckPath   = "/"
+	DefaultContainerPort     = "80"
+	DefaultReplicas          = 1
+	ConfigFileName           = "apps.yml"
+	HAProxyConfigFileName    = "haproxy.cfg"
 )
 
 type Config struct {
@@ -53,12 +53,12 @@ type AppConfig struct {
 	ACMEEmail string   `yaml:"acmeEmail,omitempty"`
 	Env       []EnvVar `yaml:"env,omitempty"`
 	// Using pointer to allow nil value
-	MaxContainersToKeep *int     `yaml:"maxContainersToKeep,omitempty"`
-	HealthCheckPath     string   `yaml:"healthCheckPath,omitempty"`
-	Port                string   `yaml:"port,omitempty"`
-	Replicas            *int     `yaml:"replicas,omitempty"`
-	Volumes             []string `yaml:"volumes,omitempty"`
-	NetworkMode         string   `yaml:"networkMode,omitempty"` // Defaults to "bridge".
+	DeploymentsToKeep *int     `yaml:"deploymentsToKeep,omitempty"`
+	HealthCheckPath   string   `yaml:"healthCheckPath,omitempty"`
+	Port              string   `yaml:"port,omitempty"`
+	Replicas          *int     `yaml:"replicas,omitempty"`
+	Volumes           []string `yaml:"volumes,omitempty"`
+	NetworkMode       string   `yaml:"networkMode,omitempty"` // Defaults to "bridge".
 }
 
 func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
@@ -110,10 +110,10 @@ func NormalizeConfig(conf *Config) *Config {
 	for i, app := range conf.Apps {
 		normalized.Apps[i] = app
 
-		// Default MaxContainersToKeep to 3 if not set.
-		if app.MaxContainersToKeep == nil {
-			defaultMax := DefaultMaxContainersToKeep
-			normalized.Apps[i].MaxContainersToKeep = &defaultMax
+		// Default DeploymentsToKeep to the default if not set.
+		if app.DeploymentsToKeep == nil {
+			defaultMax := DefaultDeploymentsToKeep
+			normalized.Apps[i].DeploymentsToKeep = &defaultMax
 		}
 
 		if app.HealthCheckPath == "" {

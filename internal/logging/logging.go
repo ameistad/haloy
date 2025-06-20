@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 )
 
@@ -105,7 +106,7 @@ func (l *Logger) Fatal(msg string, err ...error) {
 	}
 	os.Exit(1)
 }
-func (l *Logger) SetDeploymentIDFileWriter(logsPath, deploymentID string) error {
+func (l *Logger) SetDeploymentIDFileWriter(logsPath string, deploymentID string) error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 	if deploymentID == "" {
@@ -132,7 +133,11 @@ func (l *Logger) CloseLog() error {
 	return nil
 }
 
-func CleanOldLogs(logsPath string, maxAgeDays int) error {
+func CleanOldLogs(maxAgeDays int) error {
+	logsPath, err := config.LogsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get logs path: %w", err)
+	}
 	files, err := os.ReadDir(logsPath)
 	if err != nil {
 		return err

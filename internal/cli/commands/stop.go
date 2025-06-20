@@ -59,14 +59,7 @@ Optionally, it can also remove the containers after stopping them.`,
 
 			if removeContainersFlag {
 				ui.Info("Attempting to remove containers for app %q...\n", appName)
-				removeParams := docker.RemoveContainersParams{
-					Context:             ctx,
-					DockerClient:        dockerClient,
-					AppName:             appName,
-					IgnoreDeploymentID:  "", // No specific deployment to ignore
-					MaxContainersToKeep: 0,  // Remove all, don't keep any
-				}
-				removedIDs, removeErr := docker.RemoveContainers(removeParams)
+				removedIDs, removeErr := docker.RemoveContainers(ctx, dockerClient, appName, "")
 				if removeErr != nil {
 					ui.Error("Error while removing containers for app %q: %v\n", appName, removeErr)
 				}

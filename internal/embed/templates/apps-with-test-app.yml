@@ -9,5 +9,5 @@ apps:
         aliases:
           - "{{ .Alias }}"
     acmeEmail: "{{ .AcmeEmail }}"
-    maxContainersToKeep: 3
+    deploymentsToKeep: 3
     healthCheckPath: "/health.html"

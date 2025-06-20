@@ -3,201 +3,166 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
-	"time"
+	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/docker"
-	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"gopkg.in/yaml.v3"
 )
 
-func RollbackApp(appConfig *config.AppConfig, targetDeploymentID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultDeployTimeout)
-	defer cancel()
-	dockerClient, err := docker.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
-	}
-	defer dockerClient.Close()
+type RollbackTarget struct {
+	DeploymentID string
+	ImageID      string
+	ImageTag     string
+	IsLatest     bool
+	AppConfig    *config.AppConfig
+}
 
-	deployments, err := deployments(ctx, dockerClient, appConfig.Name)
+func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID string) error {
+	targets, err := GetRollbackTargets(ctx, cli, appName)
 	if err != nil {
 		return err
 	}
 
-	if len(deployments.oldDeployments) == 0 {
-		return fmt.Errorf("there are no older deployments to rollback to for %s", appConfig.Name)
+	if len(targets) == 0 {
+		return fmt.Errorf("there are no images to rollback to for %s", appName)
 	}
 
-	targetDeployment := deployments.oldDeployments[0]
-
-	logger, err := logging.NewLogger(logging.INFO, true)
-	if err != nil {
-		return fmt.Errorf("failed to create logger: %w", err)
-	}
-
-	// If a target deployment ID is provided, find the corresponding deployment
-	if targetDeploymentID != "" {
-		found := false
-		for _, deployment := range deployments.oldDeployments {
-			if deployment.ID == targetDeploymentID {
-				targetDeployment = deployment
-				found = true
-				break
+	for _, t := range targets {
+		if t.DeploymentID == targetDeploymentID {
+			newDeploymentID := createDeploymentID()
+			newImageTag, err := tagImage(ctx, cli, t.ImageTag, appName, newDeploymentID)
+			if err != nil {
+				return fmt.Errorf("failed to tag image: %w", err)
 			}
-		}
-		if !found {
-			return fmt.Errorf("target deployment %s not found in previous deployments", targetDeploymentID)
-		}
-	}
+			ui.Info("Creating new deployment from image %s", t.ImageTag)
+			appConfig := t.AppConfig
+			if appConfig == nil {
+				ui.Warn("Could not find old app config for %s, trying current config: %v", appName, err)
+				loadedAppConfig, err := config.AppConfigByName(appName)
+				if err != nil {
+					return fmt.Errorf("failed to load app config for %s: %w", appName, err)
+				}
+				appConfig = loadedAppConfig
+			}
+			if err := DeployApp(ctx, cli, appConfig, newImageTag); err != nil {
+				return fmt.Errorf("failed to deploy app %s: %w", appName, err)
+			}
 
-	if targetDeployment.ID == deployments.currentDeployment.ID {
-		return fmt.Errorf("target deployment %s is already the current deployment", targetDeployment.ID)
-	}
-
-	if err := RollbackToDeployment(ctx, dockerClient, logger, appConfig.Name, deployments.currentDeployment, targetDeployment); err != nil {
-		return fmt.Errorf("failed to rollback to deployment %s: %w", targetDeployment.ID, err)
-	}
-
-	return nil
-}
-
-func RollbackToDeployment(ctx context.Context, dockerClient *client.Client, logger *logging.Logger, appName string, currentDeployment, targetDeployment deploymentInfo) error {
-	// Track which containers we've started so we can clean them up on failure
-	startError := false
-	healthCheckError := false
-
-	for _, targetContainerID := range targetDeployment.containerIDs {
-		ui.Info("Starting target container %s...", helpers.SafeIDPrefix(targetContainerID))
-		if err := dockerClient.ContainerStart(ctx, targetContainerID, container.StartOptions{}); err != nil {
-			startError = true
-			ui.Error("failed to start target container %s: %v", helpers.SafeIDPrefix(targetContainerID), err)
+			// found the target, break the loop
 			break
 		}
 	}
 
-	if !startError {
-		for _, targetContainerID := range targetDeployment.containerIDs {
-			ui.Info("Checking health of target container %s...", helpers.SafeIDPrefix(targetContainerID))
-			// Give the container some time to start
-			healtCheckDelay := 3 * time.Second
-			if err := docker.HealthCheckContainer(ctx, dockerClient, logger, targetContainerID, healtCheckDelay); err != nil {
-				healthCheckError = true
-				ui.Error("target container %s is not healthy: %v", helpers.SafeIDPrefix(targetContainerID), err)
-				break
-			}
-		}
-
-	}
-
-	ignoreDeploymentID := targetDeployment.ID
-	if startError || healthCheckError {
-		ui.Error("Rollback failed, cleaning up started containers...")
-		ignoreDeploymentID = currentDeployment.ID
-	}
-	if _, err := docker.StopContainers(ctx, dockerClient, appName, ignoreDeploymentID); err != nil {
-		return fmt.Errorf("failed to stop containers for app %s: %w", appName, err)
-	}
-
-	if startError {
-		return fmt.Errorf("failed to start target containers for app %s", appName)
-	}
-	if healthCheckError {
-		return fmt.Errorf("target containers for app %s are not healthy", appName)
-	}
-
 	return nil
 }
 
-type deploymentInfo struct {
-	ID           string
-	containerIDs []string
-}
+// getRollbackTargets retrieves and sorts all available rollback targets for the specified app.
+func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string) (targets []RollbackTarget, err error) {
+	if appName == "" {
+		return targets, fmt.Errorf("app name cannot be empty")
+	}
 
-type deploymentsResult struct {
-	currentDeployment deploymentInfo
-	oldDeployments    []deploymentInfo
-}
-
-// deployments retrieves and sorts all deployments for an app by timestamp (newest first)
-func deployments(ctx context.Context, dockerClient *client.Client, appName string) (deploymentsResult, error) {
-
-	result := deploymentsResult{}
-
-	filtersArgs := filters.NewArgs()
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
-
-	// Get all containers, including stopped ones
-	containers, err := dockerClient.ContainerList(ctx, container.ListOptions{
-		Filters: filtersArgs,
-		All:     true, // Include stopped containers for rollback purposes
+	// Get avaiable images for the app
+	// List all images for the app that match the format appName:<deploymentID>.
+	images, err := cli.ImageList(ctx, image.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
 	})
 	if err != nil {
-		return result, fmt.Errorf("failed to list containers: %w", err)
+		return targets, fmt.Errorf("failed to list images for %s: %w", appName, err)
+	}
+	var latestImageID string
+	for _, img := range images {
+		for _, tag := range img.RepoTags {
+			if strings.HasSuffix(tag, ":latest") {
+				latestImageID = img.ID
+				continue
+			}
+			// Expected tag format: "appName:deploymentID", e.g. "test-app:20250615214304"
+			parts := strings.SplitN(tag, ":", 2)
+			if len(parts) != 2 {
+				// Unexpected tag format, skip this tag.
+				continue
+			}
+			deploymentID := parts[1]
+			isLatest := img.ID == latestImageID
+			appConfig, _ := getAppConfigHistory(deploymentID)
+			target := RollbackTarget{
+				DeploymentID: deploymentID,
+				ImageID:      img.ID,
+				ImageTag:     tag,
+				IsLatest:     isLatest,
+				AppConfig:    appConfig,
+			}
+
+			targets = append(targets, target)
+		}
+	}
+
+	sort.Slice(targets, func(i, j int) bool {
+		return targets[i].DeploymentID > targets[j].DeploymentID // Newest first
+	})
+
+	return targets, nil
+}
+
+// GetAppConfigHistory loads the AppConfig from the history file with the given deploymentID.
+// It reads the file from config.HistoryPath and unmarshals the YAML data into an AppConfig struct.
+func getAppConfigHistory(deploymentID string) (*config.AppConfig, error) {
+	historyPath, err := config.HistoryPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get history path: %w", err)
+	}
+	filePath := filepath.Join(historyPath, fmt.Sprintf("%s.yml", deploymentID))
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read history file '%s': %w", filePath, err)
+	}
+
+	var appConfig config.AppConfig
+	if err := yaml.Unmarshal(data, &appConfig); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal history file '%s': %w", filePath, err)
+	}
+	return &appConfig, nil
+}
+
+func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName string) (string, error) {
+	// List all containers for the app
+	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		Filters: filterArgs,
+		All:     false, // Only running containers
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to list containers: %w", err)
 	}
 
 	if len(containers) == 0 {
-		return result, fmt.Errorf("no containers found for app %s", appName)
+		return "", fmt.Errorf("no running containers found for app %s", appName)
 	}
 
-	runningDeployment := deploymentInfo{
-		ID:           "",
-		containerIDs: []string{},
-	}
-	deployments := make(map[string][]string)
+	deploymentIDs := make([]string, 0, len(containers))
 	for _, container := range containers {
-		deploymentID := container.Labels[config.LabelDeploymentID]
-		if deploymentID == "" {
-			continue
-		}
-
-		// Add ALL containers to deployments map regardless of state
-		deployments[deploymentID] = append(deployments[deploymentID], container.ID)
-
-		// Only update running deployment for running containers
-		if container.State == "running" {
-			runningDeployment = deploymentInfo{
-				ID:           deploymentID,
-				containerIDs: append(runningDeployment.containerIDs, container.ID),
-			}
+		id := container.Labels[config.LabelDeploymentID]
+		if id != "" {
+			deploymentIDs = append(deploymentIDs, id)
 		}
 	}
-
-	if len(deployments) == 0 {
-		return result, fmt.Errorf("no valid deployment information found for app %s", appName)
+	if len(deploymentIDs) == 0 {
+		return "", fmt.Errorf("no deployment IDs found in running containers for app %s", appName)
 	}
 
-	oldDeployments := make([]deploymentInfo, 0, len(deployments))
-	for deploymentID, containerIDs := range deployments {
-		if deploymentID == runningDeployment.ID {
-			continue
-		}
-
-		// Skip deployment that are newer than the running deployment.
-		if deploymentID > runningDeployment.ID {
-			continue
-		}
-		oldDeployments = append(oldDeployments, deploymentInfo{
-			ID:           deploymentID,
-			containerIDs: containerIDs,
-		})
-	}
-
-	// Sort deployments by timestamp (newest first)
-	sort.Slice(oldDeployments, func(i, j int) bool {
-		// Reliable timestamp sorting (ISO format or Unix timestamp strings)
-		return oldDeployments[i].ID > oldDeployments[j].ID
+	sort.Slice(deploymentIDs, func(i, j int) bool {
+		return deploymentIDs[i] > deploymentIDs[j] // Newest first
 	})
 
-	result = deploymentsResult{
-		currentDeployment: runningDeployment,
-		oldDeployments:    oldDeployments,
-	}
-	return result, nil
+	return deploymentIDs[0], nil
 }

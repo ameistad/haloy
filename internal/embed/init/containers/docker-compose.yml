@@ -3,7 +3,7 @@ services:
   haloy-manager:
     image: ghcr.io/ameistad/haloy-manager:latest
     labels:
-      - "haloy.role=manager"
+      - "dev.haloy.role=manager"
     container_name: haloy-manager
     # Add group_add to allow Docker socket access for the golang docker client.
     group_add:
@@ -17,8 +17,6 @@ services:
     ports:
       # Certificates server
       - "127.0.0.1:8080:8080"
-      # Logserver
-      - "127.0.0.1:9000:9000"
     user: root
     restart: unless-stopped
     networks:
@@ -26,7 +24,7 @@ services:
   haloy-haproxy:
     image: haproxy:3.1.5
     labels:
-      - "haloy.role=haproxy"
+      - "dev.haloy.role=haproxy"
     # This need to be set to haloy-haproxy so the manager can find it.
     container_name: haloy-haproxy
     ports:

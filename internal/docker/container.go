@@ -2,12 +2,9 @@ package docker
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
-	"strconv"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -25,20 +22,19 @@ type ContainerRunResult struct {
 	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID, imageName string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
+func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTag string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
 
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
 	// Convert AppConfig to ContainerLabels
 	cl := config.ContainerLabels{
-		AppName:             appConfig.Name,
-		DeploymentID:        deploymentID,
-		ACMEEmail:           appConfig.ACMEEmail,
-		Port:                appConfig.Port,
-		HealthCheckPath:     appConfig.HealthCheckPath,
-		Domains:             appConfig.Domains,
-		Role:                config.AppLabelRole,
-		MaxContainersToKeep: strconv.Itoa(*appConfig.MaxContainersToKeep),
+		AppName:         appConfig.Name,
+		DeploymentID:    deploymentID,
+		ACMEEmail:       appConfig.ACMEEmail,
+		Port:            appConfig.Port,
+		HealthCheckPath: appConfig.HealthCheckPath,
+		Domains:         appConfig.Domains,
+		Role:            config.AppLabelRole,
 	}
 	labels := cl.ToLabels()
 
@@ -71,7 +67,7 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 	for i := range make([]struct{}, *appConfig.Replicas) {
 		envVars := append(envVars, fmt.Sprintf("HALOY_REPLICA_ID=%d", i+1))
 		containerConfig := &container.Config{
-			Image:  imageName,
+			Image:  imageTag,
 			Labels: labels,
 			Env:    envVars,
 		}
@@ -80,7 +76,7 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 			containerName += fmt.Sprintf("-replica-%d", i+1)
 		}
 
-		resp, err := dockerClient.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
+		resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 		if err != nil {
 			return result, fmt.Errorf("failed to create container: %w", err)
 		}
@@ -91,14 +87,14 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 		defer func() {
 			if err != nil && resp.ID != "" {
 				// Try to remove container on error
-				removeErr := dockerClient.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+				removeErr := cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
 				if removeErr != nil {
 					fmt.Printf("Failed to clean up container after error: %v\n", removeErr)
 				}
 			}
 		}()
 
-		if err := dockerClient.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 			return result, fmt.Errorf("failed to start container: %w", err)
 		}
 
@@ -113,15 +109,15 @@ func RunContainer(ctx context.Context, dockerClient *client.Client, deploymentID
 	return result, nil
 }
 
-func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) ([]string, error) {
-	stoppedIDs := []string{}
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
-
+func StopContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
+	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
 	containerList, err := dockerClient.ContainerList(ctx, container.ListOptions{
 		Filters: filterArgs,
 		All:     false, // Only running containers
 	})
+	if err != nil {
+		return stoppedIDs, fmt.Errorf("failed to list containers: %w", err)
+	}
 
 	for _, containerInfo := range containerList {
 		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
@@ -140,18 +136,7 @@ func StopContainers(ctx context.Context, dockerClient *client.Client, appName, i
 			stoppedIDs = append(stoppedIDs, containerInfo.ID)
 		}
 	}
-	if err != nil {
-		return stoppedIDs, fmt.Errorf("failed to list containers: %w", err)
-	}
 	return stoppedIDs, nil
-}
-
-type RemoveContainersParams struct {
-	Context             context.Context
-	DockerClient        *client.Client
-	AppName             string
-	IgnoreDeploymentID  string
-	MaxContainersToKeep int
 }
 
 type RemoveContainersResult struct {
@@ -159,65 +144,34 @@ type RemoveContainersResult struct {
 	DeploymentID string
 }
 
-// RemoveContainers attempts to remove old containers for a given app,
-// respecting a retention policy (MaxContainersToKeep) and ignoring a specific deployment.
-// It returns a slice of RemoveContainersResult for successfully removed containers
-// and an error if the listing fails or if any of the removal operations fail.
-func RemoveContainers(params RemoveContainersParams) (successfullyRemoved []RemoveContainersResult, err error) {
+// RemoveContainers attempts to remove old containers for a given app and ignoring a specific deployment.
+func RemoveContainers(ctx context.Context, dockerClient *client.Client, appName, ignoreDeploymentID string) (removedIDs []string, err error) {
 	filterArgs := filters.NewArgs()
-	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, params.AppName))
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
 
-	containerList, listErr := params.DockerClient.ContainerList(params.Context, container.ListOptions{
+	containerList, err := dockerClient.ContainerList(ctx, container.ListOptions{
 		Filters: filterArgs,
 		All:     true,
 	})
-	if listErr != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", listErr)
+	if err != nil {
+		return removedIDs, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	var candidates []RemoveContainersResult
-	for _, c := range containerList {
-		deploymentID := c.Labels[config.LabelDeploymentID]
-		if deploymentID == params.IgnoreDeploymentID {
+	for _, containerInfo := range containerList {
+		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
+		if deploymentID == ignoreDeploymentID {
 			continue
 		}
-		candidates = append(candidates, RemoveContainersResult{
-			ID:           c.ID,
-			DeploymentID: deploymentID,
-		})
-	}
 
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].DeploymentID > candidates[j].DeploymentID
-	})
-
-	var containersToAttemptRemoval []RemoveContainersResult
-	if params.MaxContainersToKeep >= 0 && len(candidates) > params.MaxContainersToKeep {
-		containersToAttemptRemoval = candidates[params.MaxContainersToKeep:]
-	} else if params.MaxContainersToKeep == 0 { // Explicitly handle keep 0 when len(candidates) might also be 0
-		containersToAttemptRemoval = candidates
-	} else {
-		containersToAttemptRemoval = nil // No containers to remove from the candidates list
-	}
-
-	var removalErrors []error
-	successfullyRemoved = make([]RemoveContainersResult, 0, len(containersToAttemptRemoval))
-
-	for _, c := range containersToAttemptRemoval {
-		errRemove := params.DockerClient.ContainerRemove(params.Context, c.ID, container.RemoveOptions{Force: true})
-		if errRemove != nil {
-			ui.Warn("Error removing container %s (DeploymentID: %s): %v\n", helpers.SafeIDPrefix(c.ID), c.DeploymentID, errRemove)
-			removalErrors = append(removalErrors, fmt.Errorf("failed to remove container %s: %w", c.ID, errRemove))
+		err := dockerClient.ContainerRemove(ctx, containerInfo.ID, container.RemoveOptions{Force: true})
+		if err != nil {
+			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		} else {
-			successfullyRemoved = append(successfullyRemoved, c)
+			removedIDs = append(removedIDs, containerInfo.ID)
 		}
 	}
 
-	if len(removalErrors) > 0 {
-		return successfullyRemoved, errors.Join(removalErrors...)
-	}
-
-	return successfullyRemoved, nil
+	return removedIDs, nil
 }
 
 func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logger *logging.Logger, containerID string, initialWaitTime ...time.Duration) error {
@@ -288,17 +242,21 @@ func HealthCheckContainer(ctx context.Context, dockerClient *client.Client, logg
 			}
 		}
 
-		// If container has healthcheck and it's healthy, we can skip our manual check
-		if containerInfo.State.Health.Status == "healthy" {
+		// If container has healthcheck and it's healthy, we can skip our manual check@
+		switch containerInfo.State.Health.Status {
+		case "healthy":
 			logger.Debug(fmt.Sprintf("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID)))
 			return nil
-		} else if containerInfo.State.Health.Status == "unhealthy" {
-			// Log health check failure details if available
+		case "starting":
+			logger.Info(fmt.Sprintf("Container %s is still starting, falling back to manual health check", helpers.SafeIDPrefix(containerID)))
+		case "unhealthy":
 			if len(containerInfo.State.Health.Log) > 0 {
 				lastLog := containerInfo.State.Health.Log[len(containerInfo.State.Health.Log)-1]
 				return fmt.Errorf("container %s is unhealthy: %s", helpers.SafeIDPrefix(containerID), lastLog.Output)
 			}
 			return fmt.Errorf("container %s is unhealthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID))
+		default:
+			return fmt.Errorf("container %s health status unknown: %s", helpers.SafeIDPrefix(containerID), containerInfo.State.Health.Status)
 		}
 	}
 

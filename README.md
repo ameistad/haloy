@@ -116,7 +116,7 @@ haloy deploy example-app
 haloy status example-app
 
 # Roll back to a previous deployment
-haloy rollback example-app
+haloy rollback example-app 20231026143000
 ```
 
 ## Full List of Commands
@@ -130,7 +130,8 @@ haloy rollback example-app
 | `haloy list` | List all apps from the configuration file. |
 | `haloy deploy <app-name>` | Deploy a single application by name. |
 | `haloy deploy-all` | Deploy all applications defined in the configuration file. |
-| `haloy rollback <app-name>` | Rollback an application to a previous deployment. |
+| `haloy rollback <app-name> [deployment-id]` | Rollback an application to a previous deployment. If no deployment ID is provided, available rollback targets will be listed. |
+| `haloy rollback-list <app-name>` | List available rollback targets for an application. |
 | `haloy validate-config` | Validate the configuration file. |
 | `haloy secrets` | Manage secrets using age encryption (`init`, `set`, `list`, `delete`). |
 | `haloy version` | Print the current version of Haloy. |
@@ -162,7 +163,7 @@ Each app in the `apps` list can have the following properties:
         - name: "API_SECRET_KEY"
           secretName: "my-secret-key" # Reference to a secret. 
       ```
-- `maxContainersToKeep`: (Optional) Number of old containers to keep after deployment (default: 3)
+- `deploymentsToKeep`: (Optional) Number of old deployment data (images and config) to keep for rollbacks (default: 5)
 - `port`: (Optional) The port your application container listens on. Haloy needs this to configure HAProxy correctly. (Default: "80")
 - `replicas`: (Optional) The number of container instances to run for this application. When thera are more than one replicas, Haloy starts multiple identical containers and automatically configures HAProxy to distribute traffic between them using round-robin load balancing. (Default: 1)
 - `volumes`: Docker volumes to mount
@@ -205,6 +206,35 @@ source:
   - `type: "plain"`: The `value` is the literal username/password.
   - `type: "env"`: The `value` is the name of an environment variable to read from.
   - `type: "secret"`: The `value` is the name of a secret stored in Haloy.
+
+## How Rollbacks Work
+
+Haloy provides robust rollback capabilities, allowing you to revert your application to a previous, stable state. This is achieved by leveraging historical Docker images and stored application configurations.
+
+### Deployment History
+Whenever a new application is successfully deployed, Haloy performs the following actions:
+
+1.  **Image Tagging**: The Docker image used for the deployment is tagged with a unique `deployment-id`. This ID is a timestamp in `YYYYMMDDHHMMSS` format (e.g., `20250615214304`), ensuring chronological order and uniqueness. For example, an image `my-app:latest` deployed at a specific time might also be tagged as `my-app:20250615214304`.
+2.  **Configuration Snapshot**: A snapshot of the application's configuration (`AppConfig`) at the time of deployment is saved to a history folder, named after the `deployment-id` (e.g., `~/.config/haloy/history/20250615214304.yml`). This ensures that not only the image but also the exact configuration (domains, environment variables, health checks, etc.) from that specific deployment is preserved.
+3.  **Automatic Cleanup**: To prevent excessive disk usage, Haloy automatically prunes old deployment history, keeping only the most recent `N` deployments as configured by `deploymentsToKeep` (default: 5). Similarly, old Docker image tags (excluding `:latest` and those in use by running containers) are removed for images associated with older deployments.
+
+### Performing a Rollback
+To initiate a rollback, you use the `haloy rollback` command.
+
+**List Rollback Targets**: If you run `haloy rollback <app-name>` without specifying a `deployment-id`, Haloy will list all available historical deployments for that application. This list includes the `deployment-id`, the `image tag` used, and indicates which one is currently considered "latest".
+
+```bash
+haloy rollback my-app
+```
+This command leverages the stored image tags and optionally the configuration snapshots to show you the previous deployment states.
+
+**Execute Rollback**: To perform the rollback, you provide the `deployment-id` of the specific historical version you wish to restore.
+
+```bash
+haloy rollback my-app 20231026143000
+```
+
+When a rollback is executed, Haloy uses the image corresponding to the `target-deployment-id`. It also attempts to retrieve the stored `AppConfig` from that historical `deployment-id`. This historical image and configuration are then used to initiate a *new* deployment, complete with a *new* unique `deployment-id`. This ensures that the rollback itself creates a new, trackable deployment in your history, maintaining the integrity of your deployment timeline. The previous running containers for the application (that are not part of the new deployment) will be stopped and removed.
 
 ### Secrets Management
 
@@ -334,14 +364,14 @@ Docker labels are the cornerstone of how the Haloy Manager identifies and config
 
 Haloy uses the following Docker container labels on your application containers:
 
-* `haloy.role`: (Required) Identifies the role of the container. For applications managed by Haloy and configured in HAProxy, this should be set to `app`.
-* `haloy.appName`: (Required) The unique name of your application. This is used to group container instances and name HAProxy backends.
-* `haloy.deployment-id`: (Required) An identifier for a specific deployment version of your application (e.g., a timestamp). This helps Haloy manage different versions and is crucial for zero-downtime deployments and rollbacks.
-* `haloy.port`: (Required, defaults to "80" if not specified in app config) The port your application container listens on. HAProxy will forward traffic to this port on the container's IP address.
-* `haloy.health-check-path`: (Required, defaults to "/" if not specified in app config) The HTTP path on your application that Haloy (and HAProxy) can use to check its health.
-* `haloy.acme.email`: (Required) The email address used for ACME (Let's Encrypt) to obtain SSL/TLS certificates for the domains associated with this application. These certificates are then used by HAProxy for HTTPS termination.
-* `haloy.domain.<index>`: (Required, e.g., `haloy.domain.0`) The canonical domain name for a set of hostnames serving your application (e.g., `example.com`). HAProxy uses this for host-based ACLs (Access Control Lists) to route traffic.
-* `haloy.domain.<index>.alias.<alias_index>`: (Optional, e.g., `haloy.domain.0.alias.0`) Defines an alias for the canonical domain at the same `<index>` (e.g., `www.example.com`). HAProxy will typically be configured to redirect traffic from these aliases to the canonical domain over HTTPS.
+* `dev.haloy.role`: (Required) Identifies the role of the container. For applications managed by Haloy and configured in HAProxy, this should be set to `app`.
+* `dev.haloy.appName`: (Required) The unique name of your application. This is used to group container instances and name HAProxy backends.
+* `dev.haloy.deployment-id`: (Required) An identifier for a specific deployment version of your application (e.g., a timestamp). This helps Haloy manage different versions and is crucial for zero-downtime deployments and rollbacks.
+* `dev.haloy.port`: (Required, defaults to "80" if not specified in app config) The port your application container listens on. HAProxy will forward traffic to this port on the container's IP address.
+* `dev.haloy.health-check-path`: (Required, defaults to "/" if not specified in app config) The HTTP path on your application that Haloy (and HAProxy) can use to check its health.
+* `dev.haloy.acme.email`: (Required) The email address used for ACME (Let's Encrypt) to obtain SSL/TLS certificates for the domains associated with this application. These certificates are then used by HAProxy for HTTPS termination.
+* `dev.haloy.domain.<index>`: (Required, e.g., `dev.haloy.domain.0`) The canonical domain name for a set of hostnames serving your application (e.g., `example.com`). HAProxy uses this for host-based ACLs (Access Control Lists) to route traffic.
+* `dev.haloy.domain.<index>.alias.<alias_index>`: (Optional, e.g., `dev.haloy.domain.0.alias.0`) Defines an alias for the canonical domain at the same `<index>` (e.g., `www.example.com`). HAProxy will typically be configured to redirect traffic from these aliases to the canonical domain over HTTPS.
 
 This mechanism allows Haloy to dynamically adapt the HAProxy configuration without manual intervention as applications are deployed, updated, or scaled.
 
@@ -365,14 +395,14 @@ apps:
 ```
 Haloy will (upon deployment) create containers with labels similar to:
 
-* `haloy.role`: app
-* `haloy.appName`: my-web-app
-* `haloy.deployment-id`: 20250528210000 (example timestamp)
-* `haloy.port`: 3000
-* `haloy.health-check-path`: /status
-* `haloy.acme.email`: user@example.com
-* `haloy.domain.0`: myapp.example.com
-* `haloy.domain.0.alias.0`: www.myapp.example.com
+* `dev.haloy.role`: app
+* `dev.haloy.appName`: my-web-app
+* `dev.haloy.deployment-id`: 20250528210000 (example timestamp)
+* `dev.haloy.port`: 3000
+* `dev.haloy.health-check-path`: /status
+* `dev.haloy.acme.email`: user@example.com
+* `dev.haloy.domain.0`: myapp.example.com
+* `dev.haloy.domain.0.alias.0`: www.myapp.example.com
 
 These labels are then read by the Haloy manager to dynamically generate the HAProxy configuration, ensuring traffic is routed correctly and securely to your application instances.
 

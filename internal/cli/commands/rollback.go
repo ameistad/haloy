@@ -1,41 +1,112 @@
 package commands
 
 import (
-	"github.com/ameistad/haloy/internal/config"
+	"context"
+
 	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
 )
 
 func RollbackAppCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rollback <app-name>",
+		Use:   "rollback <app-name> [deployment-id]",
 		Short: "Rollback an application",
-		Long:  `Rollback an application to a previous deployment`,
-		Args:  cobra.ExactArgs(1),
+		Long:  `Rollback an application to a previous deployment. If no deployment id is provided, available rollback targets will be listed.`,
+		Args:  cobra.RangeArgs(1, 2),
 		Run: func(cmd *cobra.Command, args []string) {
 			appName := args[0]
-			appConfig, err := config.AppConfigByName(appName)
-			if err != nil {
-				ui.Error("Failed to get configuration for %q: %v\n", appName, err)
+
+			if appName == "" {
+				ui.Error("Please provide an application name to rollback.")
+				ui.Info("Usage: haloy rollback <app-name> [deployment-id]")
 				return
 			}
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			defer cancel()
+			cli, err := docker.NewClient(ctx)
+			if err != nil {
+				ui.Error("Failed to create Docker client: %v", err)
+				return
+			}
+			defer cli.Close()
 
-			// Retrieve container flag if provided.
-			deploymentIDFlag, _ := cmd.Flags().GetString("deployment")
 			var targetDeploymentID string
-			if deploymentIDFlag != "" {
-				targetDeploymentID = deploymentIDFlag
+			if len(args) == 2 {
+				targetDeploymentID = args[1]
 			}
 
-			if err := deploy.RollbackApp(appConfig, targetDeploymentID); err != nil {
-				ui.Error("Failed to rollback %q: %v\n", appName, err)
+			if targetDeploymentID == "" {
+				listRollbackTargets(ctx, cli, appName)
 			} else {
-				ui.Success("Rollback of %s completed successfully.\n", appName)
+				// Execute rollback with provided deployment id.
+				if err := deploy.RollbackApp(ctx, cli, appName, targetDeploymentID); err != nil {
+					ui.Error("Failed to rollback %q: %v\n", appName, err)
+				} else {
+					ui.Success("Rollback of %s completed successfully.\n", appName)
+				}
 			}
 		},
 	}
 
-	cmd.Flags().StringP("deployment", "d", "", "Specify deployment ID to use for rollback")
 	return cmd
+}
+
+// RollbackListCmd retrieves and lists available rollback targets for a given app.
+func RollbackListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "rollback-list <app-name>",
+		Short: "List available rollback targets for an application",
+		Long: `List available rollback targets for an application.
+This command displays previous deployment targets (sorted by deployment ID, newest first)
+so you can choose which one to rollback to.`,
+		Args: cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			appName := args[0]
+
+			if appName == "" {
+				ui.Error("Please provide an application name to view available rollback targets.")
+				ui.Info("Usage: haloy rollback-list <app-name>]")
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			defer cancel()
+			cli, err := docker.NewClient(ctx)
+			if err != nil {
+				ui.Error("Failed to create Docker client: %v", err)
+				return
+			}
+			defer cli.Close()
+
+			listRollbackTargets(ctx, cli, appName)
+		},
+	}
+
+	return cmd
+}
+
+func listRollbackTargets(ctx context.Context, cli *client.Client, appName string) {
+	targets, err := deploy.GetRollbackTargets(ctx, cli, appName)
+	if err != nil {
+		ui.Error("failed to retrieve rollback targets for %q: %v", appName, err)
+		return
+	}
+
+	if len(targets) == 0 {
+		ui.Info("there are no images to rollback to for")
+		return
+	}
+
+	ui.Info("Available rollback targets for %q:", appName)
+	for _, t := range targets {
+		ui.Info("Deployment ID: %s, Image: %s, Latest: %v", t.DeploymentID, t.ImageTag, t.IsLatest)
+	}
+	ui.Info("You can specify a deployment ID to rollback to a specific target.")
+	if len(targets) > 0 {
+		ui.Info("Use 'haloy rollback %s <deployment-id>' to rollback to a specific deployment.", appName)
+	} else {
+		ui.Info("No rollback targets available for %q.", appName)
+	}
 }

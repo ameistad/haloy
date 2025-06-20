@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -24,12 +23,14 @@ import (
 
 const (
 	MaintenanceInterval = 12 * time.Hour // Interval for periodic maintenance tasks
-	HAProxyConfigPath   = "/haproxy-config"
-	CertificatesPath    = "/cert-storage"
-	LogsPath            = "/logs"
-	HTTPProviderPort    = "8080"
-	EventDebounceDelay  = 3 * time.Second // Delay for debouncing container events
-	UpdateTimeout       = 2 * time.Minute // Max time for a single update operation
+	// Paths specific to the haloy manager which runs in a docker container.
+	// These paths are mounted from the host system.
+	HAProxyConfigPath  = "/haproxy-config"
+	CertificatesPath   = "/cert-storage"
+	LogsPath           = "/logs"
+	HTTPProviderPort   = "8080"
+	EventDebounceDelay = 3 * time.Second // Delay for debouncing container events
+	UpdateTimeout      = 2 * time.Minute // Max time for a single update operation
 )
 
 type ContainerEvent struct {
@@ -124,10 +125,9 @@ func RunManager(dryRun bool) {
 	maintenanceTicker := time.NewTicker(MaintenanceInterval)
 	defer maintenanceTicker.Stop()
 
-	// Track the latest deployment ID, event action, and max containers to keep for each app so we use the latest event when we debounce.
+	// Track the latest deployment ID and event action for each app so we use the latest event when we debounce.
 	latestDeploymentID := make(map[string]string)
 	latestEventAction := make(map[string]events.Action)
-	latestMaxContainersToKeep := make(map[string]int)
 	latestDomains := make(map[string][]config.Domain)
 
 	// Main event loop
@@ -149,12 +149,6 @@ func RunManager(dryRun bool) {
 				latestDeploymentID[appName] = deploymentID
 				latestEventAction[appName] = eventAction
 				latestDomains[appName] = e.Labels.Domains
-				i, err := strconv.Atoi(e.Labels.MaxContainersToKeep)
-				if err != nil {
-					logger.Error(fmt.Sprintf("Failed to parse MaxContainersToKeep for app %s: %v", appName, err))
-					i = config.DefaultMaxContainersToKeep // Fallback to default if parsing fails
-				}
-				latestMaxContainersToKeep[appName] = i
 			}
 
 			updateAction := func() {
@@ -167,7 +161,10 @@ func RunManager(dryRun bool) {
 				}
 				id := latestDeploymentID[appName]
 				if id != "" {
-					deploymentLogger.SetDeploymentIDFileWriter(LogsPath, id)
+					err = deploymentLogger.SetDeploymentIDFileWriter(LogsPath, id)
+					if err != nil {
+						logger.Error("Failed to set file writer logger", err)
+					}
 				}
 				// Create a context with a timeout for this specific update task.
 				// Use the main manager context `ctx` as the parent.
@@ -176,11 +173,10 @@ func RunManager(dryRun bool) {
 				defer deploymentLogger.CloseLog()
 
 				app := &TriggeredByApp{
-					appName:             appName,
-					domains:             latestDomains[appName],
-					deploymentID:        latestDeploymentID[appName],
-					maxContainersToKeep: latestMaxContainersToKeep[appName],
-					dockerEventAction:   latestEventAction[appName],
+					appName:           appName,
+					domains:           latestDomains[appName],
+					deploymentID:      latestDeploymentID[appName],
+					dockerEventAction: latestEventAction[appName],
 				}
 
 				if err := app.Validate(); err != nil {
@@ -217,7 +213,7 @@ func RunManager(dryRun bool) {
 		case <-maintenanceTicker.C:
 			logger.Info("Performing periodic maintenance...")
 			// Clean up old logs (e.g., older than 30 days)
-			if err := logging.CleanOldLogs(LogsPath, 30); err != nil {
+			if err := logging.CleanOldLogs(30); err != nil {
 				logger.Warn(fmt.Sprintf("Failed to clean old logs: %v", err))
 			}
 

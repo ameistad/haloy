@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -12,21 +11,19 @@ import (
 )
 
 const (
-	LabelAppName         = "haloy.appName"
-	LabelDeploymentID    = "haloy.deployment-id"
-	LabelHealthCheckPath = "haloy.health-check-path" // optional default to "/"
-	LabelACMEEmail       = "haloy.acme.email"
-	LabelPort            = "haloy.port" // optional
+	LabelAppName         = "dev.haloy.appName"
+	LabelDeploymentID    = "dev.haloy.deployment-id"
+	LabelHealthCheckPath = "dev.haloy.health-check-path" // optional default to "/"
+	LabelACMEEmail       = "dev.haloy.acme.email"
+	LabelPort            = "dev.haloy.port" // optional
 
 	// Format strings for indexed canonical domains and aliases.
-	// Use fmt.Sprintf(LabelDomainCanonical, index) to get "haloy.domain.<index>"
-	LabelDomainCanonical = "haloy.domain.%d"
-	// Use fmt.Sprintf(LabelDomainAlias, domainIndex, aliasIndex) to get "haloy.domain.<domainIndex>.alias.<aliasIndex>"
-	LabelDomainAlias = "haloy.domain.%d.alias.%d"
-
-	LabelMaxContainersToKeep = "haloy.max-containers-to-keep"
+	// Use fmt.Sprintf(LabelDomainCanonical, index) to get "dev.haloy.domain.<index>"
+	LabelDomainCanonical = "dev.haloy.domain.%d"
+	// Use fmt.Sprintf(LabelDomainAlias, domainIndex, aliasIndex) to get "dev.haloy.domain.<domainIndex>.alias.<aliasIndex>"
+	LabelDomainAlias = "dev.haloy.domain.%d.alias.%d"
 	// Used to identify the role of the container (e.g., "haproxy", "manager", etc.)
-	LabelRole = "haloy.role"
+	LabelRole = "dev.haloy.role"
 )
 
 const (
@@ -36,14 +33,13 @@ const (
 )
 
 type ContainerLabels struct {
-	AppName             string
-	DeploymentID        string
-	HealthCheckPath     string
-	ACMEEmail           string
-	Port                string
-	Domains             []Domain
-	Role                string
-	MaxContainersToKeep string
+	AppName         string
+	DeploymentID    string
+	HealthCheckPath string
+	ACMEEmail       string
+	Port            string
+	Domains         []Domain
+	Role            string
 }
 
 // Parse from docker labels to ContainerLabels struct.
@@ -73,11 +69,11 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 
 	// Process domain and alias labels.
 	for key, value := range labels {
-		if !strings.HasPrefix(key, "haloy.domain.") {
+		if !strings.HasPrefix(key, "dev.haloy.domain.") {
 			continue
 		}
 		if strings.Contains(key, ".alias.") {
-			// Parse alias key: "haloy.domain.<domainIdx>.alias.<aliasIdx>"
+			// Parse alias key: "dev.haloy.domain.<domainIdx>.alias.<aliasIdx>"
 			var domainIdx, aliasIdx int
 			if _, err := fmt.Sscanf(key, LabelDomainAlias, &domainIdx, &aliasIdx); err != nil {
 				// Skip keys that don't conform.
@@ -86,7 +82,7 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 			domain := getOrCreateDomain(domainMap, domainIdx)
 			domain.Aliases = append(domain.Aliases, value)
 		} else {
-			// Parse canonical domain key: "haloy.domain.<domainIdx>"
+			// Parse canonical domain key: "dev.haloy.domain.<domainIdx>"
 			var domainIdx int
 			if _, err := fmt.Sscanf(key, LabelDomainCanonical, &domainIdx); err != nil {
 				continue
@@ -106,15 +102,8 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 		cl.Domains = append(cl.Domains, *domainMap[i])
 	}
 
-	if v, ok := labels[LabelMaxContainersToKeep]; ok {
-		cl.MaxContainersToKeep = v
-	} else {
-		// If label is not present, set it to the default value as a string
-		cl.MaxContainersToKeep = strconv.Itoa(DefaultMaxContainersToKeep)
-	}
-
 	// Validate the parsed labels.
-	if err := cl.IsValid(); err != nil {
+	if err := cl.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -141,11 +130,6 @@ func (cl *ContainerLabels) ToLabels() map[string]string {
 		LabelRole:            cl.Role,
 	}
 
-	// Add MaxContainersToKeep to the label map
-	if cl.MaxContainersToKeep != "" { // Only add if it has a value
-		labels[LabelMaxContainersToKeep] = cl.MaxContainersToKeep
-	}
-
 	// Iterate through the domains slice.
 	for i, domain := range cl.Domains {
 		// Set canonical domain.
@@ -163,7 +147,7 @@ func (cl *ContainerLabels) ToLabels() map[string]string {
 }
 
 // We assume that all labels need to be present for the labels to be valid.
-func (cl *ContainerLabels) IsValid() error {
+func (cl *ContainerLabels) Validate() error {
 	if cl.AppName == "" {
 		return fmt.Errorf("appName is required")
 	}

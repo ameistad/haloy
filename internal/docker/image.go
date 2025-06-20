@@ -6,11 +6,13 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -138,4 +140,102 @@ func PruneImages(ctx context.Context, dockerClient *client.Client) (uint64, erro
 		ui.Info("Pruned %d images, reclaimed %d bytes", len(report.ImagesDeleted), report.SpaceReclaimed)
 	}
 	return report.SpaceReclaimed, nil
+}
+
+// RemoveImages removes extra (duplicate) image tags for a given app, keeping only the newest N tags based on the deploymentID.
+// Running containers reference the image by digest; if an image is in use we allow removal of duplicate tags as long as at least one tag is preserved.
+func RemoveImages(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string, deploymentsToKeep int) error {
+	// List all images for the app that match the format appName:<deploymentID>.
+	images, err := cli.ImageList(ctx, image.ListOptions{
+		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list images for %s: %w", appName, err)
+	}
+
+	// Get a list of running containers for the app to determine which image digests are currently in use.
+	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
+	containerList, err := cli.ContainerList(ctx, container.ListOptions{
+		Filters: filterArgs,
+		All:     false, // Only consider running containers.
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list containers for %s: %w", appName, err)
+	}
+	// Build a set of imageIDs that are in use.
+	inUseImageIDs := make(map[string]struct{})
+	for _, container := range containerList {
+		if container.ImageID != "" {
+			inUseImageIDs[container.ImageID] = struct{}{}
+		}
+	}
+
+	// Build a candidate list of removable image tags.
+	// Only consider tags that are not ":latest" and that start with the appName prefix.
+	type removeImage struct {
+		Tag          string
+		DeploymentID string
+		ImageID      string
+	}
+	var candidates []removeImage
+	for _, img := range images {
+		for _, tag := range img.RepoTags {
+			// Skip the "latest" and ignoreDeploymentID tag and any tag not matching the expected format.
+			if strings.HasSuffix(tag, ":latest") || strings.HasSuffix(tag, ":"+ignoreDeploymentID) || !strings.HasPrefix(tag, appName+":") {
+				continue
+			}
+			// Expected tag format: "appName:deploymentID", e.g. "test-app:20250615214304"
+			parts := strings.SplitN(tag, ":", 2)
+			if len(parts) != 2 {
+				// Unexpected tag format, skip this tag.
+				continue
+			}
+			deploymentID := parts[1]
+			candidates = append(candidates, removeImage{
+				Tag:          tag,
+				DeploymentID: deploymentID,
+				ImageID:      img.ID,
+			})
+		}
+	}
+
+	// Sort the candidate tags descending by deploymentID (newest first).
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].DeploymentID > candidates[j].DeploymentID
+	})
+
+	// Build sets of safe-to-keep tags and the corresponding imageIDs.
+	keepTags := make(map[string]struct{})
+	keepImageIDs := make(map[string]struct{})
+	for i, cand := range candidates {
+		if i < deploymentsToKeep {
+			keepTags[cand.Tag] = struct{}{}
+			keepImageIDs[cand.ImageID] = struct{}{}
+		}
+	}
+
+	// Remove duplicate tags that are not marked to keep.
+	// For images in use we only remove extra tags when at least one tag is kept.
+	for _, cand := range candidates {
+		// Skip candidate if its tag is in the keep set.
+		if _, ok := keepTags[cand.Tag]; ok {
+			continue
+		}
+		// Check: if the image is in use and its digest is not in the keep list,
+		// then don't remove this tag to ensure at least one tag remains for running containers.
+		_, inUse := inUseImageIDs[cand.ImageID]
+		_, idInKeep := keepImageIDs[cand.ImageID]
+		if inUse && !idInKeep {
+			continue
+		}
+
+		// Remove the candidate tag.
+		if _, err := cli.ImageRemove(ctx, cand.Tag, image.RemoveOptions{Force: true, PruneChildren: false}); err != nil {
+			ui.Error("Failed to remove image tag %s: %v", cand.Tag, err)
+		} else {
+			ui.Info("Removed image %s", cand.Tag)
+		}
+	}
+
+	return nil
 }

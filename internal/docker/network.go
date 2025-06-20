@@ -10,7 +10,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func CreateNetwork(dockerClient *client.Client, ctx context.Context) error {
+func CreateNetwork(ctx context.Context, cli *client.Client) error {
 	options := network.CreateOptions{
 		Driver:     "bridge",
 		Attachable: true,
@@ -18,15 +18,15 @@ func CreateNetwork(dockerClient *client.Client, ctx context.Context) error {
 			"created-by": "haloy",
 		},
 	}
-	_, err := dockerClient.NetworkCreate(ctx, config.DockerNetwork, options)
+	_, err := cli.NetworkCreate(ctx, config.DockerNetwork, options)
 	if err != nil {
 		return fmt.Errorf("failed to create Docker network: %w", err)
 	}
 	return nil
 }
 
-func EnsureNetwork(dockerClient *client.Client, ctx context.Context) error {
-	networks, err := dockerClient.NetworkList(ctx, network.ListOptions{})
+func EnsureNetwork(cli *client.Client, ctx context.Context) error {
+	networks, err := cli.NetworkList(ctx, network.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list Docker networks: %w", err)
 	}
@@ -40,7 +40,7 @@ func EnsureNetwork(dockerClient *client.Client, ctx context.Context) error {
 	}
 
 	if !defaultNetworkExists {
-		if err := CreateNetwork(dockerClient, ctx); err != nil {
+		if err := CreateNetwork(ctx, cli); err != nil {
 			return fmt.Errorf("failed to create Docker network: %w", err)
 		}
 	}

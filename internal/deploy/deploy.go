@@ -7,59 +7,52 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/client"
+	"gopkg.in/yaml.v3"
 )
 
-func DeployApp(appConfig *config.AppConfig) error {
-	// Create the primary context for the whole deployment + log streaming
-	deployCtx, cancelDeploy := context.WithCancel(context.Background())
-	// Ensure cancelDeploy is called eventually to stop the streamer and release resources
-	defer cancelDeploy()
+func createDeploymentID() string {
+	// Generate a unique deployment ID based on the current time.
+	// This format is YYYYMMDDHHMMSS, which is sortable and unique.
+	return time.Now().Format("20060102150405")
 
-	// Create a derived context with a timeout for Docker operations
-	// This context will be cancelled if deployCtx is cancelled OR if the timeout expires.
-	dockerOpCtx, cancelDockerOps := context.WithTimeout(deployCtx, DefaultDeployTimeout)
-	// Ensure the timeout context's resources are released
-	defer cancelDockerOps()
+}
 
-	dockerClient, err := docker.NewClient(dockerOpCtx) // Use dockerOpCtx
-	if err != nil {
-		// Check if the error was due to the overall deployment context being cancelled early
-		if errors.Is(err, context.Canceled) && deployCtx.Err() != nil {
-			return fmt.Errorf("failed to create Docker client: deployment canceled (%w)", deployCtx.Err())
-		}
-		return fmt.Errorf("failed to create Docker client: %w", err)
+func DeployApp(ctx context.Context, cli *client.Client, appConfig *config.AppConfig, imageTag string) error {
+	if imageTag == "" {
+		return fmt.Errorf("image tag cannot be empty")
 	}
-	defer dockerClient.Close()
-
 	// Ensure that the custom docker network and required services are running.
-	if err := docker.EnsureNetwork(dockerClient, dockerOpCtx); err != nil {
+	if err := docker.EnsureNetwork(cli, ctx); err != nil {
 		return fmt.Errorf("failed to ensure Docker network exists: %w", err)
 	}
-	if _, err := docker.EnsureServicesIsRunning(dockerClient, dockerOpCtx); err != nil {
+	if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
 		return fmt.Errorf("failed to ensure dependent services are running: %w", err)
 	}
 
-	imageName, err := GetImage(dockerOpCtx, dockerClient, appConfig)
+	deploymentID := createDeploymentID()
+
+	newImageTag, err := tagImage(ctx, cli, imageTag, appConfig.Name, deploymentID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to tag image: %w", err)
 	}
 
-	deploymentID := time.Now().Format("20060102150405")
-	ui.Info("Starting deployment for app '%s' with deployment ID: %s", appConfig.Name, deploymentID)
+	ui.Info("Starting deployment for '%s' with deployment ID: %s", appConfig.Name, deploymentID)
 
-	runResult, err := docker.RunContainer(dockerOpCtx, dockerClient, deploymentID, imageName, appConfig)
+	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageTag, appConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("failed to run new container: operation timed out after %v (%w)", DefaultDeployTimeout, err)
 		} else if errors.Is(err, context.Canceled) {
-			if deployCtx.Err() != nil {
-				return fmt.Errorf("failed to run new container: deployment canceled (%w)", deployCtx.Err())
+			if ctx.Err() != nil {
+				return fmt.Errorf("failed to run new container: deployment canceled (%w)", ctx.Err())
 			}
 			return fmt.Errorf("failed to run new container: docker operation canceled (%w)", err)
 		}
@@ -71,13 +64,41 @@ func DeployApp(appConfig *config.AppConfig) error {
 
 	ui.Info("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID)
 
-	// Explicitly cancel the primary context *before* waiting.
-	// This signals the log streamer to stop.
-	cancelDeploy()
+	// Write the deployment to history for rollback purposes.
+	deploymentsToKeep := config.DefaultDeploymentsToKeep
+	if appConfig.DeploymentsToKeep != nil {
+		deploymentsToKeep = *appConfig.DeploymentsToKeep
+	}
+	// Write the app configuration to the history folder.
+	if err := writeAppConfigHistory(appConfig, deploymentID, deploymentsToKeep); err != nil {
+		ui.Warn("Failed to write app config history: %v", err)
+	}
 
-	tailDeploymentLog(deploymentID)
+	// Remove all images except the DeploymentsToKeep newest, the ones tagged as latest and in use.
+	if err := docker.RemoveImages(ctx, cli, appConfig.Name, deploymentID, deploymentsToKeep); err != nil {
+		ui.Error("image-remove: %v", err)
+	}
+
+	// This tails the deployment log file that is created by the manager.
+	err = tailDeploymentLog(deploymentID)
+	if err != nil {
+		ui.Error("Failed to tail deployment log: %v", err)
+	}
 
 	return nil
+}
+
+func tagImage(ctx context.Context, dockerClient *client.Client, srcRef, appName, deploymentID string) (string, error) {
+	dstRef := fmt.Sprintf("%s:%s", appName, deploymentID)
+
+	if srcRef == dstRef { // already tagged
+		return dstRef, nil
+	}
+
+	if err := dockerClient.ImageTag(ctx, srcRef, dstRef); err != nil {
+		return dstRef, fmt.Errorf("tag image: %w", err)
+	}
+	return dstRef, nil
 }
 
 func GetImage(ctx context.Context, dockerClient *client.Client, appConfig *config.AppConfig) (string, error) {
@@ -210,4 +231,61 @@ func printLogLine(line string) {
 	default:
 		fmt.Printf("%s", line)
 	}
+}
+
+// WriteAppConfigHistory writes the given appConfig to the history folder, naming the file <deploymentID>.yml.
+func writeAppConfigHistory(appConfig *config.AppConfig, deploymentID string, deploymentsToKeep int) error {
+	// Define the history directory inside the config directory.
+	historyPath, err := config.HistoryPath()
+	if err != nil {
+		return fmt.Errorf("failed to get history directory: %w", err)
+	}
+
+	// Create the file name based on the deploymentID.
+	historyFilePath := filepath.Join(historyPath, fmt.Sprintf("%s.yml", deploymentID))
+
+	// Marshal the appConfig struct to YAML.
+	data, err := yaml.Marshal(appConfig)
+	if err != nil {
+		return fmt.Errorf("failed to marshal app config: %w", err)
+	}
+
+	// Write the YAML data to the file.
+	if err := os.WriteFile(historyFilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config history file '%s': %w", historyFilePath, err)
+	}
+
+	// After writing, prune old history files.
+	// List all history files ending with .yml in the history directory.
+	files, err := os.ReadDir(historyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read history directory '%s': %w", historyPath, err)
+	}
+
+	var historyFiles []os.DirEntry
+	for _, file := range files {
+		// Only consider files that are not directories and have a .yml extension, and are not the current deployment file.
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yml") && file.Name() != fmt.Sprintf("%s.yml", deploymentID) {
+			historyFiles = append(historyFiles, file)
+		}
+	}
+
+	// Sort the files descending by filename (deployment id).
+	sort.Slice(historyFiles, func(i, j int) bool {
+		return historyFiles[i].Name() > historyFiles[j].Name()
+	})
+
+	// Delete files beyond the deploymentsToKeep count.
+	if len(historyFiles) > deploymentsToKeep {
+		for i := deploymentsToKeep; i < len(historyFiles); i++ {
+			filePath := filepath.Join(historyPath, historyFiles[i].Name())
+			if err := os.Remove(filePath); err != nil {
+				ui.Warn("Failed to remove old history file %s: %v", filePath, err)
+			} else {
+				ui.Info("Removed old history file %s", filePath)
+			}
+		}
+	}
+
+	return nil
 }

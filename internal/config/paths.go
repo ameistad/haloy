@@ -1,16 +1,23 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 )
+
+// EnsureDir creates the directory and any necessary parents, logging an error if it fails.
+func ensureDir(dirPath string) error {
+	return os.MkdirAll(dirPath, 0755)
+}
 
 // Defaults to ~/.config/haloy
 // If HALOY_CONFIG_PATH is set, it will use that instead.
 func ConfigDirPath() (string, error) {
 	// allow overriding via env
 	if envPath, ok := os.LookupEnv("HALOY_CONFIG_PATH"); ok && envPath != "" {
+		if err := ensureDir(envPath); err != nil {
+			return "", err
+		}
 		return envPath, nil
 	}
 
@@ -18,17 +25,9 @@ func ConfigDirPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "haloy"), nil
-}
-
-// EnsureConfigDir makes sure the config dir exists (creates it if needed)
-func EnsureConfigDir() (string, error) {
-	path, err := ConfigDirPath()
-	if err != nil {
+	path := filepath.Join(home, ".config", "haloy")
+	if err := ensureDir(path); err != nil {
 		return "", err
-	}
-	if err := os.MkdirAll(path, 0755); err != nil {
-		return "", fmt.Errorf("failed to create config directory '%s': %w", path, err)
 	}
 	return path, nil
 }
@@ -47,7 +46,11 @@ func ConfigContainersPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDirPath, "containers"), nil
+	path := filepath.Join(configDirPath, "containers")
+	if err := ensureDir(path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func ServicesDockerComposeFilePath() (string, error) {
@@ -71,5 +74,18 @@ func LogsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// no need to ensure dir exists as it is created by the manager container.
 	return filepath.Join(containersPath, "logs"), nil
+}
+
+func HistoryPath() (string, error) {
+	configDirPath, err := ConfigDirPath()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(configDirPath, "history")
+	if err := ensureDir(path); err != nil {
+		return "", err
+	}
+	return path, nil
 }

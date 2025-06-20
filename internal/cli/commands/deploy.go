@@ -1,10 +1,12 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -27,8 +29,23 @@ func DeployAppCmd() *cobra.Command {
 				ui.Error("Failed to get configuration for %q: %v\n", appName, err)
 				return
 			}
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			defer cancel()
 
-			if err := deploy.DeployApp(appConfig); err != nil {
+			cli, err := docker.NewClient(ctx)
+			if err != nil {
+				ui.Error("Failed to create Docker client: %v", err)
+				return
+			}
+			defer cli.Close()
+
+			imageTag, err := deploy.GetImage(ctx, cli, appConfig)
+			if err != nil {
+				ui.Error("Failed to get image for %q: %v\n", appName, err)
+				return
+			}
+
+			if err := deploy.DeployApp(ctx, cli, appConfig, imageTag); err != nil {
 				ui.Error("Failed to deploy %q: %v\n", appName, err)
 			}
 		},
@@ -54,10 +71,25 @@ func DeployAllCmd() *cobra.Command {
 				return
 			}
 
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			defer cancel()
+
+			cli, err := docker.NewClient(ctx)
+			if err != nil {
+				ui.Error("Failed to create Docker client: %v", err)
+				return
+			}
+			defer cli.Close()
+
 			for i := range configFile.Apps {
 				app := configFile.Apps[i]
 				appConfig := &app
-				if err := deploy.DeployApp(appConfig); err != nil {
+				imageTag, err := deploy.GetImage(ctx, cli, appConfig)
+				if err != nil {
+					ui.Error("Failed to get image for %q: %v\n", appConfig.Name, err)
+					continue
+				}
+				if err := deploy.DeployApp(ctx, cli, appConfig, imageTag); err != nil {
 					ui.Error("Failed to deploy %q: %v\n", app.Name, err)
 				}
 			}

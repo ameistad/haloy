@@ -39,11 +39,10 @@ func NewUpdater(config UpdaterConfig) *Updater {
 }
 
 type TriggeredByApp struct {
-	appName             string
-	domains             []config.Domain
-	deploymentID        string
-	maxContainersToKeep int
-	dockerEventAction   events.Action // Action that triggered the update (e.g., "start", "stop", etc.)
+	appName           string
+	domains           []config.Domain
+	deploymentID      string
+	dockerEventAction events.Action // Action that triggered the update (e.g., "start", "stop", etc.)
 }
 
 func (tba *TriggeredByApp) Validate() error {
@@ -60,9 +59,6 @@ func (tba *TriggeredByApp) Validate() error {
 	}
 	if tba.deploymentID == "" {
 		return fmt.Errorf("triggered by app: latest deployment ID cannot be empty")
-	}
-	if tba.maxContainersToKeep < 0 {
-		return fmt.Errorf("triggered by app: max containers to keep must be non-negative")
 	}
 	if tba.dockerEventAction == "" {
 		return fmt.Errorf("triggered by app: docker event action cannot be empty")
@@ -196,22 +192,14 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 	// - log successful deployment for app.
 
 	if app != nil {
-		stoppedIDs, err := docker.StopContainers(ctx, u.dockerClient, app.appName, app.deploymentID)
+		_, err := docker.StopContainers(ctx, u.dockerClient, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to stop old containers: %w", err)
 		}
-		removeContainersParams := docker.RemoveContainersParams{
-			Context:             ctx,
-			DockerClient:        u.dockerClient,
-			AppName:             app.appName,
-			IgnoreDeploymentID:  app.deploymentID,
-			MaxContainersToKeep: app.maxContainersToKeep,
-		}
-		removedContainers, err := docker.RemoveContainers(removeContainersParams)
+		_, err = docker.RemoveContainers(ctx, u.dockerClient, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}
-		logger.Info(fmt.Sprintf("Stopped %d container(s) and removed %d old container(s)", len(stoppedIDs), len(removedContainers)))
 		logger.Success(fmt.Sprintf("Successfully deployed %s with deployment ID %s", app.appName, app.deploymentID))
 	}
 
