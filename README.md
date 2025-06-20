@@ -1,13 +1,11 @@
 # Haloy
-Haloy simplifies deploying Dockerized apps on your infrastructure, offering zero-downtime deployments, automatic domain/TLS management (Let's Encrypt), and integrated reverse proxy using HAProxy.
-
-Haloy is ideal for developers and small teams who want a simple, PaaS-like deployment experience on their own server without the complexity of Kubernetes.
+Haloy makes deploying your Dockerized apps simple, quick, and painless on your own server, without unnecessary complexity.
 
 ## ✨ Features
-* 🔄 **HAProxy reverse proxy:** Automatically configures [HAProxy](https://www.haproxy.org/) to route traffic to your applications.
-* 🚀 **Zero-Downtime deployments with rollbacks:** Gracefully deploy and rollback applications ensuring continuous availability.
-* 🔒 **Automated SSL/TLS:** Integrates with Let's Encrypt (ACME) for hassle-free HTTPS.
-* 💻 **User-Friendly CLI:** Provides a straightforward command-line interface for all operations.
+* 🐳 Deploy and rollback any application using Docker.
+* 🔄 High-performance reverse proxy leveraging [HAProxy](https://www.haproxy.org/). ([nginx vs haproxy vs traefik](https://www.youtube.com/watch?v=h-ygQbBROXY))
+* 🔒 Automatic obtain and renew SSL/TLS certificates
+* 💻 Straightforward command-line interface managed through simple YAML configuration.
 
 ## Installation
 
