@@ -33,8 +33,8 @@ type FailedContainerInfo struct {
 }
 
 type DeploymentManager struct {
-	Context context.Context
-	Cli     *client.Client
+	Ctx context.Context
+	Cli *client.Client
 	// deployments is a map of appName to Deployment, key is the app name.
 	deployments      map[string]Deployment
 	logger           *logging.Logger
@@ -44,7 +44,7 @@ type DeploymentManager struct {
 
 func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *logging.Logger) *DeploymentManager {
 	return &DeploymentManager{
-		Context:     ctx,
+		Ctx:         ctx,
 		Cli:         cli,
 		deployments: make(map[string]Deployment),
 		logger:      logger,
@@ -159,7 +159,7 @@ func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, f
 
 	for _, deployment := range checked {
 		for _, instance := range deployment.Instances {
-			if err := docker.HealthCheckContainer(dm.Context, dm.Cli, dm.logger, instance.ContainerID); err != nil {
+			if err := docker.HealthCheckContainer(dm.Ctx, dm.Cli, dm.logger, instance.ContainerID); err != nil {
 				failedContainerIDs = append(failedContainerIDs, instance.ContainerID)
 			}
 		}
