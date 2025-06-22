@@ -19,7 +19,6 @@ func NewRootCmd() *cobra.Command {
 		DeployAppCmd(),
 		DeployAllCmd(),
 		InitCmd(),
-		ListAppsCmd(),
 		RollbackAppCmd(),
 		RollbackListCmd(),
 		StartCmd(),

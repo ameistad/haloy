@@ -3,18 +3,15 @@ package deploy
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-	"gopkg.in/yaml.v3"
 )
 
 type RollbackTarget struct {
@@ -93,7 +90,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 			}
 			deploymentID := parts[1]
 			isLatest := img.ID == latestImageID
-			appConfig, _ := getAppConfigHistory(deploymentID)
+			appConfig, _ := GetAppConfigHistory(deploymentID)
 			target := RollbackTarget{
 				DeploymentID: deploymentID,
 				ImageID:      img.ID,
@@ -113,44 +110,19 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 	return targets, nil
 }
 
-// GetAppConfigHistory loads the AppConfig from the history file with the given deploymentID.
-// It reads the file from config.HistoryPath and unmarshals the YAML data into an AppConfig struct.
-func getAppConfigHistory(deploymentID string) (*config.AppConfig, error) {
-	historyPath, err := config.HistoryPath()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get history path: %w", err)
-	}
-	filePath := filepath.Join(historyPath, fmt.Sprintf("%s.yml", deploymentID))
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read history file '%s': %w", filePath, err)
-	}
-
-	var appConfig config.AppConfig
-	if err := yaml.Unmarshal(data, &appConfig); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal history file '%s': %w", filePath, err)
-	}
-	return &appConfig, nil
-}
-
 func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName string) (string, error) {
-	// List all containers for the app
-	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
-		Filters: filterArgs,
-		All:     false, // Only running containers
-	})
+	// List all ContainerList for the app
+	ContainerList, err := docker.GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
-		return "", fmt.Errorf("failed to list containers: %w", err)
+		return "", err
 	}
 
-	if len(containers) == 0 {
+	if len(ContainerList) == 0 {
 		return "", fmt.Errorf("no running containers found for app %s", appName)
 	}
 
-	deploymentIDs := make([]string, 0, len(containers))
-	for _, container := range containers {
+	deploymentIDs := make([]string, 0, len(ContainerList))
+	for _, container := range ContainerList {
 		id := container.Labels[config.LabelDeploymentID]
 		if id != "" {
 			deploymentIDs = append(deploymentIDs, id)

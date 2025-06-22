@@ -29,7 +29,7 @@ func DeployAppCmd() *cobra.Command {
 				ui.Error("Failed to get configuration for %q: %v\n", appName, err)
 				return
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
 			cli, err := docker.NewClient(ctx)
@@ -71,7 +71,7 @@ func DeployAllCmd() *cobra.Command {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
 			cli, err := docker.NewClient(ctx)

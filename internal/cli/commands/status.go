@@ -7,15 +7,18 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/spf13/cobra"
 )
+
+// showStatusTimeout defines the timeout for the status command it doesn't hang.
+const showStatusTimeout = 10 * time.Second
 
 func StatusAppCmd() *cobra.Command {
 	statusAppCmd := &cobra.Command{
@@ -36,118 +39,106 @@ If an app name is given, show detailed status including DNS configuration.`,
 
 			if len(args) == 0 {
 				// Show status for all apps
-				configFilePath, err := config.ConfigFilePath()
+				containerList, err := docker.GetAppContainers(ctx, cli, true, "")
 				if err != nil {
 					ui.Error("Error: %s", err)
 					return
 				}
-				configFile, err := config.LoadAndValidateConfig(configFilePath)
-				if err != nil {
-					ui.Error("Error: %s", err)
+				if len(containerList) == 0 {
+					ui.Info("No running containers found for any app.")
 					return
 				}
-				for i := range configFile.Apps {
-					if err := showAppStatus(ctx, cli, &configFile.Apps[i]); err != nil {
-						ui.Error("Error: %s", err)
+				apps := make(map[string][]container.Summary)
+				for _, c := range containerList {
+					appName := c.Labels[config.LabelAppName]
+					if appName == "" {
+						ui.Error("Container %s does not have the required label '%s'. Skipping.", helpers.SafeIDPrefix(c.ID), config.LabelAppName)
+						continue
 					}
+					apps[appName] = append(apps[appName], c)
+				}
+
+				for appName, containers := range apps {
+					showAppStatus(ctx, cli, appName, containers)
+					fmt.Println()
 				}
 				return
 			}
 
 			appName := args[0]
-			appConfig, err := config.AppConfigByName(appName)
+			containerList, err := docker.GetAppContainers(ctx, cli, true, appName)
 			if err != nil {
 				ui.Error("Error: %s", err)
 				return
 			}
-
-			if err := showAppStatusDetailed(ctx, cli, appConfig); err != nil {
-				ui.Error("Error: %s", err)
+			if len(containerList) == 0 {
+				ui.Info("No running containers found for any app.")
+				return
 			}
+			showAppStatusDetailed(ctx, cli, appName, containerList)
 
 		},
 	}
 	return statusAppCmd
 }
 
-const (
-	showStatusTimeout = 5 * time.Second
-)
-
 type initialStatus struct {
-	state                         string
-	runningContainerIDs           []string
-	availableRollbackContainerIDs []string
-	domains                       []config.Domain
-	formattedDomains              []string
-	envVars                       []config.EnvVar
-	formattedEnvVars              []string
+	state               string
+	runningContainerIDs []string
+	domains             []config.Domain
+	formattedDomains    []string
+	envVars             []config.EnvVar
+	formattedEnvVars    []string
 
 	// all formatted fields for better output
 	formattedOutput []string
 }
 
-func getInitialStatus(ctx context.Context, cli *client.Client, appConfig *config.AppConfig) (initialStatus, error) {
+func getInitialStatus(ctx context.Context, cli *client.Client, appName string, containers []container.Summary) (initialStatus, error) {
 	status := initialStatus{}
-	filtersArgs := filters.NewArgs()
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appConfig.Name))
-
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
-		Filters: filtersArgs,
-		All:     true,
-	})
-	if err != nil {
-		return status, fmt.Errorf("failed to get container for app %s: %w", appConfig.Name, err)
-	}
-
-	state := "Not running"
+	state := lipgloss.NewStyle().Foreground(ui.LightGray).Italic(true).Render("Unknown")
+	var latestDeploymentID string
 	var runningDeploymentID string
+	var latestLabels *config.ContainerLabels
 	runningContainerIDs := make([]string, 0, len(containers))
-	availableRollbackContainerIDs := make([]string, 0, len(containers))
 
-	// First pass: find running containers and determine the highest deploymentID.
+	// Find the latest deployment ID and labels, and collect running container IDs.
 	for _, c := range containers {
 		labels, err := config.ParseContainerLabels(c.Labels)
 		if err != nil {
 			return status, fmt.Errorf("failed to parse labels for container %s: %w", helpers.SafeIDPrefix(c.ID), err)
 		}
 
-		if c.State == "running" || c.State == "restarting" {
+		if labels.DeploymentID > latestDeploymentID {
+			latestDeploymentID = labels.DeploymentID
+			latestLabels = labels
+		}
+
+		switch c.State {
+		case "running", "restarting":
 			if labels.DeploymentID > runningDeploymentID {
 				runningDeploymentID = labels.DeploymentID
 			}
 			runningContainerIDs = append(runningContainerIDs, helpers.SafeIDPrefix(c.ID))
 			if c.State == "running" {
-				state = "Running"
+				state = lipgloss.NewStyle().Foreground(ui.Green).Render("Running")
 			} else if state != "Running" {
-				state = "Restarting"
+				state = lipgloss.NewStyle().Foreground(ui.Amber).Render("Restarting")
 			}
+		case "exited", "dead":
+			state = lipgloss.NewStyle().Foreground(ui.Red).Render("Stopped")
+
+		case "paused":
+			state = lipgloss.NewStyle().Foreground(ui.Blue).Render("Paused")
+
 		}
 	}
-	// Second pass: count rollback containers.
-	for _, c := range containers {
-		labels, err := config.ParseContainerLabels(c.Labels)
-		if err != nil {
-			return status, fmt.Errorf("failed to parse labels for container %s: %w", helpers.SafeIDPrefix(c.ID), err)
-		}
-
-		// If a running deployment exists, only count those with a lower deploymentID.
-		if runningDeploymentID != "" {
-			if c.State != "running" && c.State != "restarting" && labels.DeploymentID < runningDeploymentID {
-				availableRollbackContainerIDs = append(availableRollbackContainerIDs, helpers.SafeIDPrefix(c.ID))
-			}
-		} else {
-			// No running container found: decide how to handle rollback.
-			// For example, count all stopped containers as available for rollback.
-			if c.State != "running" && c.State != "restarting" {
-				availableRollbackContainerIDs = append(availableRollbackContainerIDs, helpers.SafeIDPrefix(c.ID))
-			}
-		}
+	if latestLabels == nil || latestDeploymentID == "" {
+		return status, fmt.Errorf("no valid containers found for app %s", appName)
 	}
 
-	formattedDomains := make([]string, 0, len(appConfig.Domains))
-	for _, d := range appConfig.Domains {
+	formattedDomains := make([]string, 0, len(latestLabels.Domains))
+	for _, d := range latestLabels.Domains {
 		if len(d.Aliases) == 0 {
 			formattedDomains = append(formattedDomains, fmt.Sprintf("  %s", d.Canonical))
 		} else {
@@ -158,29 +149,37 @@ func getInitialStatus(ctx context.Context, cli *client.Client, appConfig *config
 		}
 	}
 
-	// Build environment variables output.
+	// Use latest recorded appCOnfig for deployment ID
+	var envVars []config.EnvVar
 	var formattedEnvVars []string
-	for _, ev := range appConfig.Env {
-		var val string
-		if ev.Value != nil {
-			val = *ev.Value
-		} else if ev.SecretName != nil {
-			// If there's a secret reference, simulate the "SECRET:" prefix.
-			val = "SECRET:" + *ev.SecretName
-		}
-		if strings.HasPrefix(val, "SECRET:") {
-			secretName := strings.TrimPrefix(val, "SECRET:")
-			formattedEnvVars = append(formattedEnvVars, fmt.Sprintf("  %s: loaded from secret (%s)", ev.Name, secretName))
-		} else {
-			formattedEnvVars = append(formattedEnvVars, fmt.Sprintf("  %s: %s", ev.Name, val))
+	latestAppConfig, _ := deploy.GetAppConfigHistory(latestDeploymentID)
+	if latestAppConfig != nil {
+		envVars = latestAppConfig.Env
+		for _, ev := range latestAppConfig.Env {
+			var val string
+			if ev.Value != nil {
+				val = *ev.Value
+			} else if ev.SecretName != nil {
+				// If there's a secret reference, simulate the "SECRET:" prefix.
+				val = "SECRET:" + *ev.SecretName
+			}
+			if _, secretName, ok := strings.Cut(val, "SECRET:"); ok {
+				formattedEnvVars = append(formattedEnvVars, fmt.Sprintf("  %s: loaded from secret (%s)", ev.Name, secretName))
+			} else {
+				formattedEnvVars = append(formattedEnvVars, fmt.Sprintf("  %s: %s", ev.Name, val))
+			}
 		}
 	}
 
 	var rollbackMsg string
-	if len(availableRollbackContainerIDs) == 1 {
-		rollbackMsg = "1 rollback container available"
+	rollbackTargets, _ := deploy.GetRollbackTargets(ctx, cli, appName)
+
+	if len(rollbackTargets) == 1 {
+		rollbackMsg = "1 rollback image available"
+	} else if len(rollbackTargets) > 1 {
+		rollbackMsg = fmt.Sprintf("%d rollback images available", len(rollbackTargets))
 	} else {
-		rollbackMsg = fmt.Sprintf("%d rollback containers available", len(availableRollbackContainerIDs))
+		rollbackMsg = "No rollback images available"
 	}
 
 	formattedOutput := []string{
@@ -195,38 +194,37 @@ func getInitialStatus(ctx context.Context, cli *client.Client, appConfig *config
 	}
 
 	status = initialStatus{
-		state:                         state,
-		runningContainerIDs:           runningContainerIDs,
-		availableRollbackContainerIDs: availableRollbackContainerIDs,
-		domains:                       appConfig.Domains,
-		formattedDomains:              formattedDomains,
-		envVars:                       appConfig.Env,
-		formattedEnvVars:              formattedEnvVars,
-		formattedOutput:               formattedOutput,
+		state:               state,
+		runningContainerIDs: runningContainerIDs,
+		domains:             latestLabels.Domains,
+		formattedDomains:    formattedDomains,
+		envVars:             envVars,
+		formattedEnvVars:    formattedEnvVars,
+		formattedOutput:     formattedOutput,
 	}
 
 	return status, nil
 }
 
-func showAppStatusDetailed(ctx context.Context, cli *client.Client, appConfig *config.AppConfig) error {
+func showAppStatusDetailed(ctx context.Context, cli *client.Client, appName string, containers []container.Summary) error {
 
-	status, err := getInitialStatus(ctx, cli, appConfig)
+	status, err := getInitialStatus(ctx, cli, appName, containers)
 	if err != nil {
 		return err
 	}
 
-	ui.Section(fmt.Sprintf("%s (detailed status)", appConfig.Name), status.formattedOutput)
+	ui.Section(appName, status.formattedOutput)
 
 	return nil
 }
 
-func showAppStatus(ctx context.Context, cli *client.Client, appConfig *config.AppConfig) error {
-	status, err := getInitialStatus(ctx, cli, appConfig)
+func showAppStatus(ctx context.Context, cli *client.Client, appName string, containers []container.Summary) error {
+	status, err := getInitialStatus(ctx, cli, appName, containers)
 	if err != nil {
 		return err
 	}
 
-	ui.Section(fmt.Sprintf("%s (detailed status)", appConfig.Name), status.formattedOutput)
+	ui.Section(appName, status.formattedOutput)
 
 	return nil
 }

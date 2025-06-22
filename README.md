@@ -125,7 +125,6 @@ haloy rollback example-app 20231026143000
 | `haloy start` | Start the haloy services, including HAProxy and haloy-manager. |
 | `haloy stop <app-name>` | Stop an application's running containers. |
 | `haloy status [app-name]` | Show status for all apps or detailed status for a specific app. |
-| `haloy list` | List all apps from the configuration file. |
 | `haloy deploy <app-name>` | Deploy a single application by name. |
 | `haloy deploy-all` | Deploy all applications defined in the configuration file. |
 | `haloy rollback <app-name> [deployment-id]` | Rollback an application to a previous deployment. If no deployment ID is provided, available rollback targets will be listed. |

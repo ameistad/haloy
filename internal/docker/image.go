@@ -12,7 +12,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 
-	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
@@ -154,13 +153,9 @@ func RemoveImages(ctx context.Context, cli *client.Client, appName, ignoreDeploy
 	}
 
 	// Get a list of running containers for the app to determine which image digests are currently in use.
-	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
-	containerList, err := cli.ContainerList(ctx, container.ListOptions{
-		Filters: filterArgs,
-		All:     false, // Only consider running containers.
-	})
+	containerList, err := GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
-		return fmt.Errorf("failed to list containers for %s: %w", appName, err)
+		return err
 	}
 	// Build a set of imageIDs that are in use.
 	inUseImageIDs := make(map[string]struct{})

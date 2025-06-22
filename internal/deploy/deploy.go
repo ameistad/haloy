@@ -7,15 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/client"
-	"gopkg.in/yaml.v3"
 )
 
 func createDeploymentID() string {
@@ -49,7 +46,7 @@ func DeployApp(ctx context.Context, cli *client.Client, appConfig *config.AppCon
 	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageTag, appConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("failed to run new container: operation timed out after %v (%w)", DefaultDeployTimeout, err)
+			return fmt.Errorf("failed to run new container: operation timed out after %v (%w)", DefaultContextTimeout, err)
 		} else if errors.Is(err, context.Canceled) {
 			if ctx.Err() != nil {
 				return fmt.Errorf("failed to run new container: deployment canceled (%w)", ctx.Err())
@@ -118,7 +115,7 @@ func GetImage(ctx context.Context, cli *client.Client, appConfig *config.AppConf
 		if err := docker.BuildImage(buildImageParams); err != nil {
 			// Distinguish between timeout and cancellation
 			if errors.Is(err, context.DeadlineExceeded) {
-				return "", fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultDeployTimeout, err)
+				return "", fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultContextTimeout, err)
 			} else if errors.Is(err, context.Canceled) {
 				// Check if the cancellation came from the parent deployCtx
 				if ctx.Err() != nil {
@@ -231,61 +228,4 @@ func printLogLine(line string) {
 	default:
 		fmt.Printf("%s", line)
 	}
-}
-
-// WriteAppConfigHistory writes the given appConfig to the history folder, naming the file <deploymentID>.yml.
-func writeAppConfigHistory(appConfig *config.AppConfig, deploymentID string, deploymentsToKeep int) error {
-	// Define the history directory inside the config directory.
-	historyPath, err := config.HistoryPath()
-	if err != nil {
-		return fmt.Errorf("failed to get history directory: %w", err)
-	}
-
-	// Create the file name based on the deploymentID.
-	historyFilePath := filepath.Join(historyPath, fmt.Sprintf("%s.yml", deploymentID))
-
-	// Marshal the appConfig struct to YAML.
-	data, err := yaml.Marshal(appConfig)
-	if err != nil {
-		return fmt.Errorf("failed to marshal app config: %w", err)
-	}
-
-	// Write the YAML data to the file.
-	if err := os.WriteFile(historyFilePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write config history file '%s': %w", historyFilePath, err)
-	}
-
-	// After writing, prune old history files.
-	// List all history files ending with .yml in the history directory.
-	files, err := os.ReadDir(historyPath)
-	if err != nil {
-		return fmt.Errorf("failed to read history directory '%s': %w", historyPath, err)
-	}
-
-	var historyFiles []os.DirEntry
-	for _, file := range files {
-		// Only consider files that are not directories and have a .yml extension, and are not the current deployment file.
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yml") && file.Name() != fmt.Sprintf("%s.yml", deploymentID) {
-			historyFiles = append(historyFiles, file)
-		}
-	}
-
-	// Sort the files descending by filename (deployment id).
-	sort.Slice(historyFiles, func(i, j int) bool {
-		return historyFiles[i].Name() > historyFiles[j].Name()
-	})
-
-	// Delete files beyond the deploymentsToKeep count.
-	if len(historyFiles) > deploymentsToKeep {
-		for i := deploymentsToKeep; i < len(historyFiles); i++ {
-			filePath := filepath.Join(historyPath, historyFiles[i].Name())
-			if err := os.Remove(filePath); err != nil {
-				ui.Warn("Failed to remove old history file %s: %v", filePath, err)
-			} else {
-				ui.Info("Removed old history file %s", filePath)
-			}
-		}
-	}
-
-	return nil
 }

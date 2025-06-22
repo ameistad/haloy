@@ -25,7 +25,7 @@ func RollbackAppCmd() *cobra.Command {
 				ui.Info("Usage: haloy rollback <app-name> [deployment-id]")
 				return
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 			cli, err := docker.NewClient(ctx)
 			if err != nil {
@@ -72,7 +72,7 @@ so you can choose which one to rollback to.`,
 				ui.Info("Usage: haloy rollback-list <app-name>]")
 				return
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultDeployTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 			cli, err := docker.NewClient(ctx)
 			if err != nil {

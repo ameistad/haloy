@@ -110,13 +110,9 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTa
 }
 
 func StopContainers(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
-	filterArgs := filters.NewArgs(filters.Arg("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName)))
-	containerList, err := cli.ContainerList(ctx, container.ListOptions{
-		Filters: filterArgs,
-		All:     false, // Only running containers
-	})
+	containerList, err := GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
-		return stoppedIDs, fmt.Errorf("failed to list containers: %w", err)
+		return stoppedIDs, err
 	}
 
 	for _, containerInfo := range containerList {
@@ -146,15 +142,9 @@ type RemoveContainersResult struct {
 
 // RemoveContainers attempts to remove old containers for a given app and ignoring a specific deployment.
 func RemoveContainers(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string) (removedIDs []string, err error) {
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
-
-	containerList, err := cli.ContainerList(ctx, container.ListOptions{
-		Filters: filterArgs,
-		All:     true,
-	})
+	containerList, err := GetAppContainers(ctx, cli, true, appName)
 	if err != nil {
-		return removedIDs, fmt.Errorf("failed to list containers: %w", err)
+		return removedIDs, err
 	}
 
 	for _, containerInfo := range containerList {
@@ -319,4 +309,37 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 	}
 
 	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)
+}
+
+// GetAppContainers returns a slice of container summaries filtered by labels.
+//
+// Parameters:
+//   - ctx: the context for the Docker API requests.
+//   - cli: the Docker client used to interact with the Docker daemon.
+//   - listAll: if true, the function returns all containers including stopped ones;
+//     if false, only running containers are returned.
+//   - appName: if not empty, only containers associated with the given app name are returned.
+//
+// Returns:
+//   - A slice of container summaries.
+//   - An error if something went wrong during the container listing.
+func GetAppContainers(ctx context.Context, cli *client.Client, listAll bool, appName string) ([]container.Summary, error) {
+	filterArgs := filters.NewArgs()
+	filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
+	if appName != "" {
+		filterArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelAppName, appName))
+	}
+	containerList, err := cli.ContainerList(ctx, container.ListOptions{
+		Filters: filterArgs,
+		All:     listAll, // If all is true, include stopped containers
+	})
+	if err != nil {
+		if appName != "" {
+			return nil, fmt.Errorf("failed to list containers for app %s: %w", appName, err)
+		} else {
+			return nil, fmt.Errorf("failed to list containers: %w", err)
+		}
+	}
+
+	return containerList, nil
 }
