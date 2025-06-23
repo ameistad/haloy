@@ -14,6 +14,7 @@ import (
 
 type Logger struct {
 	writer io.Writer
+	file   *os.File // store the file for later closing
 	Level  LogLevel
 	mutex  sync.Mutex
 	isCLI  bool // isCLI indicates if the logger is used in a CLI context and should use ui library.
@@ -100,9 +101,9 @@ func (l *Logger) Fatal(msg string, err ...error) {
 	} else {
 		fmt.Fprintf(l.writer, "[FATAL] %s\n", msg)
 	}
-	if f, ok := l.writer.(*os.File); ok {
-		f.Sync()
-		f.Close()
+	if l.file != nil {
+		l.file.Sync()
+		l.file.Close()
 	}
 	os.Exit(1)
 }
@@ -117,18 +118,20 @@ func (l *Logger) SetDeploymentIDFileWriter(logsPath string, deploymentID string)
 	if err != nil {
 		return err
 	}
-	l.writer = file
+	// Store file for later closure and log to both os.Stdout and the file.
+	l.file = file
+	l.writer = io.MultiWriter(os.Stdout, file)
 	return nil
 }
 
 func (l *Logger) CloseLog() error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	if l.writer != os.Stdout {
-		fmt.Fprintln(l.writer, "[LOG END]")
-		if f, ok := l.writer.(*os.File); ok {
-			return f.Close()
-		}
+	fmt.Fprintln(l.writer, "[LOG END]")
+	if l.file != nil {
+		err := l.file.Close()
+		l.file = nil
+		return err
 	}
 	return nil
 }
