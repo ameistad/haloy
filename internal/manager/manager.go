@@ -50,10 +50,17 @@ func RunManager(dryRun bool) {
 	if dryRun {
 		logLevel = logging.DEBUG
 	}
-	logger, err := logging.NewLogger(logLevel, false)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "CRITICAL: Failed to initialize logging: %v", err)
-	}
+    // Create log manager for streaming deployment logs
+    logManager := api.NewLogManager()
+
+    // Set up slog with streaming capability
+    logLevel := slog.LevelInfo
+    if dryRun {
+        logLevel = slog.LevelDebug
+    }
+
+    logger := logging.NewSlogLogger(logLevel, logManager)
+    slog.SetDefault(logger)
 
 	logger.Info(fmt.Sprintf("Haloy manager version %s started on network %s...", version.Version, config.DockerNetwork))
 
