@@ -9,12 +9,9 @@ func intPtr(i int) *int { return &i }
 
 // baseAppConfig can be used by multiple test functions
 func baseAppConfig(name string) AppConfig {
-	imageSourcePtr := &ImageSource{Repository: "example.com/repo", Tag: "latest"}
 	return AppConfig{
-		Name: name,
-		Source: Source{
-			Image: imageSourcePtr,
-		},
+		Name:  name,
+		Image: Image{Repository: "example.com/repo", Tag: "latest"},
 		// Add a default domain to prevent "no domains defined" error in unrelated tests
 		Domains:         []Domain{{Canonical: fmt.Sprintf("%s.example.com", name)}},
 		ACMEEmail:       "test@example.com",

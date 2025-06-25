@@ -13,10 +13,9 @@ type EnvVar struct {
 	Name string `yaml:"name"`
 
 	// Use pointers to ensure only one is provided.
-	Value      *string `yaml:"value,omitempty"`
-	SecretName *string `yaml:"secretName,omitempty"`
-	// Internal field to hold the decrypted value after processing.
-	decryptedValue *string `yaml:"-"`
+	Value          *string `json:"value,omitempty"`
+	SecretName     *string `json:"secretName,omitempty"`
+	decryptedValue *string `json:"-"` // Internal field to hold the decrypted value after processing.
 }
 
 func (e *EnvVar) UnmarshalYAML(value *yaml.Node) error {

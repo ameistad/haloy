@@ -8,8 +8,8 @@ import (
 )
 
 type Domain struct {
-	Canonical string   `yaml:"domain"`
-	Aliases   []string `yaml:"aliases,omitempty"`
+	Canonical string   `json:"domain"`
+	Aliases   []string `json:"aliases,omitempty"`
 }
 
 func (d *Domain) ToSlice() []string {

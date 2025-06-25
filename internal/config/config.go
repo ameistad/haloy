@@ -5,6 +5,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,18 +48,17 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type AppConfig struct {
-	Name      string   `yaml:"name"`
-	Source    Source   `yaml:"source"`
-	Domains   []Domain `yaml:"domains,omitempty"`
-	ACMEEmail string   `yaml:"acmeEmail,omitempty"`
-	Env       []EnvVar `yaml:"env,omitempty"`
-	// Using pointer to allow nil value
-	DeploymentsToKeep *int     `yaml:"deploymentsToKeep,omitempty"`
-	HealthCheckPath   string   `yaml:"healthCheckPath,omitempty"`
-	Port              string   `yaml:"port,omitempty"`
-	Replicas          *int     `yaml:"replicas,omitempty"`
-	Volumes           []string `yaml:"volumes,omitempty"`
-	NetworkMode       string   `yaml:"networkMode,omitempty"` // Defaults to "bridge".
+	Name              string   `json:"name"`
+	Image             Image    `json:"image"`
+	Domains           []Domain `json:"domains,omitempty"`
+	ACMEEmail         string   `json:"acmeEmail,omitempty"`
+	Env               []EnvVar `json:"env,omitempty"`
+	DeploymentsToKeep *int     `json:"deploymentsToKeep,omitempty"`
+	HealthCheckPath   string   `json:"healthCheckPath,omitempty"`
+	Port              string   `json:"port,omitempty"`
+	Replicas          *int     `json:"replicas,omitempty"`
+	Volumes           []string `json:"volumes,omitempty"`
+	NetworkMode       string   `json:"networkMode,omitempty"` // defaults to "bridge"
 }
 
 func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
@@ -103,6 +103,28 @@ func (a *AppConfig) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+func (ac *AppConfig) Normalize() *AppConfig {
+	// Default DeploymentsToKeep to the default if not set.
+	if ac.DeploymentsToKeep == nil {
+		defaultMax := DefaultDeploymentsToKeep
+		ac.DeploymentsToKeep = &defaultMax
+	}
+
+	if ac.HealthCheckPath == "" {
+		ac.HealthCheckPath = DefaultHealthCheckPath
+	}
+
+	if ac.Port == "" {
+		ac.Port = DefaultContainerPort
+	}
+
+	if ac.Replicas == nil {
+		defaultReplicas := DefaultReplicas
+		ac.Replicas = &defaultReplicas
+	}
+	return ac
+}
+
 // NormalizeConfig sets default values for the loaded configuration.
 func NormalizeConfig(conf *Config) *Config {
 	normalized := *conf
@@ -130,6 +152,21 @@ func NormalizeConfig(conf *Config) *Config {
 		}
 	}
 	return &normalized
+}
+
+// Temp function to load the configuration using Viper.
+func LoadViperAppConfig(path string) (*AppConfig, error) {
+	v := viper.New()
+	v.SetConfigFile(path)
+	if err := v.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	var appConfig AppConfig
+	if err := v.Unmarshal(&appConfig); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	return &appConfig, nil
 }
 
 func LoadConfig(path string) (*Config, error) {

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
@@ -43,11 +44,12 @@ func RollbackAppCmd() *cobra.Command {
 				listRollbackTargets(ctx, cli, appName)
 			} else {
 				// Execute rollback with provided deployment id.
-				if err := deploy.RollbackApp(ctx, cli, appName, targetDeploymentID); err != nil {
-					ui.Error("Failed to rollback %q: %v\n", appName, err)
-				} else {
-					ui.Success("Rollback of %s completed successfully.\n", appName)
-				}
+				// if err := deploy.RollbackApp(ctx, cli, appName, targetDeploymentID); err != nil {
+				// 	ui.Error("Failed to rollback %q: %v\n", appName, err)
+				// } else {
+				// 	ui.Success("Rollback of %s completed successfully.\n", appName)
+				// }
+				fmt.Print("Rolling back app: ", appName, "\n")
 			}
 		},
 	}

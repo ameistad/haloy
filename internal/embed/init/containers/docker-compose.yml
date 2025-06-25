@@ -2,6 +2,8 @@ services:
 
   haloy-manager:
     image: ghcr.io/ameistad/haloy-manager:latest
+    env_file:
+      - ./.env
     labels:
       - "dev.haloy.role=manager"
     container_name: haloy-manager
@@ -17,6 +19,11 @@ services:
     ports:
       # Certificates server
       - "127.0.0.1:8080:8080"
+      # Expose the public API
+      - "9999:9999"
+    environment:
+      # Provide the secret token for API authentication.
+      HALOY_API_TOKEN: "${HALOY_API_TOKEN}"
     user: root
     restart: unless-stopped
     networks:

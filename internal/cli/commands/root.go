@@ -17,7 +17,6 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(
 		CompletionCmd(),
 		DeployAppCmd(),
-		DeployAllCmd(),
 		InitCmd(),
 		RollbackAppCmd(),
 		RollbackListCmd(),

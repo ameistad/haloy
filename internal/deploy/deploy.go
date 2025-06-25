@@ -22,10 +22,7 @@ func createDeploymentID() string {
 
 }
 
-func DeployApp(ctx context.Context, cli *client.Client, appConfig *config.AppConfig, imageTag string) error {
-	if imageTag == "" {
-		return fmt.Errorf("image tag cannot be empty")
-	}
+func DeployApp(ctx context.Context, cli *client.Client, appConfig config.AppConfig) error {
 	// Ensure that the custom docker network and required services are running.
 	if err := docker.EnsureNetwork(cli, ctx); err != nil {
 		return fmt.Errorf("failed to ensure Docker network exists: %w", err)
@@ -35,8 +32,8 @@ func DeployApp(ctx context.Context, cli *client.Client, appConfig *config.AppCon
 	}
 
 	deploymentID := createDeploymentID()
-
-	newImageTag, err := tagImage(ctx, cli, imageTag, appConfig.Name, deploymentID)
+	imageRef := appConfig.Image.ImageRef()
+	newImageTag, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to tag image: %w", err)
 	}
@@ -61,18 +58,13 @@ func DeployApp(ctx context.Context, cli *client.Client, appConfig *config.AppCon
 
 	ui.Info("Started %d container(s) with deployment ID: %s", len(runResult), deploymentID)
 
-	// Write the deployment to history for rollback purposes.
-	deploymentsToKeep := config.DefaultDeploymentsToKeep
-	if appConfig.DeploymentsToKeep != nil {
-		deploymentsToKeep = *appConfig.DeploymentsToKeep
-	}
 	// Write the app configuration to the history folder.
-	if err := writeAppConfigHistory(appConfig, deploymentID, deploymentsToKeep); err != nil {
+	if err := writeAppConfigHistory(appConfig, deploymentID, *appConfig.DeploymentsToKeep); err != nil {
 		ui.Warn("Failed to write app config history: %v", err)
 	}
 
 	// Remove all images except the DeploymentsToKeep newest, the ones tagged as latest and in use.
-	if err := docker.RemoveImages(ctx, cli, appConfig.Name, deploymentID, deploymentsToKeep); err != nil {
+	if err := docker.RemoveImages(ctx, cli, appConfig.Name, deploymentID, *appConfig.DeploymentsToKeep); err != nil {
 		ui.Error("image-remove: %v", err)
 	}
 
@@ -98,62 +90,12 @@ func tagImage(ctx context.Context, cli *client.Client, srcRef, appName, deployme
 	return dstRef, nil
 }
 
-func GetImage(ctx context.Context, cli *client.Client, appConfig *config.AppConfig) (string, error) {
-
-	switch true {
-	case appConfig.Source.Dockerfile != nil:
-		// Source is a Dockerfile. The image name is derived from the app name.
-		imageName := appConfig.Name + ":latest" // Convention for locally built images
-		// Not using the cli here, but passing it to the BuildImageCLIParams
-		buildImageParams := docker.BuildImageParams{
-			Context: ctx,
-			// Cli: cli,
-			ImageName: imageName,
-			Source:    appConfig.Source.Dockerfile,
-			EnvVars:   appConfig.Env,
-		}
-		if err := docker.BuildImage(buildImageParams); err != nil {
-			// Distinguish between timeout and cancellation
-			if errors.Is(err, context.DeadlineExceeded) {
-				return "", fmt.Errorf("failed to build image: operation timed out after %v (%w)", DefaultContextTimeout, err)
-			} else if errors.Is(err, context.Canceled) {
-				// Check if the cancellation came from the parent deployCtx
-				if ctx.Err() != nil {
-					return "", fmt.Errorf("failed to build image: deployment canceled (%w)", ctx.Err())
-				}
-				// Otherwise, it might be an internal cancellation within the Docker op
-				return "", fmt.Errorf("failed to build image: docker operation canceled (%w)", err)
-			}
-			return "", fmt.Errorf("failed to build image: %w", err)
-		}
-
-		ui.Info("Built image %s successfully", imageName)
-		return imageName, nil
-
-	case appConfig.Source.Image != nil:
-		imageName, err := docker.EnsureImageUpToDate(ctx, cli, appConfig.Source.Image)
-		if err != nil {
-			return imageName, err
-		}
-		ui.Info("Using pre-built image %s for app '%s'", imageName, appConfig.Name)
-		return imageName, nil
-
-	default:
-		return "", fmt.Errorf("invalid app source configuration: no source type (Dockerfile or Image) defined for app '%s'", appConfig.Name)
-	}
-
-}
-
 func tailDeploymentLog(deploymentID string) error {
 	if deploymentID == "" {
 		return fmt.Errorf("deployment ID cannot be empty")
 	}
 
-	logsPath, err := config.LogsPath()
-	if err != nil {
-		return fmt.Errorf("failed to get logs path: %w", err)
-	}
-	logFile := filepath.Join(logsPath, deploymentID+".log")
+	logFile := filepath.Join("/logs", deploymentID+".log")
 
 	// Retry logic for opening the log file
 	var file *os.File
@@ -161,6 +103,7 @@ func tailDeploymentLog(deploymentID string) error {
 	const retryInterval = 300 * time.Millisecond
 	start := time.Now()
 	for {
+		var err error
 		file, err = os.Open(logFile)
 		if err == nil {
 			break

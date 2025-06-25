@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/ameistad/haloy/internal/api"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
@@ -65,6 +67,21 @@ func RunManager(dryRun bool) {
 		logger.Fatal("Failed to create Docker client", err)
 	}
 	defer cli.Close()
+
+	// Get the API token from an environment variable for security
+	apiToken := os.Getenv("HALOY_API_TOKEN")
+	if apiToken == "" {
+		logger.Fatal("HALOY_API_TOKEN environment variable not set.")
+	}
+
+	// Create and start the API server in a separate goroutine
+	apiServer := api.NewServer(apiToken)
+	go func() {
+		logger.Info("Starting API server on :9999...")
+		if err := apiServer.ListenAndServe(":9999"); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("API server failed", err)
+		}
+	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

@@ -53,8 +53,8 @@ func (ac *AppConfig) Validate() error {
 		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
 	}
 
-	if err := ac.Source.Validate(); err != nil {
-		return fmt.Errorf("invalid source: %w", err)
+	if err := ac.Image.Validate(); err != nil {
+		return fmt.Errorf("invalid image: %w", err)
 	}
 
 	if len(ac.Domains) > 0 {
@@ -98,16 +98,17 @@ func (ac *AppConfig) Validate() error {
 	}
 
 	// Validate health check path.
-	if err := ValidateHealthCheckPath(ac.HealthCheckPath); err != nil {
-		return err
+	if ac.HealthCheckPath != "" {
+		if err := ValidateHealthCheckPath(ac.HealthCheckPath); err != nil {
+			return err
+		}
 	}
 
 	// Validate replicas.
-	if ac.Replicas == nil {
-		return errors.New("replicas cannot be nil")
-	}
-	if *ac.Replicas < 1 {
-		return errors.New("replicas must be at least 1")
+	if ac.Replicas != nil {
+		if int(*ac.Replicas) < 1 {
+			return errors.New("replicas must be at least 1")
+		}
 	}
 
 	return nil

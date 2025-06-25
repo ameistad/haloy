@@ -22,7 +22,7 @@ type ContainerRunResult struct {
 	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTag string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
+func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTag string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
 
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 

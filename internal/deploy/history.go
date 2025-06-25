@@ -13,7 +13,7 @@ import (
 )
 
 // WriteAppConfigHistory writes the given appConfig to the history folder, naming the file <deploymentID>.yml.
-func writeAppConfigHistory(appConfig *config.AppConfig, deploymentID string, deploymentsToKeep int) error {
+func writeAppConfigHistory(appConfig config.AppConfig, deploymentID string, deploymentsToKeep int) error {
 	// Define the history directory inside the config directory.
 	historyPath, err := config.HistoryPath()
 	if err != nil {
