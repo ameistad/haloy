@@ -149,7 +149,7 @@ func getInitialStatus(ctx context.Context, cli *client.Client, appName string, c
 		}
 	}
 
-	// Use latest recorded appCOnfig for deployment ID
+	// Use latest recorded appConfig for deployment ID
 	var envVars []config.EnvVar
 	var formattedEnvVars []string
 	latestAppConfig, _ := deploy.GetAppConfigHistory(latestDeploymentID)
@@ -157,11 +157,11 @@ func getInitialStatus(ctx context.Context, cli *client.Client, appName string, c
 		envVars = latestAppConfig.Env
 		for _, ev := range latestAppConfig.Env {
 			var val string
-			if ev.Value != nil {
-				val = *ev.Value
-			} else if ev.SecretName != nil {
+			if ev.Value != "" {
+				val = ev.Value
+			} else if ev.SecretName != "" {
 				// If there's a secret reference, simulate the "SECRET:" prefix.
-				val = "SECRET:" + *ev.SecretName
+				val = "SECRET:" + ev.SecretName
 			}
 			if _, secretName, ok := strings.Cut(val, "SECRET:"); ok {
 				formattedEnvVars = append(formattedEnvVars, fmt.Sprintf("  %s: loaded from secret (%s)", ev.Name, secretName))

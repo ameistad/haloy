@@ -32,15 +32,6 @@ func ConfigDirPath() (string, error) {
 	return path, nil
 }
 
-// ConfigFilePath returns "~/.config/haloy/apps.yml".
-func ConfigFilePath() (string, error) {
-	configDirPath, err := ConfigDirPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(configDirPath, ConfigFileName), nil
-}
-
 func ConfigContainersPath() (string, error) {
 	configDirPath, err := ConfigDirPath()
 	if err != nil {

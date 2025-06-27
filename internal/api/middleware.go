@@ -3,14 +3,38 @@ package api
 import (
 	"log"
 	"net/http"
+	"strings"
 )
 
 func (s *APIServer) bearerTokenAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 1. Get the "Authorization: Bearer <token>" header
-		// 2. Compare it to the server's configured secret token
-		// 3. If invalid, write a 401 Unauthorized error and return.
-		// 4. If valid, call the next handler in the chain:
+		// Get the Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		// Check if it's a Bearer token
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			http.Error(w, "Invalid authorization format. Expected 'Bearer <token>'", http.StatusUnauthorized)
+			return
+		}
+
+		// Extract the token
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		if token == "" {
+			http.Error(w, "Empty token", http.StatusUnauthorized)
+			return
+		}
+
+		// Validate against the server's configured token
+		if token != s.apiToken {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		// Token is valid, proceed to the next handler
 		next.ServeHTTP(w, r)
 	}
 }

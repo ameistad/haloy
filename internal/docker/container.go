@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -164,7 +164,7 @@ func RemoveContainers(ctx context.Context, cli *client.Client, appName, ignoreDe
 	return removedIDs, nil
 }
 
-func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *logging.Logger, containerID string, initialWaitTime ...time.Duration) error {
+func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.Logger, containerID string, initialWaitTime ...time.Duration) error {
 	// Check if container is running - wait up to 30 seconds for it to start
 	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -235,10 +235,10 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 		// If container has healthcheck and it's healthy, we can skip our manual check@
 		switch containerInfo.State.Health.Status {
 		case "healthy":
-			logger.Debug(fmt.Sprintf("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID)))
+			logger.Debug("Container is healthy according to Docker healthcheck", "container_id", helpers.SafeIDPrefix(containerID))
 			return nil
 		case "starting":
-			logger.Info(fmt.Sprintf("Container %s is still starting, falling back to manual health check", helpers.SafeIDPrefix(containerID)))
+			logger.Info("Container is still starting, falling back to manual health check", "container_id", helpers.SafeIDPrefix(containerID))
 		case "unhealthy":
 			if len(containerInfo.State.Health.Log) > 0 {
 				lastLog := containerInfo.State.Health.Log[len(containerInfo.State.Health.Log)-1]
@@ -283,7 +283,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 	// Use traditional for loop for clarity
 	for retry := 0; retry < maxRetries; retry++ {
 		if retry > 0 {
-			logger.Info(fmt.Sprintf("Retrying health check in %v... (attempt %d/%d)\n", backoff, retry+1, maxRetries))
+			logger.Info("Retrying health check...", "backoff", backoff, "attempt", retry+1, "max_retries", maxRetries)
 			time.Sleep(backoff)
 			backoff *= 2 // Exponential backoff
 		}
@@ -295,7 +295,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			logger.Warn("Health check attempt failed", err)
+			logger.Warn("Health check attempt failed", "error", err)
 			continue
 		}
 		defer resp.Body.Close()
@@ -305,7 +305,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 		}
 
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		logger.Warn(fmt.Sprintf("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes)))
+		logger.Warn("Health check returned error status", "status_code", resp.StatusCode, "response", string(bodyBytes))
 	}
 
 	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)

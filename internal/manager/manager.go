@@ -2,8 +2,8 @@ package manager
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,7 +29,6 @@ const (
 	// These paths are mounted from the host system.
 	HAProxyConfigPath  = "/haproxy-config"
 	CertificatesPath   = "/cert-storage"
-	LogsPath           = "/logs"
 	HTTPProviderPort   = "8080"
 	EventDebounceDelay = 3 * time.Second // Delay for debouncing container events
 	UpdateTimeout      = 2 * time.Minute // Max time for a single update operation
@@ -45,48 +44,47 @@ func RunManager(dryRun bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize logging
-	logLevel := logging.INFO
+	// Set up slog with streaming capability
+	logLevel := slog.LevelInfo
 	if dryRun {
-		logLevel = logging.DEBUG
+		logLevel = slog.LevelDebug
 	}
-    // Create log manager for streaming deployment logs
-    logManager := api.NewLogManager()
 
-    // Set up slog with streaming capability
-    logLevel := slog.LevelInfo
-    if dryRun {
-        logLevel = slog.LevelDebug
-    }
+	// Setup logging with streaming
+	// Use a log broker to allow streaming logs to the API server
+	logBroker := logging.NewLogBroker()
+	loggerFactory := logging.NewLoggerFactory(logBroker)
+	logger := loggerFactory.NewLogger("", logLevel)
 
-    logger := logging.NewSlogLogger(logLevel, logManager)
-    slog.SetDefault(logger)
-
-	logger.Info(fmt.Sprintf("Haloy manager version %s started on network %s...", version.Version, config.DockerNetwork))
+	logger.Info("Haloy manager started",
+		"version", version.Version,
+		"network", config.DockerNetwork,
+		"dryRun", dryRun)
 
 	if dryRun {
 		logger.Info("Dry-run mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains. This run is for testing and validation only.")
 	}
 
 	// Initialize Docker client
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := docker.NewClient(ctx)
 	if err != nil {
-		logger.Fatal("Failed to create Docker client", err)
+		logging.LogFatal(logger, "Failed to create Docker client", "error", err)
 	}
 	defer cli.Close()
 
 	// Get the API token from an environment variable for security
 	apiToken := os.Getenv("HALOY_API_TOKEN")
 	if apiToken == "" {
-		logger.Fatal("HALOY_API_TOKEN environment variable not set.")
+		logging.LogFatal(logger, "HALOY_API_TOKEN environment variable not set")
 	}
 
 	// Create and start the API server in a separate goroutine
-	apiServer := api.NewServer(apiToken)
+	// Pass the log broker to the API server so they share the same streaming
+	apiServer := api.NewServer(apiToken, logBroker, logLevel)
 	go func() {
 		logger.Info("Starting API server on :9999...")
 		if err := apiServer.ListenAndServe(":9999"); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("API server failed", err)
+			logging.LogFatal(logger, "API server failed", "error", err)
 		}
 	}()
 
@@ -112,18 +110,11 @@ func RunManager(dryRun bool) {
 	}
 	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
 	if err != nil {
-		logger.Fatal("Failed to create certificate manager", err)
-		return
+		logging.LogFatal(logger, "Failed to create certificate manager", "error", err)
 	}
 
 	// Create the HAProxy manager
-	haproxyManagerConfig := HAProxyManagerConfig{
-		Cli:       cli,
-		Logger:    logger,
-		ConfigDir: HAProxyConfigPath,
-		DryRun:    dryRun,
-	}
-	haproxyManager := NewHAProxyManager(haproxyManagerConfig)
+	haproxyManager := NewHAProxyManager(cli, HAProxyConfigPath, dryRun)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
@@ -136,7 +127,7 @@ func RunManager(dryRun bool) {
 	// Perform initial update
 	updater := NewUpdater(updaterConfig)
 	if err := updater.Update(ctx, logger, TriggerReasonInitial, nil); err != nil {
-		logger.Error("Background update failed", err)
+		logger.Error("Background update failed", "error", err)
 	}
 
 	// Create a debouncer to prevent multiple updates in quick succession
@@ -166,7 +157,7 @@ func RunManager(dryRun bool) {
 			return
 		// Handle Docker events
 		case e := <-eventsChan:
-			appName := e.Labels.AppName
+			appName := e.Labels.AppName // The app name that triggered the event.
 			deploymentID := e.Labels.DeploymentID
 			eventAction := e.Event.Action
 			if deploymentID >= latestDeploymentID[appName] {
@@ -176,25 +167,20 @@ func RunManager(dryRun bool) {
 			}
 
 			updateAction := func() {
-				logger.Info(fmt.Sprintf("Running updateAction for %s with deployment ID %s, event action: %s\n", appName, latestDeploymentID[appName], latestEventAction[appName]))
-				// Create a logger for this specific deployment id. This will write a log file for the specific deployment ID.
-				deploymentLogger, err := logging.NewLogger(logger.Level, false)
-				if err != nil {
-					logger.Error("Failed to create logger for deployment update", err)
-					return
-				}
-				id := latestDeploymentID[appName]
-				if id != "" {
-					err = deploymentLogger.SetDeploymentIDFileWriter(LogsPath, id)
-					if err != nil {
-						logger.Error("Failed to set file writer logger", err)
-					}
-				}
+				logger.Info("Running updateAction for app",
+					"app", appName,
+					"deploymentID", latestDeploymentID[appName],
+					"eventAction", latestEventAction[appName])
+
+				// Create a deployment-specific logger that will stream to SSE clients
+				deploymentLogger := loggerFactory.NewDeploymentLogger(latestDeploymentID[appName], logLevel)
+				// Debug: Test if the deploymentID attribute is working
+				deploymentLogger.Info("TEST: This should have deploymentID automatically")
+
 				// Create a context with a timeout for this specific update task.
 				// Use the main manager context `ctx` as the parent.
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, UpdateTimeout)
 				defer cancelUpdate()
-				defer deploymentLogger.CloseLog()
 
 				app := &TriggeredByApp{
 					appName:           appName,
@@ -204,18 +190,25 @@ func RunManager(dryRun bool) {
 				}
 
 				if err := app.Validate(); err != nil {
-					deploymentLogger.Error("App data not valid: ", err)
+					deploymentLogger.Error("App data not valid", "error", err)
 					return
 				}
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
-					deploymentLogger.Error("Debounced HAProxy configuration update failed", err)
+					logging.LogDeploymentFailed(deploymentLogger, latestDeploymentID[appName], appName,
+						"Deployment failed", err)
+					return
+				}
+
+				if latestEventAction[appName] == events.ActionStart {
+					logging.LogDeploymentComplete(deploymentLogger, latestDeploymentID[appName], appName,
+						"Successfully deployed app")
 				}
 			}
 
 			debouncer.Debounce(appName, updateAction)
 
 		case domainUpdated := <-certUpdateSignal:
-			logger.Info(fmt.Sprintf("Received cert update signal for domain: %s\n", domainUpdated))
+			logger.Info("Received cert update signal", "domain", domainUpdated)
 
 			go func() {
 				// Use a timeout context for this specific task
@@ -227,24 +220,27 @@ func RunManager(dryRun bool) {
 				// We assume the deployment state triggering the cert update is still valid.
 				// Get the current deployment state
 				currentDeployments := u.deploymentManager.Deployments()
-				if err := u.haproxyManager.ApplyConfig(updateCtx, currentDeployments); err != nil {
-					logger.Error(fmt.Sprintf("Background HAProxy update failed for because cert update for domain: %s", domainUpdated), err)
+				if err := u.haproxyManager.ApplyConfig(updateCtx, logger, currentDeployments); err != nil {
+					logger.Error("Background HAProxy update failed",
+						"reason", "cert update",
+						"domain", domainUpdated,
+						"error", err)
 				}
 			}()
 
 		case err := <-errorsChan:
-			logger.Error("Error from docker events", err)
+			logger.Error("Error from docker events", "error", err)
 		case <-maintenanceTicker.C:
 			logger.Info("Performing periodic maintenance...")
-			// Clean up old logs (e.g., older than 30 days)
-			if err := logging.CleanOldLogs(30); err != nil {
-				logger.Warn(fmt.Sprintf("Failed to clean old logs: %v", err))
-			}
+			// Clean up old logs (e.g., older than 30 days) - commented out until CleanOldLogs is implemented
+			// if err := logging.CleanOldLogs(30); err != nil {
+			// 	logger.Warn("Failed to clean old logs", "error", err)
+			// }
 
 			// Prune dangling images and containers
 			_, err := docker.PruneImages(ctx, cli)
 			if err != nil {
-				logger.Warn(fmt.Sprintf("Failed to prune images: %v", err))
+				logger.Warn("Failed to prune images", "error", err)
 			}
 			go func() {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
@@ -255,7 +251,7 @@ func RunManager(dryRun bool) {
 				// It will also cleanup expired certificates.
 				u := updater
 				if err := u.Update(deploymentCtx, logger, TriggerPeriodicRefresh, nil); err != nil {
-					logger.Error("Background update failed", err)
+					logger.Error("Background update failed", "error", err)
 				}
 			}()
 		}
@@ -263,7 +259,7 @@ func RunManager(dryRun bool) {
 }
 
 // listenForDockerEvents sets up a listener for Docker events
-func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan chan ContainerEvent, errorsChan chan error, logger *logging.Logger) {
+func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan chan ContainerEvent, errorsChan chan error, logger *slog.Logger) {
 	// Set up filter for container events
 	filterArgs := filters.NewArgs()
 	filterArgs.Add("type", "container")
@@ -293,7 +289,9 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 			if _, ok := allowedActions[string(event.Action)]; ok {
 				container, err := cli.ContainerInspect(ctx, event.Actor.ID)
 				if err != nil {
-					logger.Error(fmt.Sprintf("Error inspecting container id %s", helpers.SafeIDPrefix(event.Actor.ID)), err)
+					logger.Error("Error inspecting container",
+						"containerID", helpers.SafeIDPrefix(event.Actor.ID),
+						"error", err)
 					continue
 				}
 				eligible := IsAppContainer(container)
@@ -301,11 +299,15 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 				// We'll only process events for containers that have been marked with haloy labels.
 				if eligible {
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
-					fmt.Printf("Container is eligible: event: %s - container id: %s - deployment id: %s\n", string(event.Action), helpers.SafeIDPrefix(event.Actor.ID), labels.DeploymentID)
 					if err != nil {
-						logger.Error("Error parsing container labels", err)
+						logger.Error("Error parsing container labels", "error", err)
 						return
 					}
+
+					logger.Debug("Container is eligible",
+						"event", string(event.Action),
+						"containerID", helpers.SafeIDPrefix(event.Actor.ID),
+						"deploymentID", labels.DeploymentID)
 
 					containerEvent := ContainerEvent{
 						Event:     event,
@@ -314,7 +316,8 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 					}
 					eventsChan <- containerEvent
 				} else {
-					logger.Debug(fmt.Sprintf("Container %s is not eligible for haloy management", helpers.SafeIDPrefix(event.Actor.ID)))
+					logger.Debug("Container not eligible for haloy management",
+						"containerID", helpers.SafeIDPrefix(event.Actor.ID))
 				}
 			}
 		case err := <-errs:

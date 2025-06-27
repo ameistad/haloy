@@ -3,12 +3,12 @@ package manager
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -37,12 +37,12 @@ type DeploymentManager struct {
 	Cli *client.Client
 	// deployments is a map of appName to Deployment, key is the app name.
 	deployments      map[string]Deployment
-	logger           *logging.Logger
+	logger           *slog.Logger
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
 }
 
-func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *logging.Logger) *DeploymentManager {
+func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *slog.Logger) *DeploymentManager {
 	return &DeploymentManager{
 		Ctx:         ctx,
 		Cli:         cli,
@@ -72,7 +72,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 	for _, containerSummary := range containers {
 		container, err := dm.Cli.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Failed to inspect container %s", containerSummary.ID), err)
+			dm.logger.Error("Failed to inspect container", "container_id", containerSummary.ID, "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: containerSummary.ID,
 				Error:       err.Error(),
@@ -82,13 +82,13 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 		}
 
 		if !IsAppContainer(container) {
-			dm.logger.Info(fmt.Sprintf("Container %s is not eligible for haloy management", containerSummary.ID))
+			dm.logger.Info("Container not eligible for haloy management", "container_id", containerSummary.ID)
 			continue
 		}
 
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Error parsing labels for container %s", containerSummary.ID), err)
+			dm.logger.Error("Error parsing labels for container", "container_id", containerSummary.ID, "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: containerSummary.ID,
 				Error:       err.Error(),
@@ -99,7 +99,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 
 		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Error getting IP for container %s", helpers.SafeIDPrefix(container.ID)), err)
+			dm.logger.Error("Error getting IP for container", "container_id", helpers.SafeIDPrefix(container.ID), "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: container.ID,
 				Error:       err.Error(),

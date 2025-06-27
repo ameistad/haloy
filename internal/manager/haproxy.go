@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -22,68 +22,59 @@ import (
 
 type HAProxyManager struct {
 	cli         *client.Client
-	logger      *logging.Logger
 	configDir   string
 	dryRun      bool
 	updateMutex sync.Mutex // Mutex protects config writing and reload signaling
 }
 
-type HAProxyManagerConfig struct {
-	Cli       *client.Client
-	Logger    *logging.Logger
-	ConfigDir string
-	DryRun    bool
-}
-
-func NewHAProxyManager(config HAProxyManagerConfig) *HAProxyManager {
+func NewHAProxyManager(cli *client.Client, configDir string, dryRun bool) *HAProxyManager {
 	return &HAProxyManager{
-		cli:       config.Cli,
-		logger:    config.Logger,
-		configDir: config.ConfigDir,
-		dryRun:    config.DryRun,
+		cli:       cli,
+		configDir: configDir,
+		dryRun:    dryRun,
 	}
 }
 
 // ApplyConfig generates, writes (if not dryRun), and reloads HAProxy config.
 // This method is concurrency-safe due to the internal mutex.
-func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[string]Deployment) error {
-	hpm.logger.Info("HAProxyManager: Attempting to apply new configuration...")
+func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, logger *slog.Logger, deployments map[string]Deployment) error {
+	logger.Info("HAProxyManager: Attempting to apply new configuration...")
 
 	hpm.updateMutex.Lock()
 	defer hpm.updateMutex.Unlock()
 
 	// Generate Config (with certificate check)
-	hpm.logger.Info("HAProxyManager: Generating new configuration...")
+	logger.Info("HAProxyManager: Generating new configuration...")
 	configBuf, err := hpm.generateConfig(deployments)
 	if err != nil {
 		return fmt.Errorf("HAProxyManager: failed to generate config: %w", err)
 	}
 
 	if hpm.dryRun {
-		hpm.logger.Info("HAProxyManager: DryRun - Skipping config write and reload.")
-		hpm.logger.Info(configBuf.String())
+		logger.Info("HAProxyManager: DryRun - Skipping config write and reload.")
+		logger.Info(configBuf.String())
 		return nil
 	}
 
 	// Write Config File
 	configPath := filepath.Join(hpm.configDir, config.HAProxyConfigFileName)
-	hpm.logger.Info("HAProxyManager: Writing config")
+	logger.Info("HAProxyManager: Writing config")
 	if err := os.WriteFile(configPath, configBuf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("HAProxyManager: failed to write config file %s: %w", configPath, err)
 	}
 
 	// Get HAProxy Container ID
-	haproxyID, err := hpm.getContainerID(ctx)
+	haproxyID, err := hpm.getContainerID(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("HAProxyManager: failed to find HAProxy container: %w", err)
 	}
 	if haproxyID == "" {
-		hpm.logger.Warn("HAProxyManager: No HAProxy container found with label, cannot reload.")
+		logger.Warn("HAProxyManager: No HAProxy container found with label, cannot reload.")
 		return nil // Not necessarily an error if HAProxy isn't running
 	}
 
-	// 4. Signal HAProxy Reload
-	hpm.logger.Debug("HAProxyManager: Sending SIGUSR2 signal to HAProxy container...")
+	// Signal HAProxy Reload
+	logger.Debug("HAProxyManager: Sending SIGUSR2 signal to HAProxy container...")
 	err = hpm.cli.ContainerKill(ctx, haproxyID, "SIGUSR2")
 	if err != nil {
 		// Log error but potentially don't fail the whole update if signal fails? Or return error?
@@ -91,7 +82,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, deployments map[stri
 		return fmt.Errorf("HAProxyManager: failed to send SIGUSR2 to HAProxy container %s: %w", helpers.SafeIDPrefix(haproxyID), err)
 	}
 
-	hpm.logger.Debug("HAProxyManager: Successfully signaled HAProxy for reload.")
+	logger.Info("HAProxy configuration updated successfully")
 	return nil
 }
 
@@ -181,7 +172,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 	return buf, nil
 }
 
-func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
+func (hpm *HAProxyManager) getContainerID(ctx context.Context, logger *slog.Logger) (string, error) {
 	// Configure retry parameters
 	maxRetries := 30
 	retryInterval := time.Second
@@ -213,7 +204,7 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context) (string, error) {
 
 		// No running container found yet - log on first attempt and halfway through
 		if retry == 0 || retry == maxRetries/2 {
-			hpm.logger.Info(fmt.Sprintf("HAProxyManager: Waiting for HAProxy container to be running. Attempt %d of %d", retry+1, maxRetries))
+			logger.Info("HAProxyManager: Waiting for HAProxy container to be running", "attempt", retry+1, "max_retries", maxRetries)
 		}
 
 		// Wait before retrying

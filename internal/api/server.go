@@ -1,18 +1,29 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
+
+	"github.com/ameistad/haloy/internal/logging"
 )
 
 // Server holds dependencies for the API handlers.
 type APIServer struct {
-	router *http.ServeMux
-	// ... other dependencies like a logger, config
+	router        *http.ServeMux
+	logBroker     logging.StreamPublisher
+	loggerFactory logging.LoggerFactory
+	logLevel      slog.Level
+	apiToken      string
 }
 
-func NewServer(apiToken string) *APIServer {
+func NewServer(apiToken string, logBroker logging.StreamPublisher, logLevel slog.Level) *APIServer {
 	s := &APIServer{
-		router: http.NewServeMux(),
+		router:        http.NewServeMux(),
+		logBroker:     logBroker,
+		loggerFactory: logging.NewLoggerFactory(logBroker),
+		logLevel:      logLevel,
+
+		apiToken: apiToken,
 	}
 	s.setupRoutes()
 	return s

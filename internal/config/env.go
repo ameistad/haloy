@@ -3,43 +3,56 @@ package config
 import (
 	"errors"
 	"fmt"
-	"reflect"
-
-	"gopkg.in/yaml.v3"
 )
 
 // EnvVar represents an environment variable that can either have a plaintext value or be backed by a secret.
 type EnvVar struct {
-	Name string `yaml:"name"`
+	Name       string `json:"name"`
+	Value      string `json:"value,omitempty"`
+	SecretName string `json:"secretName,omitempty"`
 
-	// Use pointers to ensure only one is provided.
-	Value          *string `json:"value,omitempty"`
-	SecretName     *string `json:"secretName,omitempty"`
 	decryptedValue *string `json:"-"` // Internal field to hold the decrypted value after processing.
 }
 
-func (e *EnvVar) UnmarshalYAML(value *yaml.Node) error {
-	// Get expected field names
-	expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*e))
+// Validate ensures the EnvVar is correctly configured.
+func (ev *EnvVar) Validate() error {
+	if ev.Name == "" {
+		return errors.New("environment variable name cannot be empty")
+	}
+	// Check that exactly one of Value or SecretName is provided
+	hasValue := ev.Value != ""
+	hasSecretName := ev.SecretName != ""
 
-	// Check for unknown fields
-	if err := CheckUnknownFields(value, expectedFields, "env var: "); err != nil {
-		return err
+	if hasValue && hasSecretName {
+		return fmt.Errorf("environment variable '%s': cannot provide both 'value' and 'secretName'", ev.Name)
+	}
+	if !hasValue && !hasSecretName {
+		return fmt.Errorf("environment variable '%s': must provide either 'value' or 'secretName'", ev.Name)
 	}
 
-	// Use type alias to avoid infinite recursion
-	type EnvVarAlias EnvVar
-	var alias EnvVarAlias
-
-	// Unmarshal to the alias type
-	if err := value.Decode(&alias); err != nil {
-		return err
+	if hasSecretName {
+		secrets, err := LoadSecrets()
+		if err != nil {
+			return fmt.Errorf("failed to load secrets: %w", err)
+		}
+		if _, exists := secrets[ev.SecretName]; !exists {
+			return fmt.Errorf("secret '%s' not found in secrets store", ev.SecretName)
+		}
 	}
-
-	// Copy data back to original struct
-	*e = EnvVar(alias)
-
 	return nil
+}
+
+// GetValue returns the final value of the environment variable. It returns the decrypted value if available;
+// otherwise it returns the plaintext value. If neither is set, it returns an error.
+func (ev *EnvVar) GetValue() (string, error) {
+	if ev.decryptedValue != nil {
+		return *ev.decryptedValue, nil
+	}
+	if ev.Value != "" {
+		return ev.Value, nil
+	}
+	// Failsafe: Should not happen if validation runs first.
+	return "", fmt.Errorf("environment variable '%s' has neither a plaintext nor a decrypted value", ev.Name)
 }
 
 // DecryptEnvVars iterates over the provided environment variables and, when a SecretName is set,
@@ -49,7 +62,7 @@ func DecryptEnvVars(initialEnvVars []EnvVar) ([]EnvVar, error) {
 	// We do this because the age ideetity might not be available in the current context and we can't load them.<
 	hasSecrets := false
 	for _, ev := range initialEnvVars {
-		if ev.SecretName != nil {
+		if ev.SecretName != "" {
 			hasSecrets = true
 			break
 		}
@@ -72,8 +85,8 @@ func DecryptEnvVars(initialEnvVars []EnvVar) ([]EnvVar, error) {
 	envVars := make([]EnvVar, len(initialEnvVars))
 	copy(envVars, initialEnvVars)
 	for i, ev := range envVars {
-		if ev.SecretName != nil {
-			record, exists := secrets[*ev.SecretName]
+		if ev.SecretName != "" {
+			record, exists := secrets[ev.SecretName]
 			if !exists {
 				continue
 			}
@@ -87,42 +100,4 @@ func DecryptEnvVars(initialEnvVars []EnvVar) ([]EnvVar, error) {
 		}
 	}
 	return envVars, nil
-}
-
-// GetValue returns the final value of the environment variable. It returns the decrypted value if available;
-// otherwise it returns the plaintext value. If neither is set, it returns an error.
-func (ev *EnvVar) GetValue() (string, error) {
-	if ev.decryptedValue != nil {
-		return *ev.decryptedValue, nil
-	}
-	if ev.Value != nil {
-		return *ev.Value, nil
-	}
-	// Failsafe: Should not happen if validation runs first.
-	return "", fmt.Errorf("environment variable '%s' has neither a plaintext nor a decrypted value", ev.Name)
-}
-
-// Validate ensures the EnvVar is correctly configured.
-func (ev *EnvVar) Validate() error {
-	if ev.Name == "" {
-		return errors.New("environment variable name cannot be empty")
-	}
-	if ev.Value != nil && ev.SecretName != nil {
-		return fmt.Errorf("environment variable '%s': cannot provide both 'value' and 'secretName'", ev.Name)
-	}
-	if ev.Value == nil && ev.SecretName == nil {
-		// Assuming that one must be provided...
-		return fmt.Errorf("environment variable '%s': must provide either 'value' or 'secretName'", ev.Name)
-	}
-
-	if ev.SecretName != nil {
-		secrets, err := LoadSecrets()
-		if err != nil {
-			return fmt.Errorf("failed to load secrets: %w", err)
-		}
-		if _, exists := secrets[*ev.SecretName]; !exists {
-			return fmt.Errorf("secret '%s' not found in secrets store", *ev.SecretName)
-		}
-	}
-	return nil
 }

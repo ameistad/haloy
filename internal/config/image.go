@@ -3,30 +3,28 @@ package config
 import (
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 
 	"github.com/docker/docker/api/types/registry"
-	"gopkg.in/yaml.v3"
 )
 
 type Image struct {
 	// Repository should include registry if not Docker Hub, e.g. "ghcr.io/myorg/myapp"
-	Repository   string        `yaml:"repository"`
-	Tag          string        `yaml:"tag,omitempty"`
-	RegistryAuth *RegistryAuth `yaml:"registry,omitempty"`
+	Repository   string        `json:"repository"`
+	Tag          string        `json:"tag,omitempty"`
+	RegistryAuth *RegistryAuth `json:"registry,omitempty"`
 }
 
 type RegistryAuth struct {
 	// Server is optional. If not set, it will be parsed from the Repository field.
-	Server   string             `yaml:"server,omitempty"`
-	Username RegistryAuthSource `yaml:"username"`
-	Password RegistryAuthSource `yaml:"password"`
+	Server   string             `json:"server,omitempty"`
+	Username RegistryAuthSource `json:"username"`
+	Password RegistryAuthSource `json:"password"`
 }
 
 type RegistryAuthSource struct {
-	Type  string `yaml:"type"`  // "env", "secret", or "plain"
-	Value string `yaml:"value"` // env var name, secret name, or plain value
+	Type  string `json:"type"`  // "env", "secret", or "plain"
+	Value string `json:"value"` // env var name, secret name, or plain value
 }
 
 func (is *Image) ImageRef() string {
@@ -101,30 +99,6 @@ func resolveRegistryAuthSource(ras RegistryAuthSource) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported registry auth type: %s", ras.Type)
 	}
-}
-
-func (i *Image) UnmarshalYAML(value *yaml.Node) error {
-	// Get expected field names
-	expectedFields := ExtractYAMLFieldNames(reflect.TypeOf(*i))
-
-	// Check for unknown fields
-	if err := CheckUnknownFields(value, expectedFields, "image: "); err != nil {
-		return err
-	}
-
-	// Use type alias to avoid infinite recursion
-	type ImageAlias Image
-	var alias ImageAlias
-
-	// Unmarshal to the alias type
-	if err := value.Decode(&alias); err != nil {
-		return err
-	}
-
-	// Copy data back to original struct
-	*i = Image(alias)
-
-	return nil
 }
 
 func (i *Image) Validate() error {
