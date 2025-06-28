@@ -2,10 +2,7 @@ package logging
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"sync"
 	"time"
 )
@@ -121,14 +118,14 @@ func NewStreamHandler(publisher StreamPublisher, next slog.Handler) slog.Handler
 }
 
 // Handle processes log records and publishes them to streams
-func (h *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
+func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	// Extract deployment ID and other fields
 	var deploymentID string
 	var isComplete, isFailed bool
-	fields := make(map[string]interface{})
+	fields := make(map[string]any)
 
-	// First, process persistent attributes from With() calls
-	for _, attr := range h.persistentAttrs { // Change sh to h
+	// Process persistent attributes from With() calls
+	for _, attr := range sh.persistentAttrs {
 		switch attr.Key {
 		case "deploymentID":
 			deploymentID = attr.Value.String()
@@ -141,7 +138,7 @@ func (h *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 		}
 	}
 
-	// Then process record attributes (these can override persistent ones)
+	// Process record attributes (these can override persistent ones)
 	rec.Attrs(func(a slog.Attr) bool {
 		switch a.Key {
 		case "deploymentID":
@@ -157,7 +154,7 @@ func (h *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	})
 
 	// Publish to stream if we have a deployment ID
-	if deploymentID != "" && h.publisher != nil { // Change sh to h
+	if deploymentID != "" && sh.publisher != nil {
 		entry := LogEntry{
 			Level:        rec.Level.String(),
 			Message:      rec.Message,
@@ -167,101 +164,54 @@ func (h *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			IsFailed:     isFailed,
 			Fields:       fields,
 		}
-		h.publisher.Publish(deploymentID, entry) // Change sh to h
+		sh.publisher.Publish(deploymentID, entry)
 	}
 
 	// Pass to next handler (console output)
-	if h.next != nil { // Change sh to h
-		return h.next.Handle(ctx, rec) // Change sh to h
+	if sh.next != nil {
+		return sh.next.Handle(ctx, rec)
 	}
 	return nil
 }
 
 // WithAttrs creates a new handler with additional persistent attributes
-func (h *StreamHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (sh *StreamHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	// Combine existing persistent attributes with new ones
-	newAttrs := make([]slog.Attr, len(h.persistentAttrs)+len(attrs))
-	copy(newAttrs, h.persistentAttrs)
-	copy(newAttrs[len(h.persistentAttrs):], attrs)
+	newAttrs := make([]slog.Attr, len(sh.persistentAttrs)+len(attrs))
+	copy(newAttrs, sh.persistentAttrs)
+	copy(newAttrs[len(sh.persistentAttrs):], attrs)
 
 	newHandler := &StreamHandler{
-		publisher:       h.publisher,
+		publisher:       sh.publisher,
 		persistentAttrs: newAttrs,
 	}
 
 	// Also call WithAttrs on the next handler
-	if h.next != nil {
-		newHandler.next = h.next.WithAttrs(attrs)
+	if sh.next != nil {
+		newHandler.next = sh.next.WithAttrs(attrs)
 	}
 
 	return newHandler
 }
 
 // Enabled delegates to the next handler
-func (h *StreamHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	if h.next != nil {
-		return h.next.Enabled(ctx, level)
+func (sh *StreamHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	if sh.next != nil {
+		return sh.next.Enabled(ctx, level)
 	}
 	return true
 }
 
 // WithGroup creates a new handler with a group
-func (h *StreamHandler) WithGroup(name string) slog.Handler {
+func (sh *StreamHandler) WithGroup(name string) slog.Handler {
 	newHandler := &StreamHandler{
-		publisher:       h.publisher,
-		persistentAttrs: h.persistentAttrs, // Keep persistent attrs through groups
+		publisher:       sh.publisher,
+		persistentAttrs: sh.persistentAttrs, // Keep persistent attrs through groups
 	}
 
-	if h.next != nil {
-		newHandler.next = h.next.WithGroup(name)
+	if sh.next != nil {
+		newHandler.next = sh.next.WithGroup(name)
 	}
 
 	return newHandler
-}
-
-// HTTPSSEWriter writes Server-Sent Events to HTTP response
-type HTTPSSEWriter struct {
-	writer  http.ResponseWriter
-	flusher http.Flusher
-}
-
-// NewHTTPSSEWriter creates a new SSE writer
-func NewHTTPSSEWriter(w http.ResponseWriter) *HTTPSSEWriter {
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	flusher, _ := w.(http.Flusher)
-	return &HTTPSSEWriter{
-		writer:  w,
-		flusher: flusher,
-	}
-}
-
-// WriteSSE writes a log entry as Server-Sent Event
-func (w *HTTPSSEWriter) WriteSSE(entry LogEntry) error {
-	data, err := json.Marshal(entry)
-	if err != nil {
-		// If marshaling fails, send an error event to the client
-		// This is important for the client to know that something went wrong
-		// and the log stream might be interrupted.
-		fmt.Fprintf(w.writer, "event: error\ndata: %s\n\n", `{"message": "failed to marshal log entry"}`)
-		if w.flusher != nil {
-			w.flusher.Flush()
-		}
-		return fmt.Errorf("failed to marshal log entry: %w", err)
-	}
-
-	_, err = fmt.Fprintf(w.writer, "data: %s\n\n", data)
-	if err != nil {
-		return fmt.Errorf("failed to write SSE data: %w", err)
-	}
-
-	if w.flusher != nil {
-		w.flusher.Flush()
-	}
-
-	return nil
 }

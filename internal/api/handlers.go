@@ -8,6 +8,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/logging"
 )
 
 // handleDeploy returns an http.HandlerFunc for deploying an app.
@@ -17,7 +18,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 		deploymentID := deploy.CreateDeploymentID()
 
 		// Create deployment-specific logger using the factory
-		logger := s.loggerFactory.NewDeploymentLogger(deploymentID, s.logLevel)
+		deploymentLogger := logging.NewDeploymentLogger(deploymentID, s.logLevel, s.logBroker)
 		var req DeployRequest
 
 		// Decode and validate the JSON request from the user
@@ -42,20 +43,20 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
 			defer cancel()
 
-			logger.Info("Starting deployment", "app", normalizedAppConfig.Name)
+			deploymentLogger.Info("Starting deployment", "app", normalizedAppConfig.Name)
 
 			cli, err := docker.NewClient(ctx)
 			if err != nil {
-				logger.Error("Failed to create Docker client", "error", err)
+				deploymentLogger.Error("Failed to create Docker client", "error", err)
 				return
 			}
 			defer cli.Close()
 
-			if err := deploy.DeployApp(ctx, cli, deploymentID, *normalizedAppConfig, logger); err != nil {
-				logger.Error("Deployment failed", "app", normalizedAppConfig.Name, "error", err)
+			if err := deploy.DeployApp(ctx, cli, deploymentID, *normalizedAppConfig, deploymentLogger); err != nil {
+				deploymentLogger.Error("Deployment failed", "app", normalizedAppConfig.Name, "error", err)
 				return
 			}
-			logger.Info("Container deployment initiated", "app", normalizedAppConfig.Name)
+			deploymentLogger.Info("Container deployment initiated", "app", normalizedAppConfig.Name)
 		}()
 
 		response := DeployResponse{

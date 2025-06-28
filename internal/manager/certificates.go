@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -406,12 +407,100 @@ func (cm *CertificatesManager) cleanupDomainCertificates(logger *slog.Logger, ca
 	return nil
 }
 
+func (cm *CertificatesManager) validateDomain(domain string) error {
+	// Check if domain resolves
+	ips, err := net.LookupIP(domain)
+	if err != nil {
+		// Try to determine the specific issue
+		errorMessage := cm.buildDomainErrorMessage(domain, err)
+		return fmt.Errorf("domain validation failed for %s: %w\n\n%s", domain, err, errorMessage)
+	}
+
+	// Additional check: ensure domain resolves to a reachable IP
+	if len(ips) == 0 {
+		return fmt.Errorf(`domain %s has no IP addresses assigned
+
+Please add DNS records:
+- A record: %s → YOUR_SERVER_IP
+- Test with: dig A %s`, domain, domain, domain)
+	}
+
+	return nil
+}
+
+func (cm *CertificatesManager) buildDomainErrorMessage(domain string, originalErr error) string {
+	errorStr := originalErr.Error()
+
+	// Extract parent domain for whois commands
+	parts := strings.Split(domain, ".")
+	var parentDomain string
+	if len(parts) >= 2 {
+		parentDomain = strings.Join(parts[len(parts)-2:], ".")
+	} else {
+		parentDomain = domain
+	}
+
+	if strings.Contains(errorStr, "NXDOMAIN") || strings.Contains(errorStr, "no such host") {
+		return fmt.Sprintf(`🔍 DNS Resolution Failed - Domain not found
+
+Common causes for "%s":
+
+1. 📅 DOMAIN EXPIRED
+   • Check expiry: whois %s | grep -i expir
+   • Renew at your registrar if expired
+
+2. 🌐 DNS NOT CONFIGURED
+   • Add A record: %s → YOUR_SERVER_IP
+   • In your DNS provider (Cloudflare, Route53, etc.)
+
+3. ⏰ DNS PROPAGATION DELAY
+   • Recent changes take 5-60 minutes
+   • Test: dig A %s @8.8.8.8
+
+4. 🎯 WRONG NAMESERVERS
+   • Check: dig NS %s
+   • Should point to your DNS provider
+
+🛠️  Quick Debug Commands:
+   dig A %s                    # Test resolution
+   whois %s | head -20         # Check registration
+   nslookup %s 8.8.8.8        # Test with Google DNS`,
+			domain, parentDomain, domain, domain, parentDomain, domain, parentDomain, domain)
+	}
+
+	if strings.Contains(errorStr, "timeout") {
+		return fmt.Sprintf(`⏰ DNS Timeout - Slow or unreachable DNS servers
+
+For domain "%s":
+• Try different DNS: dig A %s @1.1.1.1
+• Check network connectivity
+• DNS servers may be overloaded`, domain, domain)
+	}
+
+	// Generic fallback
+	return fmt.Sprintf(`❌ DNS Resolution Error for "%s"
+
+Troubleshooting steps:
+1. Check domain exists: whois %s
+2. Verify DNS records: dig A %s
+3. Test different DNS: nslookup %s 8.8.8.8
+4. Check nameservers: dig NS %s
+
+If domain recently changed, wait 1-24 hours for propagation.`,
+		domain, domain, domain, domain, domain)
+}
+
 // obtainCertificate requests a certificate from ACME provider for the canonical domain and its aliases.
 func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain, logger *slog.Logger) (obtainedDomain CertificatesDomain, err error) {
 	canonicalDomain := managedDomain.Canonical
 	email := managedDomain.Email
 	aliases := managedDomain.Aliases
 	allDomains := append([]string{canonicalDomain}, aliases...)
+
+	// Validate domain resolves before attempting certificate
+	if err := m.validateDomain(canonicalDomain); err != nil {
+		return obtainedDomain, fmt.Errorf("domain validation failed for %s: %w", canonicalDomain, err)
+	}
 
 	client, err := m.clientManager.LoadOrRegisterClient(email)
 	if err != nil {

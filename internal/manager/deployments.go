@@ -9,8 +9,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 )
 
@@ -33,21 +31,17 @@ type FailedContainerInfo struct {
 }
 
 type DeploymentManager struct {
-	Ctx context.Context
-	Cli *client.Client
+	cli *client.Client
 	// deployments is a map of appName to Deployment, key is the app name.
 	deployments      map[string]Deployment
-	logger           *slog.Logger
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
 }
 
-func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *slog.Logger) *DeploymentManager {
+func NewDeploymentManager(cli *client.Client) *DeploymentManager {
 	return &DeploymentManager{
-		Ctx:         ctx,
-		Cli:         cli,
+		cli:         cli,
 		deployments: make(map[string]Deployment),
-		logger:      logger,
 	}
 }
 
@@ -55,24 +49,17 @@ func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *slog.
 // current deployments in the system. It compares the new deployment state with the previous state
 // to determine if any changes have occurred (additions, removals, or updates to deployments).
 // Returns true if the deployment state has changed, along with any error encountered.
-func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged bool, failedContainers []FailedContainerInfo, err error) {
+func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.Logger) (hasChanged bool, failedContainers []FailedContainerInfo, err error) {
 	newDeployments := make(map[string]Deployment)
-
-	// Filter for containers with the app label
-	filtersArgs := filters.NewArgs()
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
-	containers, err := dm.Cli.ContainerList(ctx, container.ListOptions{
-		Filters: filtersArgs,
-		All:     false, // Only running containers
-	})
+	containers, err := docker.GetAppContainers(ctx, dm.cli, false, "")
 	if err != nil {
 		return hasChanged, failedContainers, fmt.Errorf("failed to get containers: %w", err)
 	}
 
 	for _, containerSummary := range containers {
-		container, err := dm.Cli.ContainerInspect(ctx, containerSummary.ID)
+		container, err := dm.cli.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
-			dm.logger.Error("Failed to inspect container", "container_id", containerSummary.ID, "error", err)
+			logger.Error("Failed to inspect container", "container_id", containerSummary.ID, "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: containerSummary.ID,
 				Error:       err.Error(),
@@ -82,13 +69,13 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 		}
 
 		if !IsAppContainer(container) {
-			dm.logger.Info("Container not eligible for haloy management", "container_id", containerSummary.ID)
+			logger.Info("Container not eligible for haloy management", "container_id", containerSummary.ID)
 			continue
 		}
 
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
-			dm.logger.Error("Error parsing labels for container", "container_id", containerSummary.ID, "error", err)
+			logger.Error("Error parsing labels for container", "container_id", containerSummary.ID, "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: containerSummary.ID,
 				Error:       err.Error(),
@@ -99,7 +86,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 
 		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
 		if err != nil {
-			dm.logger.Error("Error getting IP for container", "container_id", helpers.SafeIDPrefix(container.ID), "error", err)
+			logger.Error("Error getting IP for container", "container_id", helpers.SafeIDPrefix(container.ID), "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: container.ID,
 				Error:       err.Error(),
@@ -148,7 +135,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 	return hasChanged, failedContainers, nil
 }
 
-func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, failedContainerIDs []string) {
+func (dm *DeploymentManager) HealthCheckNewContainers(ctx context.Context, logger *slog.Logger) (checked []Deployment, failedContainerIDs []string) {
 	for _, deployment := range dm.compareResult.AddedDeployments {
 		checked = append(checked, deployment)
 	}
@@ -159,7 +146,7 @@ func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, f
 
 	for _, deployment := range checked {
 		for _, instance := range deployment.Instances {
-			if err := docker.HealthCheckContainer(dm.Ctx, dm.Cli, dm.logger, instance.ContainerID); err != nil {
+			if err := docker.HealthCheckContainer(ctx, dm.cli, logger, instance.ContainerID); err != nil {
 				failedContainerIDs = append(failedContainerIDs, instance.ContainerID)
 			}
 		}

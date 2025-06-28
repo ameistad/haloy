@@ -53,8 +53,7 @@ func RunManager(dryRun bool) {
 	// Setup logging with streaming
 	// Use a log broker to allow streaming logs to the API server
 	logBroker := logging.NewLogBroker()
-	loggerFactory := logging.NewLoggerFactory(logBroker)
-	logger := loggerFactory.NewLogger("", logLevel)
+	logger := logging.NewLogger(logLevel, logBroker)
 
 	logger.Info("Haloy manager started",
 		"version", version.Version,
@@ -100,7 +99,7 @@ func RunManager(dryRun bool) {
 	certUpdateSignal := make(chan string, 5)
 
 	// Create deployment manager
-	deploymentManager := NewDeploymentManager(ctx, cli, logger)
+	deploymentManager := NewDeploymentManager(cli)
 
 	// Create and start the certifications manager
 	certManagerConfig := CertificatesManagerConfig{
@@ -144,6 +143,8 @@ func RunManager(dryRun bool) {
 	latestDeploymentID := make(map[string]string)
 	latestEventAction := make(map[string]events.Action)
 	latestDomains := make(map[string][]config.Domain)
+	// Avoid processing the same deployment multiple times
+	lastProcessedDeployment := make(map[string]string)
 
 	// Main event loop
 	for {
@@ -157,6 +158,11 @@ func RunManager(dryRun bool) {
 			return
 		// Handle Docker events
 		case e := <-eventsChan:
+			logger.Info("Received Docker event",
+				"action", e.Event.Action,
+				"container", e.Event.Actor.ID,
+				"containerName", e.Container.Name,
+				"containerImage", e.Container.Config.Image)
 			appName := e.Labels.AppName // The app name that triggered the event.
 			deploymentID := e.Labels.DeploymentID
 			eventAction := e.Event.Action
@@ -167,15 +173,18 @@ func RunManager(dryRun bool) {
 			}
 
 			updateAction := func() {
-				logger.Info("Running updateAction for app",
-					"app", appName,
-					"deploymentID", latestDeploymentID[appName],
-					"eventAction", latestEventAction[appName])
+				currentDeploymentID := latestDeploymentID[appName]
+				// Skip if we've already processed this deployment successfully
+				if lastProcessedDeployment[appName] == currentDeploymentID {
+					logger.Debug("Skipping already processed deployment",
+						"app", appName,
+						"deploymentID", currentDeploymentID,
+						"eventAction", latestEventAction[appName])
+					return
+				}
 
 				// Create a deployment-specific logger that will stream to SSE clients
-				deploymentLogger := loggerFactory.NewDeploymentLogger(latestDeploymentID[appName], logLevel)
-				// Debug: Test if the deploymentID attribute is working
-				deploymentLogger.Info("TEST: This should have deploymentID automatically")
+				deploymentLogger := logging.NewDeploymentLogger(currentDeploymentID, logLevel, logBroker)
 
 				// Create a context with a timeout for this specific update task.
 				// Use the main manager context `ctx` as the parent.
@@ -185,7 +194,7 @@ func RunManager(dryRun bool) {
 				app := &TriggeredByApp{
 					appName:           appName,
 					domains:           latestDomains[appName],
-					deploymentID:      latestDeploymentID[appName],
+					deploymentID:      currentDeploymentID,
 					dockerEventAction: latestEventAction[appName],
 				}
 
@@ -194,13 +203,14 @@ func RunManager(dryRun bool) {
 					return
 				}
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
-					logging.LogDeploymentFailed(deploymentLogger, latestDeploymentID[appName], appName,
+					logging.LogDeploymentFailed(deploymentLogger, currentDeploymentID, appName,
 						"Deployment failed", err)
 					return
 				}
 
 				if latestEventAction[appName] == events.ActionStart {
-					logging.LogDeploymentComplete(deploymentLogger, latestDeploymentID[appName], appName,
+					lastProcessedDeployment[appName] = currentDeploymentID
+					logging.LogDeploymentComplete(deploymentLogger, currentDeploymentID, appName,
 						"Successfully deployed app")
 				}
 			}

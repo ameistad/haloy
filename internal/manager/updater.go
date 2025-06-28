@@ -89,7 +89,7 @@ func (r TriggerReason) String() string {
 
 func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason TriggerReason, app *TriggeredByApp) error {
 	// Build Deployments and check if anything has changed (Thread-safe)
-	deploymentsHasChanged, failedContainers, err := u.deploymentManager.BuildDeployments(ctx)
+	deploymentsHasChanged, failedContainers, err := u.deploymentManager.BuildDeployments(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("updater: failed to build deployments: %w", err)
 	}
@@ -130,7 +130,7 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 		return nil
 	}
 
-	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers()
+	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers(ctx, logger)
 	if len(failedContainerIDs) > 0 {
 		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", strings.Join(failedContainerIDs, ", "), err)
 	} else {
