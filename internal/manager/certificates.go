@@ -90,11 +90,10 @@ func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.C
 		return client, nil
 	}
 
-	// Client doesn't exist, acquire write lock for creation
 	cm.clientsMutex.Lock()
 	defer cm.clientsMutex.Unlock()
 
-	// Check again in case another goroutine created it while we were waiting
+	// Just to be safe, we check again in case another goroutine created it while we were waiting
 	if client, ok := cm.clients[email]; ok {
 		return client, nil
 	}
@@ -194,6 +193,7 @@ func (m *CertificatesManager) Stop() {
 }
 
 func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []CertificatesDomain) {
+	logger.Info("CertificatesManager: Refreshing certificates synchronously.")
 	renewedDomains, err := cm.checkRenewals(logger, domains)
 	if err != nil {
 		logger.Error("Certificate refresh failed", "error", err)
