@@ -15,6 +15,7 @@ type LogEntry struct {
 	DeploymentID string         `json:"deploymentID,omitempty"`
 	IsComplete   bool           `json:"complete,omitempty"`
 	IsFailed     bool           `json:"failed,omitempty"`
+	IsSuccess    bool           `json:"success,omitempty"`
 	Fields       map[string]any `json:"fields,omitempty"`
 }
 
@@ -121,7 +122,7 @@ func NewStreamHandler(publisher StreamPublisher, next slog.Handler) slog.Handler
 func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	// Extract deployment ID and other fields
 	var deploymentID string
-	var isComplete, isFailed bool
+	var isComplete, isFailed, isSuccess bool
 	fields := make(map[string]any)
 
 	// Process persistent attributes from With() calls
@@ -133,8 +134,16 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			isComplete = attr.Value.Bool()
 		case "failed":
 			isFailed = attr.Value.Bool()
+		case "success":
+			isSuccess = attr.Value.Bool()
+		case "error":
+			if err, ok := attr.Value.Any().(error); ok {
+				fields[attr.Key] = err.Error()
+			} else {
+				fields[attr.Key] = attr.Value.String()
+			}
 		default:
-			fields[attr.Key] = attr.Value.Any()
+			fields[attr.Key] = attr.Value.String()
 		}
 	}
 
@@ -147,8 +156,16 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			isComplete = a.Value.Bool()
 		case "failed":
 			isFailed = a.Value.Bool()
+		case "success":
+			isSuccess = a.Value.Bool()
+		case "error":
+			if err, ok := a.Value.Any().(error); ok {
+				fields[a.Key] = err.Error()
+			} else {
+				fields[a.Key] = a.Value.String()
+			}
 		default:
-			fields[a.Key] = a.Value.Any()
+			fields[a.Key] = a.Value.String()
 		}
 		return true
 	})
@@ -162,6 +179,7 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			DeploymentID: deploymentID,
 			IsComplete:   isComplete,
 			IsFailed:     isFailed,
+			IsSuccess:    isSuccess,
 			Fields:       fields,
 		}
 		sh.publisher.Publish(deploymentID, entry)

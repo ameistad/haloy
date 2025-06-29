@@ -2,17 +2,19 @@ package commands
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // CommandExecutor handles common logic for executing API commands
 type CommandExecutor struct {
 	apiClient   *APIClient
 	logStreamer *LogStreamer
+	titleCaser  cases.Caser
 }
 
 // NewCommandExecutor creates a new command executor
@@ -20,6 +22,7 @@ func NewCommandExecutor(serverURL string) *CommandExecutor {
 	return &CommandExecutor{
 		apiClient:   NewAPIClient(serverURL),
 		logStreamer: NewLogStreamer(serverURL),
+		titleCaser:  cases.Title(language.English),
 	}
 }
 
@@ -64,22 +67,16 @@ func (e *CommandExecutor) ExecuteCommandWithLogs(
 	}
 
 	if err != nil {
-		ui.Error("%s request failed: %v", strings.Title(command), err)
+		ui.Error("%s request failed: %v", e.titleCaser.String(command), err)
 		return err
 	}
 
-	ui.Success("%s initiated successfully!", strings.Title(command))
-	if resp.DeploymentID != "" {
-		ui.Info("📦 Operation ID: %s", resp.DeploymentID)
-	}
 	if resp.Message != "" {
-		ui.Info("💬 %s", resp.Message)
+		ui.Info("%s", resp.Message)
 	}
 
 	// Stream logs if requested and we have an operation ID
 	if streamLogs && resp.DeploymentID != "" {
-		ui.Info("📡 Connecting to %s logs...", command)
-
 		// Give the operation a moment to start
 		time.Sleep(1 * time.Second)
 
@@ -87,7 +84,7 @@ func (e *CommandExecutor) ExecuteCommandWithLogs(
 		defer logCancel()
 
 		if err := e.logStreamer.StreamLogs(logCtx, command, resp.DeploymentID); err != nil {
-			ui.Warn("Failed to stream logs: %v", err)
+			ui.Warn("Failed to stream logs from API: %v", err)
 			ui.Info("You can check operation status manually")
 		}
 	} else if !streamLogs && resp.DeploymentID != "" {

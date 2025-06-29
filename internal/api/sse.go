@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/ameistad/haloy/internal/logging"
 )
@@ -35,15 +34,15 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 		}
 
 		// Send initial connection message
-		if err := writeSSEMessage(w, logging.LogEntry{
-			Level:        "INFO",
-			Message:      "Connected to deployment logs",
-			Timestamp:    time.Now(),
-			DeploymentID: deploymentID,
-		}); err != nil {
-			return
-		}
-		flusher.Flush()
+		// if err := writeSSEMessage(w, logging.LogEntry{
+		// 	Level:        "INFO",
+		// 	Message:      "Connected to deployment logs stream",
+		// 	Timestamp:    time.Now(),
+		// 	DeploymentID: deploymentID,
+		// }); err != nil {
+		// 	return
+		// }
+		// flusher.Flush()
 
 		// Handle incoming logs
 		ctx := r.Context()

@@ -68,8 +68,6 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	} else {
 		logger.Info("Old images cleaned up")
 	}
-
-	logger.Info("Deployment completed successfully", "app", appConfig.Name, "deploymentID", deploymentID)
 	return nil
 }
 

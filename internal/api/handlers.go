@@ -9,6 +9,7 @@ import (
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
+	"github.com/ameistad/haloy/internal/version"
 )
 
 // handleDeploy returns an http.HandlerFunc for deploying an app.
@@ -86,7 +87,7 @@ func (s *APIServer) handleHealth() http.HandlerFunc {
 		response := HealthResponse{
 			Status:  "ok",
 			Service: "haloy-manager",
-			// Version: version.Version, // Add if you have version info
+			Version: version.Version,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

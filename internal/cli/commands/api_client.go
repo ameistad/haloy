@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -69,17 +68,14 @@ func (c *APIClient) IsServerAvailable(ctx context.Context) error {
 	return nil
 }
 
-// Generic request/response types
 type APIRequest struct {
 	AppConfig *config.AppConfig `json:"app,omitempty"`
-	// Add other fields as needed for different commands
 }
 
 type APIResponse struct {
 	DeploymentID string `json:"deploymentId,omitempty"`
 	Message      string `json:"message"`
 	Status       string `json:"status,omitempty"`
-	// Add other fields as needed for different commands
 }
 
 // ExecuteCommand sends a command to the API
@@ -99,20 +95,13 @@ func (c *APIClient) ExecuteCommand(ctx context.Context, command string, request 
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	c.setAuthHeader(req) // Add authentication
+	c.setAuthHeader(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
-
-	// Debug: Read and log the response body
-	var responseBody []byte
-	if resp.Body != nil {
-		responseBody, _ = io.ReadAll(resp.Body)
-		resp.Body = io.NopCloser(bytes.NewReader(responseBody))
-	}
 
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusUnauthorized {
@@ -201,8 +190,6 @@ func (s *LogStreamer) StreamLogs(ctx context.Context, command, deploymentID stri
 		return fmt.Errorf("log stream returned status %d", resp.StatusCode)
 	}
 
-	ui.Info("📡 Streaming %s logs...", command)
-
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		select {
@@ -233,7 +220,6 @@ func (s *LogStreamer) StreamLogs(ctx context.Context, command, deploymentID stri
 
 			// Check if operation is complete
 			if logEntry.IsComplete {
-				ui.Success("🎉 %s completed!", strings.Title(command))
 				return nil
 			}
 		}
@@ -248,18 +234,68 @@ func (s *LogStreamer) StreamLogs(ctx context.Context, command, deploymentID stri
 
 // displayLogEntry formats and displays a log entry using the UI package
 func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
+	// Debug: Show all fields for "Successfully deployed app" messages
+	if strings.Contains(entry.Message, "Successfully deployed app") {
+		fmt.Printf("DEBUG: Message='%s', Fields=%+v\n", entry.Message, entry.Fields)
+	}
 	timestamp := entry.Timestamp.Format("15:04:05")
 
+	message := entry.Message
+	// Handle the error field specially for multi-line errors
+	if len(entry.Fields) > 0 {
+		if errorValue, hasError := entry.Fields["error"]; hasError {
+
+			// Convert error to string
+			errorStr := fmt.Sprintf("%v", errorValue)
+
+			// Check if it's a multi-line error (contains newlines)
+			if strings.Contains(errorStr, "\n") {
+				// For multi-line errors, display them after the main message
+				switch strings.ToUpper(entry.Level) {
+				case "ERROR":
+					ui.Error("[%s] %s", timestamp, message)
+					// Display the detailed error with proper indentation
+					for _, line := range strings.Split(errorStr, "\n") {
+						if strings.TrimSpace(line) != "" {
+							ui.Error("    %s", line) // Indent error details
+						}
+					}
+				case "WARN":
+					ui.Warn("[%s] %s", timestamp, message)
+					for _, line := range strings.Split(errorStr, "\n") {
+						if strings.TrimSpace(line) != "" {
+							ui.Warn("    %s", line)
+						}
+					}
+				default:
+					ui.Info("[%s] %s", timestamp, message)
+					for _, line := range strings.Split(errorStr, "\n") {
+						if strings.TrimSpace(line) != "" {
+							fmt.Printf("    %s\n", line)
+						}
+					}
+				}
+				return // Early return since we handled the error specially
+			} else {
+				// Single-line error, append to message
+				message = fmt.Sprintf("%s (error=%s)", message, errorStr)
+			}
+		}
+	}
 	switch strings.ToUpper(entry.Level) {
 	case "ERROR":
-		ui.Error("[%s] %s", timestamp, entry.Message)
+		ui.Error("[%s] %s", timestamp, message)
 	case "WARN":
-		ui.Warn("[%s] %s", timestamp, entry.Message)
+		ui.Warn("[%s] %s", timestamp, message)
 	case "INFO":
-		ui.Info("[%s] %s", timestamp, entry.Message)
+		if entry.IsSuccess {
+			ui.Success("[%s] %s", timestamp, message)
+		} else {
+			ui.Info("[%s] %s", timestamp, message)
+		}
 	case "DEBUG":
-		ui.Debug("[%s] %s", timestamp, entry.Message)
+		ui.Debug("[%s] %s", timestamp, message)
 	default:
-		fmt.Printf("[%s] %s\n", timestamp, entry.Message)
+		fmt.Printf("[%s] %s\n", timestamp, message)
 	}
 }

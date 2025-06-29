@@ -192,11 +192,10 @@ func (m *CertificatesManager) Stop() {
 	m.debouncer.Stop() // Stop the debouncer to clean up any pending timers
 }
 
-func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []CertificatesDomain) {
-	logger.Info("CertificatesManager: Refreshing certificates synchronously.")
+func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []CertificatesDomain) error {
 	renewedDomains, err := cm.checkRenewals(logger, domains)
 	if err != nil {
-		logger.Error("Certificate refresh failed", "error", err)
+		return err
 	}
 	if len(renewedDomains) > 0 {
 		for _, domain := range renewedDomains {
@@ -205,6 +204,7 @@ func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []Certif
 				"aliases", strings.Join(domain.Aliases, ", "))
 		}
 	}
+	return nil
 }
 
 // Refresh is used for periodoc refreshes of certificates.
@@ -248,16 +248,6 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		return renewedDomains, nil
 	}
 
-	// Debug: Log all domains being processed
-	logger.Debug("Processing domains for certificate renewal check", "count", len(domains))
-	for i, domain := range domains {
-		logger.Debug("Processing domain",
-			"index", i,
-			"domain", domain.Canonical,
-			"aliases", domain.Aliases,
-			"email", domain.Email)
-	}
-
 	// Build the current desired state - only one entry per canonical domain
 	currentState := make(map[string]CertificatesDomain)
 	for _, domain := range domains {
@@ -279,9 +269,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		}
 	}
 
-	// Process each domain in the current desired state
 	for canonical, domain := range currentState {
-		// Check if this domain configuration has changed
 		configChanged, err := cm.hasConfigurationChanged(logger, domain)
 		if err != nil {
 			logger.Error("Failed to check configuration", "domain", canonical, "error", err)
@@ -309,10 +297,9 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		if configChanged || needsRenewal {
 			obtainedDomain, err := cm.obtainCertificate(domain, logger)
 			if err != nil {
-				logger.Error("Failed to obtain certificate", "domain", canonical, "error", err)
-			} else {
-				renewedDomains = append(renewedDomains, obtainedDomain)
+				return renewedDomains, err
 			}
+			renewedDomains = append(renewedDomains, obtainedDomain)
 		} else {
 			logger.Info("Skipping renewal: certificate is valid and configuration unchanged",
 				"domain", canonical,
@@ -413,7 +400,7 @@ func (cm *CertificatesManager) validateDomain(domain string) error {
 	if err != nil {
 		// Try to determine the specific issue
 		errorMessage := cm.buildDomainErrorMessage(domain, err)
-		return fmt.Errorf("domain validation failed for %s: %w\n\n%s", domain, err, errorMessage)
+		return fmt.Errorf("\n\n%s", errorMessage)
 	}
 
 	// Additional check: ensure domain resolves to a reachable IP

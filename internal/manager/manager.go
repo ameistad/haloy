@@ -156,13 +156,7 @@ func RunManager(dryRun bool) {
 			}
 			cancel()
 			return
-		// Handle Docker events
 		case e := <-eventsChan:
-			logger.Info("Received Docker event",
-				"action", e.Event.Action,
-				"container", e.Event.Actor.ID,
-				"containerName", e.Container.Name,
-				"containerImage", e.Container.Config.Image)
 			appName := e.Labels.AppName // The app name that triggered the event.
 			deploymentID := e.Labels.DeploymentID
 			eventAction := e.Event.Action

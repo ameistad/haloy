@@ -158,7 +158,9 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 				appCertDomains = append(appCertDomains, certDomain)
 			}
 		}
-		u.certManager.RefreshSync(logger, appCertDomains)
+		if err := u.certManager.RefreshSync(logger, appCertDomains); err != nil {
+			return fmt.Errorf("failed to refresh certificates for app %s: %w", app.appName, err)
+		}
 	} else {
 		u.certManager.Refresh(logger, certDomains)
 	}

@@ -41,6 +41,7 @@ func LogDeploymentComplete(logger *slog.Logger, deploymentID, appName, message s
 		"app", appName,
 		"deploymentID", deploymentID,
 		"complete", true,
+		"success", true,
 	)
 }
 
