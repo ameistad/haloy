@@ -40,7 +40,7 @@ func loadEnvFiles() error {
 	}
 
 	// Try haloy config directory
-	if configDir, err := ConfigDirPath(); err == nil {
+	if configDir, err := ConfigDir(); err == nil {
 		configEnvPath := filepath.Join(configDir, DefaultEnvFile)
 		if err := loadEnvFile(configEnvPath); err == nil {
 			return nil
@@ -60,7 +60,7 @@ func loadEnvFile(path string) error {
 
 // GetConfigEnvFilePath returns the path to the .env file in the haloy config directory
 func GetConfigEnvFilePath() (string, error) {
-	configDir, err := ConfigDirPath()
+	configDir, err := ConfigDir()
 	if err != nil {
 		return "", err
 	}

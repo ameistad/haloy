@@ -26,11 +26,11 @@ type SecretRecord struct {
 
 // GetAgeRecipient reads the age identity file and returns the corresponding recipient.
 func GetAgeRecipient() (age.Recipient, error) {
-	configDir, err := ConfigDirPath()
+	dataDir, err := DataDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get config directory: %w", err)
+		return nil, fmt.Errorf("failed to get data directory: %w", err)
 	}
-	identityPath := filepath.Join(configDir, IdentityFileName)
+	identityPath := filepath.Join(dataDir, IdentityFileName)
 	data, err := os.ReadFile(identityPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -57,11 +57,11 @@ func GetAgeIdentity() (age.Identity, error) {
 		return identity, nil
 	}
 
-	configDir, err := ConfigDirPath()
+	dataDir, err := DataDir()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get config directory: %w", err)
+		return nil, fmt.Errorf("failed to get data directory: %w", err)
 	}
-	identityPath := filepath.Join(configDir, IdentityFileName)
+	identityPath := filepath.Join(dataDir, IdentityFileName)
 	data, err := os.ReadFile(identityPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -79,11 +79,11 @@ func GetAgeIdentity() (age.Identity, error) {
 
 // LoadSecrets loads the secrets map from secrets.json (or returns an empty map if not found).
 func LoadSecrets() (map[string]SecretRecord, error) {
-	configDir, err := ConfigDirPath()
+	dataDir, err := DataDir()
 	if err != nil {
 		return nil, err
 	}
-	secretsPath := filepath.Join(configDir, SecretsFileName)
+	secretsPath := filepath.Join(dataDir, SecretsFileName)
 	secrets := make(map[string]SecretRecord)
 	data, err := os.ReadFile(secretsPath)
 	if err != nil {
@@ -140,11 +140,11 @@ func DecryptSecret(secret string, identity age.Identity) (string, error) {
 
 // SaveSecrets writes the secrets map to secrets.json.
 func SaveSecrets(secrets map[string]SecretRecord) error {
-	configDir, err := ConfigDirPath()
+	dataDir, err := DataDir()
 	if err != nil {
 		return err
 	}
-	secretsPath := filepath.Join(configDir, SecretsFileName)
+	secretsPath := filepath.Join(dataDir, SecretsFileName)
 	data, err := json.MarshalIndent(secrets, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to encode secrets as JSON: %w", err)

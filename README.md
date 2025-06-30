@@ -60,7 +60,7 @@ haloy init --with-test-app
 ```
 
 This command will:
-- Set up the necessary directories under `~/.config/haloy/`. (you can override by setting the `HALOY_CONFIG_PATH` environment variable)
+- Set up the necessary directories under `~/.config/haloy/`. (you can override by setting the `HALY_DATA_DIR` environment variable)
 - Create an initial configuration file at `~/.config/haloy/apps.yml` with a sample "test-app".
 - Prompt you for an email address for TLS certificate registration (for the test-app).
 - Start the Haloy manager and HAProxy services.
@@ -402,6 +402,23 @@ Haloy will (upon deployment) create containers with labels similar to:
 * `dev.haloy.domain.0.alias.0`: www.myapp.example.com
 
 These labels are then read by the Haloy manager to dynamically generate the HAProxy configuration, ensuring traffic is routed correctly and securely to your application instances.
+
+### Directory Structure
+
+Haloy uses two separate directories to organize its files:
+
+__Configuration Directory (`~/.config/haloy`)__
+Used for CLI settings and authentication:
+- **`.env`** - API token for connecting to remote haloy-manager instances
+- Can be customized with `HALOY_CONFIG_DIR` environment variable
+
+__Data Directory (`~/.local/share/haloy`)__
+- Docker Compose files for haloy-manager and HAProxy
+- **`haproxy-config`** - Dynamic HAProxy configuration file
+- **`cert-storage/`** - SSL certificates and ACME account data
+- **`.env`** - Local haloy-manager environment variables
+- **`haloy.db`** - SQLite database (future feature)
+- Can be customized with `HALOY_DATA_DIR` environment variable
 
 
 ## Development

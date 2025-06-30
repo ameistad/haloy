@@ -234,10 +234,6 @@ func (s *LogStreamer) StreamLogs(ctx context.Context, command, deploymentID stri
 
 // displayLogEntry formats and displays a log entry using the UI package
 func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
-	// Debug: Show all fields for "Successfully deployed app" messages
-	if strings.Contains(entry.Message, "Successfully deployed app") {
-		fmt.Printf("DEBUG: Message='%s', Fields=%+v\n", entry.Message, entry.Fields)
-	}
 	timestamp := entry.Timestamp.Format("15:04:05")
 
 	message := entry.Message

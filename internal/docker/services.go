@@ -90,21 +90,21 @@ func EnsureServicesIsRunning(cli *client.Client, ctx context.Context) (ServiceSt
 
 	// Rest of the function remains the same
 	// Get docker-compose file path
-	dockerComposeFilePath, err := config.ServicesDockerComposeFilePath()
+	dockerComposeFile, err := config.ServicesDockerComposeFile()
 	if err != nil {
 		return status, fmt.Errorf("failed to get docker-compose file path: %w", err)
 	}
 
 	// Check if the docker-compose file exists
-	if _, err := os.Stat(dockerComposeFilePath); os.IsNotExist(err) {
-		return status, fmt.Errorf("docker-compose file not found at %s: %w", dockerComposeFilePath, err)
+	if _, err := os.Stat(dockerComposeFile); os.IsNotExist(err) {
+		return status, fmt.Errorf("docker-compose file not found at %s: %w", dockerComposeFile, err)
 	}
 
 	// Get the directory of the docker-compose file
-	composeDir := filepath.Dir(dockerComposeFilePath)
+	composeDir := filepath.Dir(dockerComposeFile)
 
 	// Start the containers according to docker-compose
-	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", dockerComposeFilePath, "up", "-d")
+	cmd := exec.CommandContext(ctx, "docker", "compose", "-f", dockerComposeFile, "up", "-d")
 	cmd.Dir = composeDir
 
 	output, err := cmd.CombinedOutput()

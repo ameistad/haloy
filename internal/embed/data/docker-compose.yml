@@ -13,7 +13,6 @@ services:
     volumes:
       - ./haproxy-config:/haproxy-config:rw
       - ./cert-storage:/cert-storage:rw
-      - ./logs/:/logs:rw
       # Enable read-write Docker socket access for the golang docker client.
       - /var/run/docker.sock:/var/run/docker.sock:rw
     ports:
@@ -38,11 +37,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./haproxy-config:/usr/local/etc/haproxy/config:ro
-      - ./cert-storage:/usr/local/etc/haproxy/certs:rw
-      - ./entrypoint.sh:/entrypoint.sh:ro
-      - ./error-pages:/usr/local/etc/haproxy/errors:ro
-    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+      - ./haproxy-config:/usr/local/etc/haproxy:ro
+      - ./cert-storage:/usr/local/etc/haproxy-certs:rw
+      - ./error-pages:/usr/local/etc/haproxy-errors:ro
+      # - ./entrypoint.sh:/entrypoint.sh:ro
+    # entrypoint: ["/bin/sh", "/entrypoint.sh"]
     user: root
     restart: unless-stopped
     networks:

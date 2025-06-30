@@ -3,6 +3,8 @@ package commands
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
@@ -25,48 +27,56 @@ const (
 
 func InitCmd() *cobra.Command {
 	var skipServices bool
-	var overrideExistingConfig bool
+	var overrideExisting bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize configuration files and prepare HAProxy for production",
+		Short: "Initialize Haloy data directory and start core services",
+		Long: `Initialize Haloy by creating the data directory structure and starting core services.
+
+This command will:
+- Create the data directory (default: ~/.local/share/haloy)
+- Copy initial files and templates
+- Create the Docker network for Haloy services
+- Start HAProxy and haloy-manager containers (unless --no-services is used)
+
+The data directory can be customized by setting the HALOY_DATA_DIR environment variable.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			configDirPath, err := config.ConfigDirPath()
+			dataDir, err := config.DataDir()
 			if err != nil {
-				ui.Error("Failed to determine config directory: %v\n", err)
+				ui.Error("Failed to determine data directory: %v\n", err)
 				return
 			}
 
-			// Check the status of the configuration directory
-			fileInfo, statErr := os.Stat(configDirPath)
+			// Check the status of the data directory
+			fileInfo, statErr := os.Stat(dataDir)
 			if statErr == nil { // Directory exists
 				if !fileInfo.IsDir() {
-					ui.Error("Configuration path '%s' exists but is not a directory. Please remove it or use a different path.", configDirPath)
+					ui.Error("Data directory path '%s' exists but is not a directory. Please remove it or use a different path.", dataDir)
 					return
 				}
 				// Directory exists
-				if !overrideExistingConfig {
-					ui.Error("Configuration directory '%s' already exists. Use --override-existing-config to overwrite.", configDirPath)
+				if !overrideExisting {
+					ui.Error("Data directory '%s' already exists. Use --override-existing to overwrite.", dataDir)
 					return
 				}
-				// overrideExistingConfig is true, so remove the existing directory
-				ui.Info("Removing existing configuration directory: %s\n", configDirPath)
-				if err := os.RemoveAll(configDirPath); err != nil {
-					ui.Error("Failed to remove existing config directory: %v\n", err)
+				// overrideExisting is true, so remove the existing directory
+				ui.Info("Removing existing data directory at: %s\n", dataDir)
+				if err := os.RemoveAll(dataDir); err != nil {
+					ui.Error("Failed to remove existing data directory: %v\n", err)
 					return
 				}
 				// Proceed to create the directory below
 			} else if !os.IsNotExist(statErr) {
 				// An error other than "does not exist" occurred with os.Stat
-				ui.Error("Failed to check status of config directory '%s': %v\n", configDirPath, statErr)
+				ui.Error("Failed to check status of data directory '%s': %v\n", dataDir, statErr)
 				return
 			}
 			// At this point, the directory either did not exist,
-			// or it existed, was a directory, and has been removed (if overrideExistingConfig was true).
+			// or it existed, was a directory, and has been removed (if overrideExisting was true).
 			// Now, (re)create the configuration directory.
-			ui.Info("Creating configuration directory: %s\n", configDirPath)
-			if err := os.MkdirAll(configDirPath, 0755); err != nil {
-				ui.Error("Failed to create config directory '%s': %v\n", configDirPath, err)
+			if err := os.MkdirAll(dataDir, 0755); err != nil {
+				ui.Error("Failed to create data directory '%s': %v\n", dataDir, err)
 				return
 			}
 
@@ -101,12 +111,33 @@ func InitCmd() *cobra.Command {
 			}
 			defer cli.Close()
 
-			var emptyDirs = []string{
-				"containers/cert-storage",
-				"containers/cert-storage/accounts",
-				"containers/haproxy-config",
+			apiToken, err := generateAPIToken()
+			if err != nil {
+				ui.Error("Failed to generate API token: %v\n", err)
+				return
 			}
-			if err := copyConfigFiles(configDirPath, emptyDirs); err != nil {
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to determine config directory: %v\n", err)
+				return
+			}
+
+			if err := createEnvFile(apiToken, configDir); err != nil {
+				ui.Error("Failed to create .env file: %v\n", err)
+				return
+			}
+
+			if err := createEnvFile(apiToken, dataDir); err != nil {
+				ui.Error("Failed to create .env file: %v\n", err)
+				return
+			}
+
+			var emptyDirs = []string{
+				// "cert-storage",
+				// "cert-storage/accounts",
+				"haproxy-config",
+			}
+			if err := copyDataFiles(dataDir, emptyDirs); err != nil {
 				ui.Error("Failed to create configuration files: %v\n", err)
 				return
 			}
@@ -123,25 +154,23 @@ func InitCmd() *cobra.Command {
 					ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
 					return
 				}
-
 			}
 
-			successMsg := fmt.Sprintf("Configuration files created successfully in %s\n", configDirPath)
+			successMsg := "Haloy initialized successfully!\n"
+			successMsg += fmt.Sprintf("Data directory: %s\n", dataDir)
 			if !skipServices {
 				successMsg += "HAProxy and haloy-manager started successfully.\n"
 			}
-			successMsg += "You can now add your applications to apps.yml and run:\n"
-			successMsg += "haloy deploy <app-name>"
 			ui.Success("%s", successMsg)
 		},
 	}
 
-	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Initialize configuration files without starting Docker services")
-	cmd.Flags().BoolVar(&overrideExistingConfig, "override-existing-config", false, "Override existing configuration directory if it already exists")
+	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloy-manager containers")
+	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory")
 	return cmd
 }
 
-func copyConfigFiles(dst string, emptyDirs []string) error {
+func copyDataFiles(dst string, emptyDirs []string) error {
 	// First create empty directories
 	for _, dir := range emptyDirs {
 		dirPath := filepath.Join(dst, dir)
@@ -150,14 +179,14 @@ func copyConfigFiles(dst string, emptyDirs []string) error {
 		}
 	}
 
-	// Copy static files from embedded filesystem
-	err := fs.WalkDir(embed.InitFS, "init", func(path string, d fs.DirEntry, err error) error {
+	// Copy static files from embedded filesystem to data directory.
+	err := fs.WalkDir(embed.DataFS, "data", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("error walking embedded filesystem: %w", err)
 		}
 
-		// Compute the relative path based on the init directory.
-		relPath, err := filepath.Rel("init", path)
+		// Compute the relative path based on the data directory.
+		relPath, err := filepath.Rel("data", path)
 		if err != nil {
 			return fmt.Errorf("failed to determine relative path: %w", err)
 		}
@@ -168,12 +197,11 @@ func copyConfigFiles(dst string, emptyDirs []string) error {
 		}
 
 		// Skip template files - they'll be handled by copyConfigTemplateFiles
-		if strings.Contains(path, "template") || filepath.Ext(path) == ".tmpl" {
+		if strings.Contains(path, "template") {
 			return nil
 		}
 
-		// Read the file from the embed FS.
-		data, err := embed.InitFS.ReadFile(path)
+		data, err := embed.DataFS.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read embedded file %s: %w", path, err)
 		}
@@ -243,4 +271,25 @@ func renderTemplate(templateFilePath string, templateData any) (bytes.Buffer, er
 		return buf, fmt.Errorf("failed to execute template: %w", err)
 	}
 	return buf, nil
+}
+
+// generateAPIToken creates a secure random API token
+func generateAPIToken() (string, error) {
+	bytes := make([]byte, 32) // 64 character hex string
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate random token: %w", err)
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// createEnvFile creates a .env file with the API token in the data directory
+func createEnvFile(apiToken, dataDir string) error {
+	envContent := fmt.Sprintf("# Haloy API Token - Keep this secure!\nHALOY_API_TOKEN=%s\n", apiToken)
+	envPath := filepath.Join(dataDir, ".env")
+
+	// Create .env file with strict permissions (owner read/write only)
+	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
+		return fmt.Errorf("failed to create .env file: %w", err)
+	}
+	return nil
 }

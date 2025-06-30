@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // EnsureDir creates the directory and any necessary parents, logging an error if it fails.
@@ -10,11 +11,41 @@ func ensureDir(dirPath string) error {
 	return os.MkdirAll(dirPath, 0755)
 }
 
-// Defaults to ~/.config/haloy
-// If HALOY_CONFIG_PATH is set, it will use that instead.
-func ConfigDirPath() (string, error) {
+// If HALOY_DATA_DIR is set, it will use that instead.
+func DataDir() (string, error) {
 	// allow overriding via env
-	if envPath, ok := os.LookupEnv("HALOY_CONFIG_PATH"); ok && envPath != "" {
+	if envPath, ok := os.LookupEnv("HALOY_DATA_DIR"); ok && envPath != "" {
+		// Handle tilde expansion for env var
+		if strings.HasPrefix(envPath, "~/") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			envPath = filepath.Join(home, envPath[2:])
+		}
+		return envPath, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(home, ".local", "share", "haloy")
+	return path, nil
+}
+
+// ConfigDir returns the Haloy configuration directory
+// Used for CLI settings, API tokens, and potentially haloy-manager config
+func ConfigDir() (string, error) {
+	// Allow overriding via env
+	if envPath, ok := os.LookupEnv("HALOY_CONFIG_DIR"); ok && envPath != "" {
+		if strings.HasPrefix(envPath, "~/") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			envPath = filepath.Join(home, envPath[2:])
+		}
 		if err := ensureDir(envPath); err != nil {
 			return "", err
 		}
@@ -32,49 +63,28 @@ func ConfigDirPath() (string, error) {
 	return path, nil
 }
 
-func ConfigContainersPath() (string, error) {
-	configDirPath, err := ConfigDirPath()
+func ServicesDockerComposeFile() (string, error) {
+	dataDir, err := DataDir()
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(configDirPath, "containers")
-	if err := ensureDir(path); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-func ServicesDockerComposeFilePath() (string, error) {
-	containersPath, err := ConfigContainersPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(containersPath, "docker-compose.yml"), nil
+	return filepath.Join(dataDir, "docker-compose.yml"), nil
 }
 
 func HAProxyConfigFilePath() (string, error) {
-	containersPath, err := ConfigContainersPath()
+	dataDir, err := DataDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(containersPath, "haproxy-config", HAProxyConfigFileName), nil
-}
-
-func LogsPath() (string, error) {
-	containersPath, err := ConfigContainersPath()
-	if err != nil {
-		return "", err
-	}
-	// no need to ensure dir exists as it is created by the manager container.
-	return filepath.Join(containersPath, "logs"), nil
+	return filepath.Join(dataDir, "haproxy-config", HAProxyConfigFileName), nil
 }
 
 func HistoryPath() (string, error) {
-	configDirPath, err := ConfigDirPath()
+	dataDir, err := DataDir()
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(configDirPath, "history")
+	path := filepath.Join(dataDir, "history")
 	if err := ensureDir(path); err != nil {
 		return "", err
 	}

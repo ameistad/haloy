@@ -26,11 +26,11 @@ func SecretsInitCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("failed to generate age identity: %w", err)
 			}
-			configDir, err := config.ConfigDirPath()
+			dataDir, err := config.DataDir()
 			if err != nil {
-				return fmt.Errorf("failed to get config directory: %w", err)
+				return fmt.Errorf("failed to get data directory: %w", err)
 			}
-			identityPath := filepath.Join(configDir, config.IdentityFileName)
+			identityPath := filepath.Join(dataDir, config.IdentityFileName)
 			// Create the identity file with restricted permissions (0600 - read/write for owner only)
 			f, err := os.OpenFile(identityPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 			if err != nil {
