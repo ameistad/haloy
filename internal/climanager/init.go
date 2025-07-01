@@ -1,4 +1,4 @@
-package commands
+package climanager
 
 import (
 	"bytes"
@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -42,9 +41,18 @@ This command will:
 
 The data directory can be customized by setting the HALOY_DATA_DIR environment variable.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+			defer cancel()
+
 			dataDir, err := config.DataDir()
 			if err != nil {
 				ui.Error("Failed to determine data directory: %v\n", err)
+				return
+			}
+
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to determine config directory: %v\n", err)
 				return
 			}
 
@@ -90,35 +98,9 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
-			defer cancel()
-
-			cli, err := docker.NewClient(ctx)
-			if err != nil {
-				if os.IsPermission(err) ||
-					strings.Contains(err.Error(), "permission denied") ||
-					strings.Contains(err.Error(), "connect: permission denied") ||
-					strings.Contains(err.Error(), "Got permission denied while trying to connect to the Docker daemon socket") {
-					ui.Error("%v", err)
-					ui.Warn("It looks like your user does not have permission to access the Docker daemon socket.")
-					ui.Warn("You may need to add your user to the 'docker' group and restart your session:")
-					ui.Warn("  sudo usermod -aG docker $(whoami)")
-					ui.Warn("  # Then log out and log back in, or run: newgrp docker")
-					return
-				}
-				ui.Error("%v", err)
-				return
-			}
-			defer cli.Close()
-
 			apiToken, err := generateAPIToken()
 			if err != nil {
 				ui.Error("Failed to generate API token: %v\n", err)
-				return
-			}
-			configDir, err := config.ConfigDir()
-			if err != nil {
-				ui.Error("Failed to determine config directory: %v\n", err)
 				return
 			}
 
@@ -127,14 +109,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				return
 			}
 
-			if err := createEnvFile(apiToken, dataDir); err != nil {
-				ui.Error("Failed to create .env file: %v\n", err)
-				return
-			}
-
 			var emptyDirs = []string{
-				// "cert-storage",
-				// "cert-storage/accounts",
 				"haproxy-config",
 			}
 			if err := copyDataFiles(dataDir, emptyDirs); err != nil {
@@ -143,18 +118,19 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 			}
 
 			// Ensure default Docker network exists.
-			if err := docker.EnsureNetwork(cli, ctx); err != nil {
+			if err := ensureNetwork(ctx); err != nil {
 				ui.Warn("Failed to ensure Docker network exists: %v\n", err)
 				ui.Warn("You can manually create it with:\n")
 				ui.Warn("docker network create --driver bridge %s", config.DockerNetwork)
 			}
 
-			if !skipServices {
-				if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
-					ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
-					return
-				}
-			}
+			// TODO: reuse startHaloyManager and startHAProxy functions
+			// if !skipServices {
+			// 	if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
+			// 		ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
+			// 		return
+			// 	}
+			// }
 
 			successMsg := "Haloy initialized successfully!\n"
 			successMsg += fmt.Sprintf("Data directory: %s\n", dataDir)
@@ -291,5 +267,45 @@ func createEnvFile(apiToken, dataDir string) error {
 	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("failed to create .env file: %w", err)
 	}
+	return nil
+}
+
+// EnsureNetworkCmd checks for the existence of the specified Docker network and creates it if it doesn't exist.
+func ensureNetwork(ctx context.Context) error {
+	// List networks filtering by name
+	// The --format option outputs only the network names.
+	cmdList := exec.CommandContext(ctx, "docker", "network", "ls", "--filter", fmt.Sprintf("name=%s", config.DockerNetwork), "--format", "{{.Name}}")
+	var out bytes.Buffer
+	cmdList.Stdout = &out
+	if err := cmdList.Run(); err != nil {
+		return fmt.Errorf("failed to list Docker networks: %w", err)
+	}
+
+	// Check if the network exists.
+	networks := strings.Split(strings.TrimSpace(out.String()), "\n")
+	networkExists := false
+	for _, n := range networks {
+		if n == config.DockerNetwork {
+			networkExists = true
+			break
+		}
+	}
+
+	if networkExists {
+		return nil // Already exists.
+	}
+
+	// Create the network if it doesn't exist.
+	// Here we create a bridge network that is attachable and assign a label.
+	cmdCreate := exec.CommandContext(ctx, "docker", "network", "create",
+		"--driver", "bridge",
+		"--attachable",
+		"--label", "created-by=haloy",
+		config.DockerNetwork,
+	)
+	if output, err := cmdCreate.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create Docker network: %w - output: %s", err, output)
+	}
+
 	return nil
 }

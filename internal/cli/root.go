@@ -1,4 +1,4 @@
-package commands
+package cli
 
 import (
 	"github.com/spf13/cobra"
@@ -17,7 +17,6 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(
 		CompletionCmd(),
 		DeployAppCmd(),
-		InitCmd(),
 		RollbackAppCmd(),
 		RollbackListCmd(),
 		StartCmd(),

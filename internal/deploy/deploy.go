@@ -20,10 +20,6 @@ func CreateDeploymentID() string {
 }
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
-	// Ensure that the custom docker network and required services are running.
-	if err := docker.EnsureNetwork(cli, ctx); err != nil {
-		return fmt.Errorf("failed to ensure Docker network exists: %w", err)
-	}
 
 	if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
 		return fmt.Errorf("failed to ensure dependent services are running: %w", err)

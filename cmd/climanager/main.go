@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ameistad/haloy/internal/cli"
+	"github.com/ameistad/haloy/internal/climanager"
 )
 
 func main() {
-	rootCmd := cli.NewRootCmd()
+	rootCmd := climanager.NewRootCmd()
 	if err := rootCmd.Execute(); err != nil {
 		// Print error once, then exit
 		fmt.Fprintln(os.Stderr, err)
