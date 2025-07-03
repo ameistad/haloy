@@ -18,6 +18,13 @@ func startHaloyManager(ctx context.Context, devMode bool) error {
 	if err != nil {
 		return fmt.Errorf("failed to determine config directory: %w", err)
 	}
+
+	// Determine Docker group ID: use DOCKER_GID if set; otherwise, default to "999"
+	dockerGID := os.Getenv("DOCKER_GID")
+	if dockerGID == "" {
+		dockerGID = "999"
+	}
+
 	image := "ghcr.io/ameistad/haloy-manager:latest"
 	if devMode {
 		image = "haloy-manager:latest" // Use local image in dev mode
@@ -30,6 +37,8 @@ func startHaloyManager(ctx context.Context, devMode bool) error {
 		"--volume", "./haproxy-config:/haproxy-config:rw",
 		"--volume", "./cert-storage:/cert-storage:rw",
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
+		// Add group_add so the container process can access the Docker socket:
+		"--group-add", dockerGID,
 		"--publish", "127.0.0.1:8080:8080",
 		"--publish", "127.0.0.1:9999:9999",
 		"--label", "dev.haloy.role=manager",

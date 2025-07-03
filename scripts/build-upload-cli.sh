@@ -15,7 +15,7 @@ HOSTNAME=$1
 # Use the current username from the shell
 USERNAME=$(whoami)
 
-# Extract the version from internal/version/version.go (assumes format: var Version = "v0.1.9")
+# Extract the version from [version.go](http://_vscodecontentref_/1) (assumes format: var Version = "v0.1.9")
 version=$(grep 'var Version' ../internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
 echo "Building version: $version"
 
@@ -44,4 +44,4 @@ if [ -f "$CLI_ADM_BINARY_NAME" ]; then
     rm "$CLI_ADM_BINARY_NAME"
 fi
 
-echo "Successfully uploaded CLI
+echo "Successfully uploaded CLI binaries."
