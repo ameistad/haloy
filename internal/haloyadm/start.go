@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -24,7 +25,19 @@ func StartCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 			defer cancel()
 
-			if err := startServices(ctx, devMode); err != nil {
+			dataDir, err := config.DataDir()
+			if err != nil {
+				ui.Error("Failed to determine data directory: %v\n", err)
+				return
+			}
+
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to determine config directory: %v\n", err)
+				return
+			}
+
+			if err := startServices(ctx, dataDir, configDir, devMode); err != nil {
 				ui.Error("%s", err)
 				return
 			}

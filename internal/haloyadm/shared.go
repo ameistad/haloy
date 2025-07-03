@@ -8,16 +8,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
-func startHaloyManager(ctx context.Context, devMode bool) error {
-	configDir, err := config.ConfigDir()
-	if err != nil {
-		return fmt.Errorf("failed to determine config directory: %w", err)
-	}
+func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool) error {
 
 	// Determine Docker group ID: use DOCKER_GID if set; otherwise, default to "999"
 	dockerGID := os.Getenv("DOCKER_GID")
@@ -34,8 +29,8 @@ func startHaloyManager(ctx context.Context, devMode bool) error {
 		"--env-file", fmt.Sprintf("%s/.env", configDir),
 		"--name", "haloy-manager",
 		"--volume", fmt.Sprintf("%s:/haloy-config:ro", configDir),
-		"--volume", "./haproxy-config:/haproxy-config:rw",
-		"--volume", "./cert-storage:/cert-storage:rw",
+		"--volume", fmt.Sprintf("%s/haproxy-config:/haproxy-config:rw", dataDir),
+		"--volume", fmt.Sprintf("%s/cert-storage:/cert-storage:rw", dataDir),
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		// Add group_add so the container process can access the Docker socket:
 		"--group-add", dockerGID,
@@ -58,16 +53,17 @@ func startHaloyManager(ctx context.Context, devMode bool) error {
 }
 
 // startHaproxy runs the docker command to start haloy-haproxy.
-func startHaproxy(ctx context.Context) error {
+func startHaproxy(ctx context.Context, dataDir string) error {
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
 		"--name", "haloy-haproxy",
 		"--publish", "80:80",
 		"--publish", "443:443",
-		"--volume", "./haproxy-config:/usr/local/etc/haproxy:ro",
-		"--volume", "./cert-storage:/usr/local/etc/haproxy-certs:rw",
-		"--volume", "./error-pages:/usr/local/etc/haproxy-errors:ro",
+		"--volume", fmt.Sprintf("%s/haproxy-config:/usr/local/etc/haproxy:ro", dataDir),
+		"--volume", fmt.Sprintf("%s/cert-storage:/usr/local/etc/haproxy-certs:rw", dataDir),
+		"--volume", fmt.Sprintf("%s/error-pages:/usr/local/etc/haproxy-errors:ro", dataDir),
 		"--label", "dev.haloy.role=haproxy",
+		"--user", "root",
 		"--restart", "unless-stopped",
 		"--network", "haloy-public",
 		// Note: docker run does not natively support "depends_on". We expect haloy-manager to be running.
@@ -108,7 +104,7 @@ func containerExists(ctx context.Context, containerName string) (bool, error) {
 	return false, nil
 }
 
-func startServices(ctx context.Context, devMode bool) error {
+func startServices(ctx context.Context, dataDir, configDir string, devMode bool) error {
 
 	exists, err := containerExists(ctx, "haloy-manager")
 	if err != nil {
@@ -126,12 +122,12 @@ func startServices(ctx context.Context, devMode bool) error {
 		return fmt.Errorf("haloy-haproxy container already exists, please stop it first")
 	}
 
-	if err := startHaloyManager(ctx, devMode); err != nil {
+	if err := startHaloyManager(ctx, dataDir, configDir, devMode); err != nil {
 		return fmt.Errorf("failed to start haloy-manager: %w", err)
 	}
 
 	// Then start haloy-haproxy.
-	if err := startHaproxy(ctx); err != nil {
+	if err := startHaproxy(ctx, dataDir); err != nil {
 		return fmt.Errorf("failed to start haloy-haproxy: %w", err)
 	}
 	return nil

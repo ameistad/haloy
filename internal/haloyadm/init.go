@@ -126,7 +126,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 
 			// Start the haloy-manager container and haproxy container.
 			if !skipServices {
-				if err := startServices(ctx, false); err != nil {
+				if err := startServices(ctx, dataDir, configDir, false); err != nil {
 					ui.Error("%s", err)
 					return
 				}
