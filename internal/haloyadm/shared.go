@@ -39,6 +39,7 @@ func startHaloyManager(ctx context.Context, devMode bool) error {
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		// Add group_add so the container process can access the Docker socket:
 		"--group-add", dockerGID,
+		"--user", "root",
 		"--publish", "127.0.0.1:8080:8080",
 		"--publish", "127.0.0.1:9999:9999",
 		"--label", "dev.haloy.role=manager",
