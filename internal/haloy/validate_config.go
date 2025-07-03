@@ -1,4 +1,4 @@
-package cli
+package haloy
 
 import (
 	"github.com/ameistad/haloy/internal/config"

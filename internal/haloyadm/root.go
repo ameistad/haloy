@@ -1,4 +1,4 @@
-package climanager
+package haloyadm
 
 import (
 	"github.com/spf13/cobra"
@@ -7,7 +7,7 @@ import (
 // NewRootCmd creates the root command
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "haloy-manager-cli",
+		Use:           "haloyadm",
 		Short:         "Commands to manage the haloy-manager",
 		SilenceErrors: true, // Don't print errors automatically
 		SilenceUsage:  true, // Don't show usage on error

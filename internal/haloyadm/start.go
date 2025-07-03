@@ -1,4 +1,4 @@
-package climanager
+package haloyadm
 
 import (
 	"bytes"

@@ -8,7 +8,7 @@ if [ -z "$1" ]; then
 fi
 
 CLI_BINARY_NAME=haloy
-CLI_MANAGER_BINARY_NAME=haloy-manager
+CLI_MANAGER_BINARY_NAME=haloyadm
 
 HOSTNAME=$1
 
@@ -21,7 +21,7 @@ echo "Building version: $version"
 
 # Build the CLI binary from cmd/cli using the extracted version
 GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_BINARY_NAME ../cmd/cli
-GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_MANAGER_BINARY_NAME ../cmd/climanager
+GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_MANAGER_BINARY_NAME ../cmd/haloyadm
 
 # Ensure remote bin dir exists
 ssh "${USERNAME}@${HOSTNAME}" "mkdir -p /home/${USERNAME}/.local/bin"

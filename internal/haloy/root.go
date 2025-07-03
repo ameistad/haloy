@@ -1,4 +1,4 @@
-package cli
+package haloy
 
 import (
 	"github.com/spf13/cobra"

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ameistad/haloy/internal/cli"
+	"github.com/ameistad/haloy/internal/haloy"
 )
 
 func main() {
-	rootCmd := cli.NewRootCmd()
+	rootCmd := haloy.NewRootCmd()
 	if err := rootCmd.Execute(); err != nil {
 		// Print error once, then exit
 		fmt.Fprintln(os.Stderr, err)
