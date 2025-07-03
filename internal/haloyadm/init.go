@@ -124,13 +124,13 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				ui.Warn("docker network create --driver bridge %s", config.DockerNetwork)
 			}
 
-			// TODO: reuse startHaloyManager and startHAProxy functions
-			// if !skipServices {
-			// 	if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
-			// 		ui.Error("Failed to to start haproxy and haloy-manager: %v\n", err)
-			// 		return
-			// 	}
-			// }
+			// Start the haloy-manager container and haproxy container.
+			if !skipServices {
+				if err := startServices(ctx, false); err != nil {
+					ui.Error("%s", err)
+					return
+				}
+			}
 
 			successMsg := "Haloy initialized successfully!\n"
 			successMsg += fmt.Sprintf("Data directory: %s\n", dataDir)

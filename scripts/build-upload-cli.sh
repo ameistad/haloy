@@ -8,7 +8,7 @@ if [ -z "$1" ]; then
 fi
 
 CLI_BINARY_NAME=haloy
-CLI_MANAGER_BINARY_NAME=haloyadm
+CLI_ADM_BINARY_NAME=haloyadm
 
 HOSTNAME=$1
 
@@ -20,21 +20,28 @@ version=$(grep 'var Version' ../internal/version/version.go | sed 's/.*"\(.*\)".
 echo "Building version: $version"
 
 # Build the CLI binary from cmd/cli using the extracted version
-GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_BINARY_NAME ../cmd/cli
-GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_MANAGER_BINARY_NAME ../cmd/haloyadm
+GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_BINARY_NAME ../cmd/haloy
+GOOS=linux GOARCH=amd64 go build -ldflags="-X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_ADM_BINARY_NAME ../cmd/haloyadm
 
-# Ensure remote bin dir exists
-ssh "${USERNAME}@${HOSTNAME}" "mkdir -p /home/${USERNAME}/.local/bin"
-
-# Upload the binary via scp using the current username
-scp $CLI_BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/.local/bin/$CLI_BINARY_NAME
-scp $CLI_MANAGER_BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/.local/bin/$CLI_MANAGER_BINARY_NAME
+# Support localhost: If HOSTNAME is localhost (or 127.0.0.1), use local commands instead of SSH/SCP.
+if [ "$HOSTNAME" = "localhost" ] || [ "$HOSTNAME" = "127.0.0.1" ]; then
+    echo "Using local deployment for ${HOSTNAME}"
+    mkdir -p /home/${USERNAME}/.local/bin
+    cp $CLI_BINARY_NAME /home/${USERNAME}/.local/bin/$CLI_BINARY_NAME
+    cp $CLI_ADM_BINARY_NAME /home/${USERNAME}/.local/bin/$CLI_ADM_BINARY_NAME
+else
+    ssh "${USERNAME}@${HOSTNAME}" "mkdir -p /home/${USERNAME}/.local/bin"
+    scp $CLI_BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/.local/bin/$CLI_BINARY_NAME
+    scp $CLI_ADM_BINARY_NAME ${USERNAME}@"$HOSTNAME":/home/${USERNAME}/.local/bin/$CLI_ADM_BINARY_NAME
+fi
 
 # Remove binaries after copying
-if [ -f $CLI_BINARY_NAME ]; then
-    rm $CLI_BINARY_NAME
+if [ -f "$CLI_BINARY_NAME" ]; then
+    rm "$CLI_BINARY_NAME"
 fi
 
-if [ -f "$CLI_MANAGER_BINARY_NAME" ]; then
-    rm "$CLI_MANAGER_BINARY_NAME"
+if [ -f "$CLI_ADM_BINARY_NAME" ]; then
+    rm "$CLI_ADM_BINARY_NAME"
 fi
+
+echo "Successfully uploaded CLI
