@@ -10,13 +10,15 @@ import (
 )
 
 const (
-	DockerNetwork            = "haloy-public"
-	DefaultDeploymentsToKeep = 5
-	DefaultHealthCheckPath   = "/"
-	DefaultContainerPort     = "80"
-	DefaultReplicas          = 1
-	DefaultServer            = "http://localhost:9999"
-	HAProxyConfigFileName    = "haproxy.cfg"
+	HaloyManagerContainerName = "haloy-manager"
+	HaproxyContainerName      = "haloy-haproxy"
+	DockerNetwork             = "haloy-public"
+	DefaultDeploymentsToKeep  = 5
+	DefaultHealthCheckPath    = "/"
+	DefaultContainerPort      = "80"
+	DefaultReplicas           = 1
+	DefaultServer             = "http://localhost:9999"
+	HAProxyConfigFileName     = "haproxy.cfg"
 )
 
 type AppConfig struct {

@@ -8,18 +8,20 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 )
 
+func stopHaloyManager(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "docker", "stop", config.HaloyManagerContainerName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	ui.Info("Stopping haloy-manager")
+	return cmd.Run()
+}
+
 // startHaloyManager runs the docker command to start haloy-manager.
 func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool) error {
-
-	// Determine Docker group ID: use DOCKER_GID if set; otherwise, default to "999"
-	dockerGID := os.Getenv("DOCKER_GID")
-	if dockerGID == "" {
-		dockerGID = "999"
-	}
-
 	image := "ghcr.io/ameistad/haloy-manager:latest"
 	if devMode {
 		image = "haloy-manager:latest" // Use local image in dev mode
@@ -27,13 +29,11 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
 		"--env-file", fmt.Sprintf("%s/.env", configDir),
-		"--name", "haloy-manager",
+		"--name", config.HaloyManagerContainerName,
 		"--volume", fmt.Sprintf("%s:/haloy-config:ro", configDir),
 		"--volume", fmt.Sprintf("%s/haproxy-config:/haproxy-config:rw", dataDir),
 		"--volume", fmt.Sprintf("%s/cert-storage:/cert-storage:rw", dataDir),
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
-		// Add group_add so the container process can access the Docker socket:
-		"--group-add", dockerGID,
 		"--user", "root",
 		"--publish", "127.0.0.1:8080:8080",
 		"--publish", "127.0.0.1:9999:9999",
@@ -56,7 +56,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 func startHaproxy(ctx context.Context, dataDir string) error {
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
-		"--name", "haloy-haproxy",
+		"--name", config.HaproxyContainerName,
 		"--publish", "80:80",
 		"--publish", "443:443",
 		"--volume", fmt.Sprintf("%s/haproxy-config:/usr/local/etc/haproxy:ro", dataDir),
@@ -71,7 +71,7 @@ func startHaproxy(ctx context.Context, dataDir string) error {
 	)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	ui.Info("Starting haloy-haproxy")
+	ui.Info("Starting HAProxy")
 	return cmd.Run()
 }
 
