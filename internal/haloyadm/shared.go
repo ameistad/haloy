@@ -43,12 +43,6 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		}
 		return fmt.Errorf("failed to start haloy-manager: %w", err)
 	}
-
-	if devMode {
-		ui.Info("Starting haloy-manager in development mode using local image: %s", image)
-	} else {
-		ui.Info("Starting haloy-manager")
-	}
 	return nil
 }
 

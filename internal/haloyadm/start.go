@@ -42,6 +42,7 @@ func StartCmd() *cobra.Command {
 				ui.Error("%s", err)
 				return
 			}
+			ui.Success("Haloy services started successfully")
 		},
 	}
 	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
