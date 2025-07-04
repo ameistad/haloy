@@ -11,7 +11,7 @@ import (
 
 const (
 	HaloyManagerContainerName = "haloy-manager"
-	HaproxyContainerName      = "haloy-haproxy"
+	HAProxyContainerName      = "haloy-haproxy"
 	DockerNetwork             = "haloy-public"
 	DefaultDeploymentsToKeep  = 5
 	DefaultHealthCheckPath    = "/"

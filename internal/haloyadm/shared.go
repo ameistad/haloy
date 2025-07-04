@@ -4,21 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 )
-
-func stopHaloyManager(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "docker", "stop", config.HaloyManagerContainerName)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	ui.Info("Stopping haloy-manager")
-	return cmd.Run()
-}
 
 // startHaloyManager runs the docker command to start haloy-manager.
 func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool) error {
@@ -42,21 +33,30 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--network", "haloy-public",
 		image,
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			ui.Error("Failed to start haloy-manager: %s", stderr.String())
+		}
+		return fmt.Errorf("failed to start haloy-manager: %w", err)
+	}
+
 	if devMode {
 		ui.Info("Starting haloy-manager in development mode using local image: %s", image)
 	} else {
 		ui.Info("Starting haloy-manager")
 	}
-	return cmd.Run()
+	return nil
 }
 
 // startHaproxy runs the docker command to start haloy-haproxy.
 func startHaproxy(ctx context.Context, dataDir string) error {
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
-		"--name", config.HaproxyContainerName,
+		"--name", config.HAProxyContainerName,
 		"--publish", "80:80",
 		"--publish", "443:443",
 		"--volume", fmt.Sprintf("%s/haproxy-config:/usr/local/etc/haproxy:ro", dataDir),
@@ -66,13 +66,20 @@ func startHaproxy(ctx context.Context, dataDir string) error {
 		"--user", "root",
 		"--restart", "unless-stopped",
 		"--network", "haloy-public",
-		// Note: docker run does not natively support "depends_on". We expect haloy-manager to be running.
 		"haproxy:3.1.5",
 	)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	ui.Info("Starting HAProxy")
-	return cmd.Run()
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return fmt.Errorf("failed to start haproxy: %s", stderr.String())
+		}
+		return fmt.Errorf("failed to start haproxy: %w", err)
+	}
+
+	return nil
 }
 
 // ContainerExists checks if a container with the given name exists (running or stopped).
@@ -104,31 +111,52 @@ func containerExists(ctx context.Context, containerName string) (bool, error) {
 	return false, nil
 }
 
-func startServices(ctx context.Context, dataDir, configDir string, devMode bool) error {
-
-	exists, err := containerExists(ctx, "haloy-manager")
+func startServices(ctx context.Context, dataDir, configDir string, devMode, restart bool) error {
+	// Check if containers exist
+	managerExists, err := containerExists(ctx, config.HaloyManagerContainerName)
 	if err != nil {
 		return fmt.Errorf("failed to check haloy-manager container: %w", err)
 	}
-	if exists {
-		return fmt.Errorf("haloy-manager container already exists, please stop it first")
-	}
 
-	exists, err = containerExists(ctx, "haloy-haproxy")
+	haproxyExists, err := containerExists(ctx, config.HAProxyContainerName)
 	if err != nil {
 		return fmt.Errorf("failed to check haloy-haproxy container: %w", err)
 	}
-	if exists {
-		return fmt.Errorf("haloy-haproxy container already exists, please stop it first")
+
+	// If containers exist and restart flag is not set, return error
+	if !restart {
+		if managerExists {
+			return fmt.Errorf("haloy-manager container already exists, use --restart flag to restart it")
+		}
+		if haproxyExists {
+			return fmt.Errorf("haloy-haproxy container already exists, use --restart flag to restart it")
+		}
 	}
 
+	// If restart flag is set, stop existing containers
+	if restart {
+		if managerExists {
+			ui.Info("Stopping existing haloy-manager container")
+			if err := stopContainer(ctx, config.HaloyManagerContainerName); err != nil {
+				return fmt.Errorf("failed to stop existing haloy-manager: %w", err)
+			}
+		}
+		if haproxyExists {
+			ui.Info("Stopping existing haloy-haproxy container")
+			if err := stopContainer(ctx, config.HAProxyContainerName); err != nil {
+				return fmt.Errorf("failed to stop existing haloy-haproxy: %w", err)
+			}
+		}
+	}
+
+	// Start the services
 	if err := startHaloyManager(ctx, dataDir, configDir, devMode); err != nil {
-		return fmt.Errorf("failed to start haloy-manager: %w", err)
+		return err
 	}
 
-	// Then start haloy-haproxy.
 	if err := startHaproxy(ctx, dataDir); err != nil {
-		return fmt.Errorf("failed to start haloy-haproxy: %w", err)
+		return err
 	}
+
 	return nil
 }

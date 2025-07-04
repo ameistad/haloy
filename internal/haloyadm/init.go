@@ -126,7 +126,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 
 			// Start the haloy-manager container and haproxy container.
 			if !skipServices {
-				if err := startServices(ctx, dataDir, configDir, false); err != nil {
+				if err := startServices(ctx, dataDir, configDir, false, overrideExisting); err != nil {
 					ui.Error("%s", err)
 					return
 				}
@@ -142,7 +142,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 	}
 
 	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloy-manager containers")
-	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory")
+	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
 	return cmd
 }
 

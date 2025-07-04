@@ -15,6 +15,7 @@ const (
 
 func StartCmd() *cobra.Command {
 	var devMode bool
+	var restart bool
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the haloy services",
@@ -37,12 +38,13 @@ func StartCmd() *cobra.Command {
 				return
 			}
 
-			if err := startServices(ctx, dataDir, configDir, devMode); err != nil {
+			if err := startServices(ctx, dataDir, configDir, devMode, restart); err != nil {
 				ui.Error("%s", err)
 				return
 			}
 		},
 	}
 	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
+	cmd.Flags().BoolVar(&restart, "restart", false, "Restart services if they are already running")
 	return cmd
 }
