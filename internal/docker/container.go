@@ -343,3 +343,19 @@ func GetAppContainers(ctx context.Context, cli *client.Client, listAll bool, app
 
 	return containerList, nil
 }
+
+// ContainerNetworkInfo extracts the container's IP address
+func ContainerNetworkIP(container container.InspectResponse, networkName string) (string, error) {
+	if _, exists := container.NetworkSettings.Networks[networkName]; !exists {
+		return "", fmt.Errorf("specified network not found: %s", networkName)
+	}
+	if container.State == nil || !container.State.Running {
+		return "", fmt.Errorf("container is not running")
+	}
+	ipAddress := container.NetworkSettings.Networks[networkName].IPAddress
+	if ipAddress == "" {
+		return "", fmt.Errorf("container has no IP address on the specified network: %s", networkName)
+	}
+
+	return ipAddress, nil
+}

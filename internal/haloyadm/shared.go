@@ -181,3 +181,43 @@ func stopContainer(ctx context.Context, role string) error {
 
 	return nil
 }
+
+// EnsureNetworkCmd checks for the existence of the specified Docker network and creates it if it doesn't exist.
+func ensureNetwork(ctx context.Context) error {
+	// List networks filtering by name
+	// The --format option outputs only the network names.
+	cmdList := exec.CommandContext(ctx, "docker", "network", "ls", "--filter", fmt.Sprintf("name=%s", config.DockerNetwork), "--format", "{{.Name}}")
+	var out bytes.Buffer
+	cmdList.Stdout = &out
+	if err := cmdList.Run(); err != nil {
+		return fmt.Errorf("failed to list Docker networks: %w", err)
+	}
+
+	// Check if the network exists.
+	networks := strings.Split(strings.TrimSpace(out.String()), "\n")
+	networkExists := false
+	for _, n := range networks {
+		if n == config.DockerNetwork {
+			networkExists = true
+			break
+		}
+	}
+
+	if networkExists {
+		return nil // Already exists.
+	}
+
+	// Create the network if it doesn't exist.
+	// Here we create a bridge network that is attachable and assign a label.
+	cmdCreate := exec.CommandContext(ctx, "docker", "network", "create",
+		"--driver", "bridge",
+		"--attachable",
+		"--label", "created-by=haloy",
+		config.DockerNetwork,
+	)
+	if output, err := cmdCreate.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create Docker network: %w - output: %s", err, output)
+	}
+
+	return nil
+}

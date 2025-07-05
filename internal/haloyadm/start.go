@@ -38,6 +38,14 @@ func StartCmd() *cobra.Command {
 				return
 			}
 
+			// Ensure Docker network exists before starting services
+			if err := ensureNetwork(ctx); err != nil {
+				ui.Error("Failed to ensure Docker network exists: %v", err)
+				ui.Info("You can manually create it with:")
+				ui.Info("docker network create --driver bridge --attachable %s", config.DockerNetwork)
+				return
+			}
+
 			if err := startServices(ctx, dataDir, configDir, devMode, restart); err != nil {
 				ui.Error("%s", err)
 				return
