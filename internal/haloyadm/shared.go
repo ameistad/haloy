@@ -5,10 +5,10 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/ui"
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
@@ -19,18 +19,18 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	}
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
-		"--env-file", fmt.Sprintf("%s/.env", configDir),
-		"--name", config.HaloyManagerContainerName,
-		"--volume", fmt.Sprintf("%s:/haloy-config:ro", configDir),
-		"--volume", fmt.Sprintf("%s/haproxy-config:/haproxy-config:rw", dataDir),
-		"--volume", fmt.Sprintf("%s/cert-storage:/cert-storage:rw", dataDir),
+		"--env-file", filepath.Join(configDir, ".env"),
+		"--name", config.ManagerContainerName,
+		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", config.CertificatesHTTPProviderPort, config.CertificatesHTTPProviderPort),
+		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", config.APIServerPort, config.APIServerPort),
+		"--volume", fmt.Sprintf("%s:%s:ro", configDir, config.HaloyConfigPath), // config directory
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.HAProxyConfigPath, config.HAProxyConfigPath), // haproxy config directory,
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.CertificatesStoragePath, config.CertificatesStoragePath), // cert storage directory
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		"--user", "root",
-		"--publish", "127.0.0.1:8080:8080",
-		"--publish", "127.0.0.1:9999:9999",
-		"--label", "dev.haloy.role=manager",
+		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
 		"--restart", "unless-stopped",
-		"--network", "haloy-public",
+		"--network", config.DockerNetwork,
 		image,
 	)
 
@@ -39,7 +39,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 
 	if err := cmd.Run(); err != nil {
 		if stderr.Len() > 0 {
-			ui.Error("Failed to start haloy-manager: %s", stderr.String())
+			return fmt.Errorf("failed to start haloy-manager: %s", stderr.String())
 		}
 		return fmt.Errorf("failed to start haloy-manager: %w", err)
 	}
@@ -53,13 +53,13 @@ func startHaproxy(ctx context.Context, dataDir string) error {
 		"--name", config.HAProxyContainerName,
 		"--publish", "80:80",
 		"--publish", "443:443",
-		"--volume", fmt.Sprintf("%s/haproxy-config:/usr/local/etc/haproxy:ro", dataDir),
-		"--volume", fmt.Sprintf("%s/cert-storage:/usr/local/etc/haproxy-certs:rw", dataDir),
+		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy:ro", dataDir, config.HAProxyConfigPath),
+		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy-certs:rw", dataDir, config.CertificatesStoragePath),
 		"--volume", fmt.Sprintf("%s/error-pages:/usr/local/etc/haproxy-errors:ro", dataDir),
-		"--label", "dev.haloy.role=haproxy",
+		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole),
 		"--user", "root",
 		"--restart", "unless-stopped",
-		"--network", "haloy-public",
+		"--network", config.DockerNetwork,
 		"haproxy:3.1.5",
 	)
 
@@ -76,11 +76,13 @@ func startHaproxy(ctx context.Context, dataDir string) error {
 	return nil
 }
 
-// ContainerExists checks if a container with the given name exists (running or stopped).
-func containerExists(ctx context.Context, containerName string) (bool, error) {
-	// Use docker ps -a to list all containers filtered by name.
-	// The filter "name=^/<name>$" ensures an exact match (Docker prepends a slash to container names).
-	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--filter", fmt.Sprintf("name=^/%s$", containerName), "--format", "{{.Names}}")
+// containerExists checks if a haloy container with the given role exists (running or stopped).
+func containerExists(ctx context.Context, role string) (bool, error) {
+	// Use docker ps -a to list containers filtered by haloy role label
+	cmd := exec.CommandContext(ctx, "docker", "ps", "-a",
+		"--filter", fmt.Sprintf("label=%s=%s", config.LabelRole, role),
+		"--format", "{{.Names}}")
+
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
@@ -88,31 +90,19 @@ func containerExists(ctx context.Context, containerName string) (bool, error) {
 		return false, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	// If output contains the container name, then it exists.
+	// If there's any output, a container with this role exists
 	output := strings.TrimSpace(out.String())
-	if output == containerName {
-		return true, nil
-	}
-
-	// In case more than one container is returned, check each line.
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.TrimSpace(line) == containerName {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return output != "", nil
 }
 
 func startServices(ctx context.Context, dataDir, configDir string, devMode, restart bool) error {
 	// Check if containers exist
-	managerExists, err := containerExists(ctx, config.HaloyManagerContainerName)
+	managerExists, err := containerExists(ctx, config.ManagerLabelRole)
 	if err != nil {
 		return fmt.Errorf("failed to check haloy-manager container: %w", err)
 	}
 
-	haproxyExists, err := containerExists(ctx, config.HAProxyContainerName)
+	haproxyExists, err := containerExists(ctx, config.HAProxyLabelRole)
 	if err != nil {
 		return fmt.Errorf("failed to check haloy-haproxy container: %w", err)
 	}
@@ -130,14 +120,12 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 	// If restart flag is set, stop existing containers
 	if restart {
 		if managerExists {
-			ui.Info("Stopping existing haloy-manager container")
-			if err := stopContainer(ctx, config.HaloyManagerContainerName); err != nil {
+			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
 				return fmt.Errorf("failed to stop existing haloy-manager: %w", err)
 			}
 		}
 		if haproxyExists {
-			ui.Info("Stopping existing haloy-haproxy container")
-			if err := stopContainer(ctx, config.HAProxyContainerName); err != nil {
+			if err := stopContainer(ctx, config.HAProxyLabelRole); err != nil {
 				return fmt.Errorf("failed to stop existing haloy-haproxy: %w", err)
 			}
 		}
@@ -150,6 +138,45 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 
 	if err := startHaproxy(ctx, dataDir); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func stopContainer(ctx context.Context, role string) error {
+	// First, get the container name by role
+	cmd := exec.CommandContext(ctx, "docker", "ps", "-a",
+		"--filter", fmt.Sprintf("label=%s=%s", config.LabelRole, role),
+		"--format", "{{.Names}}")
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to list containers with role %s: %w", role, err)
+	}
+
+	// If no container found, nothing to stop
+	output := strings.TrimSpace(out.String())
+	if output == "" {
+		return nil // No container to stop
+	}
+
+	// Get the first container name (should only be one per role)
+	containerName := strings.Split(output, "\n")[0]
+	containerName = strings.TrimSpace(containerName)
+
+	// Now stop and remove the container
+	cmd = exec.CommandContext(ctx, "docker", "rm", "-f", containerName)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return fmt.Errorf("failed to stop and remove container %s: %s", containerName, stderr.String())
+		}
+		return fmt.Errorf("failed to stop and remove container %s: %w", containerName, err)
 	}
 
 	return nil

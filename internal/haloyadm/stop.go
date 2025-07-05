@@ -1,10 +1,7 @@
 package haloyadm
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"os/exec"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -27,12 +24,12 @@ func StopCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
 			defer cancel()
 
-			if err := stopContainer(ctx, config.HaloyManagerContainerName); err != nil {
+			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
 				ui.Error("Failed to stop haloy-manager: %v", err)
 				return
 			}
 
-			if err := stopContainer(ctx, config.HAProxyContainerName); err != nil {
+			if err := stopContainer(ctx, config.HAProxyLabelRole); err != nil {
 				ui.Error("Failed to stop HAProxy: %v", err)
 				return
 			}
@@ -41,20 +38,4 @@ func StopCmd() *cobra.Command {
 		},
 	}
 	return cmd
-}
-
-func stopContainer(ctx context.Context, containerName string) error {
-	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", containerName)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			return fmt.Errorf("failed to stop and remove %s: %s", containerName, stderr.String())
-		}
-		return fmt.Errorf("failed to stop and remove %s: %w", containerName, err)
-	}
-
-	return nil
 }

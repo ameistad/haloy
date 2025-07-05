@@ -21,9 +21,7 @@ func CreateDeploymentID() string {
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
 
-	if _, err := docker.EnsureServicesIsRunning(cli, ctx); err != nil {
-		return fmt.Errorf("failed to ensure dependent services are running: %w", err)
-	}
+	// TODO: check that haproxy and haloy-manager are runninga
 
 	imageRef := appConfig.Image.ImageRef()
 	newImageTag, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)

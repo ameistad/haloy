@@ -19,7 +19,6 @@ func NewRootCmd() *cobra.Command {
 		DeployAppCmd(),
 		RollbackAppCmd(),
 		RollbackListCmd(),
-		StartCmd(),
 		StopAppCmd(),
 		StatusAppCmd(),
 		ValidateAppConfigCmd(),

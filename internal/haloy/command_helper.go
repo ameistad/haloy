@@ -36,7 +36,7 @@ func (e *CommandExecutor) ExecuteCommandWithLogs(
 	// Check if server is available
 	ui.Info("🔍 Checking server availability...")
 	if err := e.apiClient.IsServerAvailable(ctx); err != nil {
-		if appConfig.Server == config.DefaultServer {
+		if appConfig.Server == config.DefaultAPIServerURL {
 			ui.Error("Haloy API server is not running on %s", appConfig.Server)
 			ui.Info("Start the haloy manager or specify a custom server URL with --server")
 		} else {

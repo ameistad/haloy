@@ -24,14 +24,9 @@ import (
 )
 
 const (
-	MaintenanceInterval = 12 * time.Hour // Interval for periodic maintenance tasks
-	// Paths specific to the haloy manager which runs in a docker container.
-	// These paths are mounted from the host system.
-	HAProxyConfigPath  = "/haproxy-config"
-	CertificatesPath   = "/cert-storage"
-	HTTPProviderPort   = "8080"
-	EventDebounceDelay = 3 * time.Second // Delay for debouncing container events
-	UpdateTimeout      = 2 * time.Minute // Max time for a single update operation
+	MaintenanceInterval = 12 * time.Hour  // Interval for periodic maintenance tasks
+	EventDebounceDelay  = 3 * time.Second // Delay for debouncing container events
+	UpdateTimeout       = 2 * time.Minute // Max time for a single update operation
 )
 
 type ContainerEvent struct {
@@ -103,8 +98,8 @@ func RunManager(dryRun bool) {
 
 	// Create and start the certifications manager
 	certManagerConfig := CertificatesManagerConfig{
-		CertDir:          CertificatesPath,
-		HTTPProviderPort: HTTPProviderPort,
+		CertDir:          config.CertificatesStoragePath,
+		HTTPProviderPort: config.CertificatesHTTPProviderPort,
 		TlsStaging:       dryRun,
 	}
 	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
@@ -113,7 +108,7 @@ func RunManager(dryRun bool) {
 	}
 
 	// Create the HAProxy manager
-	haproxyManager := NewHAProxyManager(cli, HAProxyConfigPath, dryRun)
+	haproxyManager := NewHAProxyManager(cli, config.HAProxyConfigPath, dryRun)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{

@@ -10,15 +10,23 @@ import (
 )
 
 const (
-	HaloyManagerContainerName = "haloy-manager"
-	HAProxyContainerName      = "haloy-haproxy"
-	DockerNetwork             = "haloy-public"
-	DefaultDeploymentsToKeep  = 5
-	DefaultHealthCheckPath    = "/"
-	DefaultContainerPort      = "80"
-	DefaultReplicas           = 1
-	DefaultServer             = "http://localhost:9999"
-	HAProxyConfigFileName     = "haproxy.cfg"
+	ManagerContainerName     = "haloy-manager"
+	HAProxyContainerName     = "haloy-haproxy"
+	DockerNetwork            = "haloy-public"
+	DefaultDeploymentsToKeep = 5
+	DefaultHealthCheckPath   = "/"
+	DefaultContainerPort     = "80"
+	DefaultReplicas          = 1
+	HAProxyConfigFileName    = "haproxy.cfg"
+
+	// Paths specific to the haloy manager which runs in a docker container. Important that they use consistent naming.
+	HaloyConfigPath         = "/haloy-config"
+	HAProxyConfigPath       = "/haproxy-config"
+	CertificatesStoragePath = "/cert-storage"
+
+	CertificatesHTTPProviderPort = "8080"
+	APIServerPort                = "9999"
+	DefaultAPIServerURL          = "http://localhost:9999" // Default URL for the haloy API server
 )
 
 type AppConfig struct {
@@ -57,7 +65,7 @@ func (ac *AppConfig) Normalize() *AppConfig {
 	}
 
 	if ac.Server == "" {
-		ac.Server = DefaultServer
+		ac.Server = DefaultAPIServerURL
 	}
 	return ac
 }
