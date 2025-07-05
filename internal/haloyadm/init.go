@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -108,6 +109,21 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				ui.Error("Failed to create .env file: %v\n", err)
 				return
 			}
+
+			// Initialize database - Add this section
+			ui.Info("Initializing database...")
+			database, err := db.New()
+			if err != nil {
+				ui.Error("Failed to initialize database: %v\n", err)
+				return
+			}
+			defer database.Close()
+
+			if err := database.Migrate(); err != nil {
+				ui.Error("Failed to run database migrations: %v\n", err)
+				return
+			}
+			ui.Success("Database initialized successfully")
 
 			var emptyDirs = []string{
 				"haproxy-config",
