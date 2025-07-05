@@ -7,6 +7,15 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
+# Check if CGO dependencies are available
+if ! command -v gcc &> /dev/null; then
+    echo "Error: gcc not found. Install build dependencies:"
+    echo "  On Debian/Ubuntu: sudo apt install build-essential"
+    echo "  On Alpine: apk add gcc musl-dev"
+    echo "  On CentOS/RHEL: sudo yum install gcc glibc-devel"
+    exit 1
+fi
+
 CLI_BINARY_NAME=haloy
 CLI_ADM_BINARY_NAME=haloyadm
 
