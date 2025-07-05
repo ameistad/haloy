@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 go build -o /haloy-manager ./cmd/manager
+RUN CGO_ENABLED=1 go build -o /haloy-manager ./cmd/manager
 
 # Use a small image for the final container
 FROM alpine:3.21
@@ -29,10 +29,6 @@ RUN mkdir -p /etc/haproxy/certs /var/www/lego /config
 
 # Set executable permissions
 RUN chmod +x /usr/local/bin/haloy-manager
-
-# Run as non-root user for better security
-RUN addgroup -S haloy && adduser -S haloy -G haloy
-USER haloy
 
 # Run the manager
 ENTRYPOINT ["/usr/local/bin/haloy-manager"]

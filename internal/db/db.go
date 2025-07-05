@@ -6,7 +6,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/jmoiron/sqlx"
-	_ "modernc.org/sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type DB struct {
