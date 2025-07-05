@@ -20,7 +20,7 @@ func New() (*DB, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "haloy.db")
-	database, err := sqlx.Connect("sqlite", dbPath) // Change "sqlite3" to "sqlite"
+	database, err := sqlx.Connect("sqlite3", dbPath) // Change from "sqlite" to "sqlite3"
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
