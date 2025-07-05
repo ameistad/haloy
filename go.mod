@@ -2,6 +2,9 @@ module github.com/ameistad/haloy
 
 go 1.24
 
+// Replace the CGO driver with the pure Go driver
+replace github.com/mattn/go-sqlite3 => modernc.org/sqlite v1.38.0
+
 require (
 	filippo.io/age v1.2.1
 	github.com/charmbracelet/lipgloss v1.1.0
@@ -14,7 +17,6 @@ require (
 	github.com/spf13/viper v1.20.1
 	golang.org/x/text v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.38.0
 )
 
 require (
@@ -43,7 +45,6 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/miekg/dns v1.1.64 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/term v0.5.0 // indirect
@@ -83,3 +84,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
+
+exclude github.com/mattn/go-sqlite3 v1.14.28
