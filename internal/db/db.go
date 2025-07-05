@@ -6,7 +6,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type DB struct {
@@ -20,7 +20,7 @@ func New() (*DB, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "haloy.db")
-	database, err := sqlx.Connect("sqlite3", dbPath)
+	database, err := sqlx.Connect("sqlite", dbPath) // Change "sqlite3" to "sqlite"
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
