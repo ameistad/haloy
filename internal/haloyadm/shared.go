@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,14 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	if devMode {
 		image = "haloy-manager:latest" // Use local image in dev mode
 	}
+
+	// Get current user ID and group ID
+	uid := os.Getuid()
+	gid := os.Getgid()
+
+	// Get Docker group ID - try to detect it dynamically
+	dockerGID := getDockerGroupID()
+
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
 		"--env-file", filepath.Join(configDir, ".env"),
@@ -27,7 +36,8 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.HAProxyConfigPath, config.HAProxyConfigPath), // haproxy config directory,
 		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.CertificatesStoragePath, config.CertificatesStoragePath), // cert storage directory
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
-		"--user", "root",
+		"--user", fmt.Sprintf("%d:%d", uid, gid), // Run as current user
+		"--group-add", dockerGID,
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
 		"--restart", "unless-stopped",
 		"--network", config.DockerNetwork,
@@ -44,6 +54,28 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		return fmt.Errorf("failed to start haloy-manager: %w", err)
 	}
 	return nil
+}
+
+// Helper function to get Docker group ID dynamically
+func getDockerGroupID() string {
+	// First try environment variable
+	if gid := os.Getenv("DOCKER_GID"); gid != "" {
+		return gid
+	}
+
+	// Try to get it from getent command
+	cmd := exec.Command("getent", "group", "docker")
+	output, err := cmd.Output()
+	if err == nil {
+		// Parse output like "docker:x:999:user1,user2"
+		parts := strings.Split(strings.TrimSpace(string(output)), ":")
+		if len(parts) >= 3 {
+			return parts[2] // The GID
+		}
+	}
+
+	// Fall back to common default
+	return "999"
 }
 
 // startHaproxy runs the docker command to start haloy-haproxy.
