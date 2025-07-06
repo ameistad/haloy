@@ -78,15 +78,3 @@ func HAProxyConfigFilePath() (string, error) {
 	}
 	return filepath.Join(dataDir, "haproxy-config", HAProxyConfigFileName), nil
 }
-
-func HistoryPath() (string, error) {
-	dataDir, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(dataDir, "history")
-	if err := ensureDir(path); err != nil {
-		return "", err
-	}
-	return path, nil
-}

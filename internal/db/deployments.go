@@ -1,6 +1,6 @@
 package db
 
-func (db *DB) SaveDeployment(deployment *Deployment) error {
+func (db *DB) SaveDeployment(deployment Deployment) error {
 	query := `INSERT INTO deployments (id, app_name, app_config, image_tag, rolled_back_from)
               VALUES (?, ?, ?, ?, ?)`
 	_, err := db.Exec(query, deployment.ID, deployment.AppName, deployment.AppConfig,
@@ -8,12 +8,12 @@ func (db *DB) SaveDeployment(deployment *Deployment) error {
 	return err
 }
 
-func (db *DB) GetDeployment(deploymentID string) (*Deployment, error) {
+func (db *DB) GetDeployment(deploymentID string) (Deployment, error) {
 	var deployment Deployment
 	query := `SELECT id, app_name, app_config, image_tag, rolled_back_from
               FROM deployments WHERE id = ?`
 	err := db.Get(&deployment, query, deploymentID)
-	return &deployment, err
+	return deployment, err
 }
 
 func (db *DB) GetDeploymentHistory(appName string, limit int) ([]Deployment, error) {

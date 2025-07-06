@@ -21,7 +21,7 @@ func CreateDeploymentID() string {
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
 
-	// TODO: check that haproxy and haloy-manager are runninga
+	// TODO: check that haproxy and haloy-manager are running
 
 	imageRef := appConfig.Image.ImageRef()
 	newImageTag, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
@@ -51,7 +51,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	logger.Info("Containers started successfully", "count", len(runResult), "deploymentID", deploymentID)
 
 	// Write the app configuration to the history folder.
-	if err := writeAppConfigHistory(appConfig, deploymentID, *appConfig.DeploymentsToKeep); err != nil {
+	if err := writeAppConfigHistory(appConfig, deploymentID, newImageTag, *appConfig.DeploymentsToKeep); err != nil {
 		logger.Warn("Failed to write app config history", "error", err)
 	} else {
 		logger.Info("App configuration saved to history")
