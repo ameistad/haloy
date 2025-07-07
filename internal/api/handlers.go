@@ -12,10 +12,16 @@ import (
 	"github.com/ameistad/haloy/internal/version"
 )
 
+func (s *APIServer) handleRollback() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		deploymentID := deploy.CreateDeploymentID()
+		deploymentLogger := logging.NewDeploymentLogger(deploymentID, s.logLevel, s.logBroker)
+	}
+}
+
 // handleDeploy returns an http.HandlerFunc for deploying an app.
 func (s *APIServer) handleDeploy() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Generate deployment ID
 		deploymentID := deploy.CreateDeploymentID()
 
 		// Create deployment-specific logger using the factory

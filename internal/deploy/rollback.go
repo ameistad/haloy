@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -21,7 +22,7 @@ type RollbackTarget struct {
 	AppConfig    *config.AppConfig
 }
 
-func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID string) error {
+func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID, newDeploymentID string, logger *slog.Logger) error {
 	targets, err := GetRollbackTargets(ctx, cli, appName)
 	if err != nil {
 		return err
@@ -31,31 +32,19 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 		return fmt.Errorf("there are no images to rollback to for %s", appName)
 	}
 
-	// for _, t := range targets {
-	// 	if t.DeploymentID == targetDeploymentID {
-	// 		newDeploymentID := createDeploymentID()
-	// 		newImageTag, err := tagImage(ctx, cli, t.ImageTag, appName, newDeploymentID)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to tag image: %w", err)
-	// 		}
-	// 		ui.Info("Creating new deployment from image %s", t.ImageTag)
-	// 		appConfig := t.AppConfig
-	// 		if appConfig == nil {
-	// 			ui.Warn("Could not find old app config for %s, trying current config: %v", appName, err)
-	// 			loadedAppConfig, err := config.AppConfigByName(appName)
-	// 			if err != nil {
-	// 				return fmt.Errorf("failed to load app config for %s: %w", appName, err)
-	// 			}
-	// 			appConfig = loadedAppConfig
-	// 		}
-	// 		if err := DeployApp(ctx, cli, appConfig); err != nil {
-	// 			return fmt.Errorf("failed to deploy app %s: %w", appName, err)
-	// 		}
+	for _, t := range targets {
+		if t.DeploymentID == targetDeploymentID {
+			if t.AppConfig == nil {
+				return fmt.Errorf("failed to load app config for %s: %w", appName, err)
+			}
+			if err := DeployApp(ctx, cli, newDeploymentID, *t.AppConfig, logger); err != nil {
+				return fmt.Errorf("failed to deploy app %s: %w", appName, err)
+			}
 
-	// 		// found the target, break the loop
-	// 		break
-	// 	}
-	// }
+			// found the target, break the loop
+			break
+		}
+	}
 
 	return nil
 }
