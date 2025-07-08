@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=1 go build -o /haloy-manager ./cmd/manager
+RUN CGO_ENABLED=0 go build -o /haloy-manager ./cmd/manager
 
 # Use a small image for the final container
 FROM alpine:3.21

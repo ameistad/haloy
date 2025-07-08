@@ -6,8 +6,13 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+
+	// _ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
+
+const driverName = "sqlite"
+const dbName = "haloy.db"
 
 type DB struct {
 	*sqlx.DB
@@ -19,8 +24,8 @@ func New() (*DB, error) {
 		return nil, fmt.Errorf("failed to get data dir: %w", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "haloy.db")
-	database, err := sqlx.Connect("sqlite3", dbPath)
+	dbPath := filepath.Join(dataDir, dbName)
+	database, err := sqlx.Connect(driverName, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
