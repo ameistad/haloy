@@ -1,0 +1,73 @@
+package api
+
+import (
+	"context"
+	"log"
+	"net/http"
+
+	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/logging"
+)
+
+// DeployRequest is the expected JSON body for a POST /v1/deploy request.
+type DeployRequest struct {
+	AppConfig config.AppConfig `json:"app"`
+}
+
+// DeployResponse is the JSON response after starting a deployment.
+type DeployResponse struct {
+	DeploymentID string `json:"deploymentId"`
+	Message      string `json:"message"`
+}
+
+// handleDeploy returns an http.HandlerFunc for deploying an app.
+func (s *APIServer) handleDeploy() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		deploymentID := deploy.CreateDeploymentID()
+
+		// Create deployment-specific logger using the factory
+		deploymentLogger := logging.NewDeploymentLogger(deploymentID, s.logLevel, s.logBroker)
+		var req DeployRequest
+
+		// Decode and validate the JSON request from the user
+		if err := decodeJSON(r.Body, &req); err != nil {
+			// If decoding fails, send a 400 Bad Request response.
+			// http.Error is a simple way to send a plain text error.
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Start deployment in background
+		go func() {
+			ctx := r.Context()
+			ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
+			defer cancel()
+
+			deploymentLogger.Info("Starting deployment", "app", req.AppConfig.Name)
+
+			cli, err := docker.NewClient(ctx)
+			if err != nil {
+				deploymentLogger.Error("Failed to create Docker client", "error", err)
+				return
+			}
+			defer cli.Close()
+
+			if err := deploy.DeployApp(ctx, cli, deploymentID, req.AppConfig, deploymentLogger); err != nil {
+				deploymentLogger.Error("Deployment failed", "app", req.AppConfig.Name, "error", err)
+				return
+			}
+			deploymentLogger.Info("Container deployment initiated", "app", req.AppConfig.Name)
+		}()
+
+		response := DeployResponse{
+			DeploymentID: deploymentID,
+			Message:      "Deployment initiated successfully.",
+		}
+
+		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
+			log.Printf("Error writing JSON response: %v", err)
+		}
+	}
+}

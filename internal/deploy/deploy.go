@@ -20,8 +20,13 @@ func CreateDeploymentID() string {
 }
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
-
 	// TODO: check that haproxy and haloy-manager are running
+
+	// Normalize and validate the app configuration first
+	normalizedAppConfig := appConfig.Normalize()
+	if err := normalizedAppConfig.Validate(); err != nil {
+		return fmt.Errorf("app config validation failed: %w", err)
+	}
 
 	imageRef := appConfig.Image.ImageRef()
 	newImageTag, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)

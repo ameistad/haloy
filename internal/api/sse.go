@@ -11,7 +11,7 @@ import (
 // handleDeploymentLogs handles SSE connections for deployment logs
 func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		deploymentID := r.PathValue("deploymentId")
+		deploymentID := r.PathValue("deploymentID")
 		if deploymentID == "" {
 			http.Error(w, "deployment ID is required", http.StatusBadRequest)
 			return

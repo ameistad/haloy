@@ -13,7 +13,7 @@ const (
 	ManagerContainerName     = "haloy-manager"
 	HAProxyContainerName     = "haloy-haproxy"
 	DockerNetwork            = "haloy-public"
-	DefaultDeploymentsToKeep = 5
+	DefaultDeploymentsToKeep = 6
 	DefaultHealthCheckPath   = "/"
 	DefaultContainerPort     = "80"
 	DefaultReplicas          = 1

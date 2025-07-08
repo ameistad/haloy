@@ -22,6 +22,7 @@ type RollbackTarget struct {
 	AppConfig    *config.AppConfig
 }
 
+// RollbackApp is basically a wrapper around DeployApp that allows rolling back to a previous deployment.
 func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID, newDeploymentID string, logger *slog.Logger) error {
 	targets, err := GetRollbackTargets(ctx, cli, appName)
 	if err != nil {
@@ -49,7 +50,7 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 	return nil
 }
 
-// getRollbackTargets retrieves and sorts all available rollback targets for the specified app.
+// GetRollbackTargets retrieves and sorts all available rollback targets for the specified app.
 func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string) (targets []RollbackTarget, err error) {
 	if appName == "" {
 		return targets, fmt.Errorf("app name cannot be empty")
