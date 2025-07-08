@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ameistad/haloy/internal/api"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
@@ -22,9 +23,7 @@ type APIClient struct {
 	apiToken string
 }
 
-// NewAPIClient creates a new API client for the given server URL
 func NewAPIClient(serverURL string) *APIClient {
-	// Load API token from environment
 	token, err := config.LoadAPIToken()
 	if err != nil {
 		ui.Error("Failed to load API token: %v", err)
@@ -40,15 +39,13 @@ func NewAPIClient(serverURL string) *APIClient {
 	}
 }
 
-// setAuthHeader sets the Authorization header if we have a token
 func (c *APIClient) setAuthHeader(req *http.Request) {
 	if c.apiToken != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiToken)
 	}
 }
 
-// IsServerAvailable checks if the server is reachable
-func (c *APIClient) IsServerAvailable(ctx context.Context) error {
+func (c *APIClient) healthCheck(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/health", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create health check request: %w", err)
@@ -68,76 +65,111 @@ func (c *APIClient) IsServerAvailable(ctx context.Context) error {
 	return nil
 }
 
-type APIRequest struct {
-	AppConfig *config.AppConfig `json:"app,omitempty"`
-}
-
-type APIResponse struct {
-	DeploymentID string `json:"deploymentId,omitempty"`
-	Message      string `json:"message"`
-	Status       string `json:"status,omitempty"`
-}
-
-// ExecuteCommand sends a command to the API
-func (c *APIClient) ExecuteCommand(ctx context.Context, command string, request APIRequest) (*APIResponse, error) {
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+func (c *APIClient) Get(ctx context.Context, path string, v any) error {
+	if err := c.healthCheck(ctx); err != nil {
+		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}
 
-	// Debug: Log the request being sent
-	ui.Debug("Sending request to %s: %s", command, string(jsonData))
-
-	url := fmt.Sprintf("%s/v1/%s", c.baseURL, command)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create GET request: %w", err)
 	}
-
-	req.Header.Set("Content-Type", "application/json")
 	c.setAuthHeader(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
+			return fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
 		}
-		return nil, fmt.Errorf("%s request failed with status %d", command, resp.StatusCode)
+		return fmt.Errorf("GET request failed with status %d", resp.StatusCode)
 	}
 
-	var apiResp APIResponse
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &apiResp, nil
+	return nil
 }
 
-// Convenience methods for specific commands
-func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*APIResponse, error) {
-	request := APIRequest{
-		AppConfig: &appConfig,
+// ExecuteCommand sends a command to the API
+func (c *APIClient) Post(ctx context.Context, path string, request, response interface{}) error {
+
+	if err := c.healthCheck(ctx); err != nil {
+		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}
-	return c.ExecuteCommand(ctx, "deploy", request)
+
+	var jsonData []byte
+	var err error
+
+	// Handle nil request for endpoints that don't need request body
+	if request != nil {
+		jsonData, err = json.Marshal(request)
+		if err != nil {
+			return fmt.Errorf("failed to marshal request: %w", err)
+		}
+	}
+
+	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Only set Content-Type if we have a request body
+	if request != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	c.setAuthHeader(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
+		}
+		return fmt.Errorf("POST request failed with status %d", resp.StatusCode)
+	}
+
+	if response != nil {
+		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+			return fmt.Errorf("failed to decode response: %w", err)
+		}
+	}
+
+	return nil
 }
 
-func (c *APIClient) Rollback(ctx context.Context, appConfig config.AppConfig) (*APIResponse, error) {
-	request := APIRequest{
-		AppConfig: &appConfig,
-	}
-	return c.ExecuteCommand(ctx, "rollback", request)
+func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*api.DeployResponse, error) {
+	request := api.DeployRequest{AppConfig: appConfig}
+	var response api.DeployResponse
+	err := c.Post(ctx, "deploy", request, &response)
+	return &response, err
 }
-
-func (c *APIClient) Status(ctx context.Context, appConfig config.AppConfig) (*APIResponse, error) {
-	request := APIRequest{
-		AppConfig: &appConfig,
+func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*api.RollbackTargetsResponse, error) {
+	path := fmt.Sprintf("rollback/%s", appName)
+	var response api.RollbackTargetsResponse
+	if err := c.Get(ctx, path, &response); err != nil {
+		return nil, err
 	}
-	return c.ExecuteCommand(ctx, "status", request)
+	return &response, nil
+}
+func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID string) (*api.RollbackResponse, error) {
+	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
+	var response api.RollbackResponse
+	if err := c.Post(ctx, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
 }
 
 // LogStreamer handles streaming logs from the haloy API for any command

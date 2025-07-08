@@ -10,6 +10,6 @@ func (s *APIServer) setupRoutes() {
 
 	// Rollback routes
 	s.router.Handle("GET /v1/rollback/{appName}", authMiddleware(s.handleRollbackTargets()))
-	s.router.Handle("POST /v1/rollback/{appName}/{deploymentID}", authMiddleware(s.handleRollback()))
+	s.router.Handle("POST /v1/rollback/{appName}/{targetDeploymentID}", authMiddleware(s.handleRollback()))
 	// s.router.Handle("GET /v1/status/{appName}", authMiddleware(s.handleStatus()))
 }

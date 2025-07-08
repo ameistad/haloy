@@ -10,11 +10,6 @@ import (
 	"github.com/ameistad/haloy/internal/logging"
 )
 
-type RollbackResponse struct {
-	DeploymentID string `json:"deploymentId"`
-	Message      string `json:"message"`
-}
-
 func (s *APIServer) handleRollback() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appName := r.PathValue("appName")
@@ -22,7 +17,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			http.Error(w, "App name is required", http.StatusBadRequest)
 			return
 		}
-		targetDeploymentID := r.PathValue("deploymentID")
+		targetDeploymentID := r.PathValue("targetDeploymentID")
 		if targetDeploymentID == "" {
 			http.Error(w, "Target deployment ID is required", http.StatusBadRequest)
 			return
@@ -59,10 +54,6 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 		}
 	}
 
-}
-
-type RollbackTargetsResponse struct {
-	Targets []deploy.RollbackTarget `json:"targets"`
 }
 
 func (s *APIServer) handleRollbackTargets() http.HandlerFunc {

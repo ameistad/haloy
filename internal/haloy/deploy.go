@@ -2,6 +2,7 @@ package haloy
 
 import (
 	"context"
+	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
@@ -34,7 +35,6 @@ If no path is provided, the current directory is used.`,
 				configPath = "."
 			}
 
-			// Load and validate the config
 			ui.Info("📁 Loading configuration from: %s", configPath)
 			appConfig, err := config.LoadAndValidateAppConfig(configPath)
 			if err != nil {
@@ -42,19 +42,35 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			ui.Success("Configuration loaded successfully for app: %s", appConfig.Name)
-
 			ui.Info("🌐 Using server: %s", appConfig.Server)
-
-			// Create command executor and execute deploy
-			executor := NewCommandExecutor(appConfig.Server)
-
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
-			if err := executor.ExecuteCommandWithLogs(ctx, "deploy", appConfig, !noLogs); err != nil {
-				// Error already logged by executor
+			apiClient := NewAPIClient(appConfig.Server)
+			logStreamer := NewLogStreamer(appConfig.Server)
+			resp, err := apiClient.Deploy(ctx, appConfig)
+			if err != nil {
+				ui.Error("Deployment request failed: %v", err)
 				return
+			}
+			if resp == nil {
+				ui.Error("No response from server")
+				return
+			}
+
+			if resp.Message != "" {
+				ui.Info("%s", resp.Message)
+			}
+
+			// Wait before connecting to log stream.
+			time.Sleep(1 * time.Second)
+
+			logCtx, logCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer logCancel()
+
+			if err := logStreamer.StreamLogs(logCtx, "deploy", resp.DeploymentID); err != nil {
+				ui.Warn("Failed to stream logs from API: %v", err)
+				ui.Info("You can check operation status manually")
 			}
 		},
 	}

@@ -7,13 +7,6 @@ import (
 	"github.com/ameistad/haloy/internal/version"
 )
 
-// HealthResponse represents the health check response
-type HealthResponse struct {
-	Status  string `json:"status"`
-	Version string `json:"version,omitempty"`
-	Service string `json:"service"`
-}
-
 // handleHealth returns a simple health check endpoint
 func (s *APIServer) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

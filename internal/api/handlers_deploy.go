@@ -5,22 +5,10 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
 )
-
-// DeployRequest is the expected JSON body for a POST /v1/deploy request.
-type DeployRequest struct {
-	AppConfig config.AppConfig `json:"app"`
-}
-
-// DeployResponse is the JSON response after starting a deployment.
-type DeployResponse struct {
-	DeploymentID string `json:"deploymentId"`
-	Message      string `json:"message"`
-}
 
 // handleDeploy returns an http.HandlerFunc for deploying an app.
 func (s *APIServer) handleDeploy() http.HandlerFunc {
