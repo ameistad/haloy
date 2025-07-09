@@ -27,7 +27,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 
 		// Start rollback in background
 		go func() {
-			ctx := r.Context()
+			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
 			defer cancel()
 

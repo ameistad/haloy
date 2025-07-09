@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/ui"
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
@@ -19,11 +20,8 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		image = "haloy-manager:latest" // Use local image in dev mode
 	}
 
-	// Get current user ID and group ID
 	uid := os.Getuid()
 	gid := os.Getgid()
-
-	// Get Docker group ID - try to detect it dynamically
 	dockerGID := getDockerGroupID()
 
 	cmd := exec.CommandContext(ctx, "docker", "run",
@@ -152,11 +150,13 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 	// If restart flag is set, stop existing containers
 	if restart {
 		if managerExists {
+			ui.Info("Manager is already running. Restarting...")
 			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
 				return fmt.Errorf("failed to stop existing haloy-manager: %w", err)
 			}
 		}
 		if haproxyExists {
+			ui.Info("HAProxy is already running. Restarting...")
 			if err := stopContainer(ctx, config.HAProxyLabelRole); err != nil {
 				return fmt.Errorf("failed to stop existing haloy-haproxy: %w", err)
 			}
