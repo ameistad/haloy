@@ -23,6 +23,7 @@ const (
 	HaloyConfigPath         = "/haloy-config"
 	HAProxyConfigPath       = "/haproxy-config"
 	CertificatesStoragePath = "/cert-storage"
+	DBPath                  = "/db"
 
 	CertificatesHTTPProviderPort = "8080"
 	APIServerPort                = "9999"

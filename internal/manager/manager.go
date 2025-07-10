@@ -14,6 +14,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/api"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
@@ -58,6 +59,20 @@ func RunManager(dryRun bool) {
 
 	if dryRun {
 		logger.Info("Dry-run mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains. This run is for testing and validation only.")
+	}
+
+	// Initialize database first thing in manager
+	logger.Info("Initializing database.")
+	database, err := db.New()
+	if err != nil {
+		logger.Error("Failed to initialize database", "error", err)
+		return
+	}
+	defer database.Close()
+
+	if err := database.Migrate(); err != nil {
+		logger.Error("Failed to run database migrations", "error", err)
+		return
 	}
 
 	// Initialize Docker client

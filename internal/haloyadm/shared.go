@@ -33,6 +33,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--volume", fmt.Sprintf("%s:%s:ro", configDir, config.HaloyConfigPath), // config directory
 		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.HAProxyConfigPath, config.HAProxyConfigPath), // haproxy config directory,
 		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.CertificatesStoragePath, config.CertificatesStoragePath), // cert storage directory
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.DBPath, config.DBPath), // database directory
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		"--user", fmt.Sprintf("%d:%d", uid, gid), // Run as current user
 		"--group-add", dockerGID,
