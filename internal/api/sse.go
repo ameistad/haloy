@@ -25,24 +25,13 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 		// Subscribe to logs for this deployment ID
 		// Don't pass request context - use background context with manual cleanup
 		logChan := s.logBroker.Subscribe(deploymentID)
-		defer s.logBroker.Unsubscribe(deploymentID) // Manual cleanup
+		defer s.logBroker.Unsubscribe(deploymentID)
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "streaming not supported", http.StatusInternalServerError)
 			return
 		}
-
-		// Send initial connection message
-		// if err := writeSSEMessage(w, logging.LogEntry{
-		// 	Level:        "INFO",
-		// 	Message:      "Connected to deployment logs stream",
-		// 	Timestamp:    time.Now(),
-		// 	DeploymentID: deploymentID,
-		// }); err != nil {
-		// 	return
-		// }
-		// flusher.Flush()
 
 		// Handle incoming logs
 		ctx := r.Context()

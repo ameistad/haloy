@@ -17,7 +17,6 @@ type DeployRequest struct {
 
 type DeployResponse struct {
 	DeploymentID string `json:"deploymentId"`
-	Message      string `json:"message"`
 }
 
 type RollbackResponse struct {

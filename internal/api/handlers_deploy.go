@@ -33,8 +33,6 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
 			defer cancel()
 
-			deploymentLogger.Info("Starting deployment", "app", req.AppConfig.Name)
-
 			cli, err := docker.NewClient(ctx)
 			if err != nil {
 				deploymentLogger.Error("Failed to create Docker client", "error", err)
@@ -46,13 +44,9 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 				deploymentLogger.Error("Deployment failed", "app", req.AppConfig.Name, "error", err)
 				return
 			}
-			deploymentLogger.Info("Container deployment initiated", "app", req.AppConfig.Name)
 		}()
 
-		response := DeployResponse{
-			DeploymentID: deploymentID,
-			Message:      "Deployment initiated successfully.",
-		}
+		response := DeployResponse{DeploymentID: deploymentID}
 
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)

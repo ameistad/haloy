@@ -12,7 +12,7 @@ import (
 func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageTag string, deploymentsToKeep int) error {
 	database, err := db.New()
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
+		return err
 	}
 	defer database.Close()
 	appConfigJSON, err := json.Marshal(appConfig)

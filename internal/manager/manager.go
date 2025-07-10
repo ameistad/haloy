@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -76,8 +77,8 @@ func RunManager(dryRun bool) {
 	// Pass the log broker to the API server so they share the same streaming
 	apiServer := api.NewServer(apiToken, logBroker, logLevel)
 	go func() {
-		logger.Info("Starting API server on :9999...")
-		if err := apiServer.ListenAndServe(":9999"); err != nil && err != http.ErrServerClosed {
+		logger.Info(fmt.Sprintf("Starting API server on :%s...", config.APIServerPort))
+		if err := apiServer.ListenAndServe(fmt.Sprintf(":%s", config.APIServerPort)); err != nil && err != http.ErrServerClosed {
 			logging.LogFatal(logger, "API server failed", "error", err)
 		}
 	}()

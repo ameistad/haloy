@@ -87,6 +87,8 @@ func startHaproxy(ctx context.Context, dataDir string) error {
 		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy-certs:rw", dataDir, config.CertificatesStoragePath),
 		"--volume", fmt.Sprintf("%s/error-pages:/usr/local/etc/haproxy-errors:ro", dataDir),
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole),
+		// Running as root is necessary for privileged ports 80 and 443.
+		"--user", "root",
 		"--user", "root",
 		"--restart", "unless-stopped",
 		"--network", config.DockerNetwork,

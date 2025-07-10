@@ -35,14 +35,13 @@ If no path is provided, the current directory is used.`,
 				configPath = "."
 			}
 
-			ui.Info("📁 Loading configuration from: %s", configPath)
 			appConfig, err := config.LoadAndValidateAppConfig(configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
 
-			ui.Info("🌐 Using server: %s", appConfig.Server)
+			ui.Info("Deploying application: %s using server %s", appConfig.Name, appConfig.Server)
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
@@ -57,13 +56,6 @@ If no path is provided, the current directory is used.`,
 				ui.Error("No response from server")
 				return
 			}
-
-			if resp.Message != "" {
-				ui.Info("%s", resp.Message)
-			}
-
-			// Wait before connecting to log stream.
-			time.Sleep(1 * time.Second)
 
 			logCtx, logCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer logCancel()

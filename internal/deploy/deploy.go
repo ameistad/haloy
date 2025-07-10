@@ -20,9 +20,6 @@ func CreateDeploymentID() string {
 }
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
-	// TODO: check that haproxy and haloy-manager are running
-
-	// Normalize and validate the app configuration first
 	normalizedAppConfig := appConfig.Normalize()
 	if err := normalizedAppConfig.Validate(); err != nil {
 		return fmt.Errorf("app config validation failed: %w", err)
@@ -33,8 +30,6 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	if err != nil {
 		return fmt.Errorf("failed to tag image: %w", err)
 	}
-
-	logger.Info("Starting deployment", "app", appConfig.Name, "deploymentID", deploymentID, "image", newImageTag)
 
 	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageTag, appConfig)
 	if err != nil {
@@ -53,7 +48,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 		return fmt.Errorf("failed to run new container: no containers started")
 	}
 
-	logger.Info("Containers started successfully", "count", len(runResult), "deploymentID", deploymentID)
+	logger.Info("Container(s) started successfully", "count", len(runResult), "deploymentID", deploymentID)
 
 	// Write the app configuration to the history folder.
 	if err := writeAppConfigHistory(appConfig, deploymentID, newImageTag, *appConfig.DeploymentsToKeep); err != nil {

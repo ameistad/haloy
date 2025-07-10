@@ -24,38 +24,49 @@ type StreamPublisher interface {
 	Publish(deploymentID string, entry LogEntry)
 	Subscribe(deploymentID string) <-chan LogEntry
 	Unsubscribe(deploymentID string)
-	Close()
 }
 
 // LogBroker manages log streams for different deployment IDs
 type LogBroker struct {
-	streams map[string][]chan LogEntry
-	mutex   sync.RWMutex
-	closed  bool
+	streams   map[string]chan LogEntry // One channel per deployment ID
+	logBuffer map[string][]LogEntry    // Create a buffer so subscribers can get historical logs
+	maxBuffer int                      // Maximum buffered logs per deployment
+	mutex     sync.RWMutex
+	closed    bool
 }
 
 // NewLogBroker creates a new log broker
 func NewLogBroker() StreamPublisher {
 	return &LogBroker{
-		streams: make(map[string][]chan LogEntry),
+		streams:   make(map[string]chan LogEntry),
+		logBuffer: make(map[string][]LogEntry),
+		maxBuffer: 100,
 	}
 }
 
 // Publish sends a log entry to all subscribers of a deployment ID
 func (lb *LogBroker) Publish(deploymentID string, entry LogEntry) {
-	lb.mutex.RLock()
-	defer lb.mutex.RUnlock()
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
 
 	if lb.closed {
 		return
 	}
 
-	channels := lb.streams[deploymentID]
-	for _, ch := range channels {
+	// Add to buffer
+	buffer := lb.logBuffer[deploymentID]
+	buffer = append(buffer, entry)
+	if len(buffer) > lb.maxBuffer {
+		buffer = buffer[len(buffer)-lb.maxBuffer:]
+	}
+	lb.logBuffer[deploymentID] = buffer
+
+	// Send to subscriber if exists
+	if ch, exists := lb.streams[deploymentID]; exists {
 		select {
 		case ch <- entry:
 		default:
-			// Skip if channel is full to prevent blocking
+			// Channel full, could close slow subscriber
 		}
 	}
 }
@@ -65,41 +76,56 @@ func (lb *LogBroker) Subscribe(deploymentID string) <-chan LogEntry {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
 
-	ch := make(chan LogEntry, 100)
-
 	if lb.closed {
+		ch := make(chan LogEntry)
 		close(ch)
 		return ch
 	}
 
-	lb.streams[deploymentID] = append(lb.streams[deploymentID], ch)
+	// Check if already subscribed
+	if existingCh, exists := lb.streams[deploymentID]; exists {
+		return existingCh
+	}
+
+	// Create new subscription
+	ch := make(chan LogEntry, 100)
+
+	// Copy buffered logs
+	var bufferCopy []LogEntry
+	if buffer, exists := lb.logBuffer[deploymentID]; exists && len(buffer) > 0 {
+		bufferCopy = make([]LogEntry, len(buffer))
+		copy(bufferCopy, buffer)
+	}
+
+	// Store the channel
+	lb.streams[deploymentID] = ch
+
+	// Send buffered logs
+	if len(bufferCopy) > 0 {
+		go func() {
+			for _, entry := range bufferCopy {
+				select {
+				case ch <- entry:
+				case <-time.After(2 * time.Second):
+					return
+				}
+			}
+		}()
+	}
+
 	return ch
 }
 
+// Removes all subscribers for a deployment ID and closes their channels.
 func (lb *LogBroker) Unsubscribe(deploymentID string) {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
 
-	if channels, exists := lb.streams[deploymentID]; exists {
-		for _, ch := range channels {
-			close(ch)
-		}
+	if ch, exists := lb.streams[deploymentID]; exists {
+		close(ch)
 		delete(lb.streams, deploymentID)
 	}
-}
-
-// Close shuts down the broker and closes all streams
-func (lb *LogBroker) Close() {
-	lb.mutex.Lock()
-	defer lb.mutex.Unlock()
-
-	lb.closed = true
-	for deploymentID, channels := range lb.streams {
-		for _, ch := range channels {
-			close(ch)
-		}
-		delete(lb.streams, deploymentID)
-	}
+	delete(lb.logBuffer, deploymentID)
 }
 
 // StreamHandler wraps another slog.Handler and publishes logs to streams
@@ -137,7 +163,7 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 		case "success":
 			isSuccess = attr.Value.Bool()
 		case "error":
-			if err, ok := attr.Value.Any().(error); ok {
+			if err, ok := attr.Value.Any().(error); ok && err != nil {
 				fields[attr.Key] = err.Error()
 			} else {
 				fields[attr.Key] = attr.Value.String()
