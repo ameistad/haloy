@@ -16,6 +16,8 @@ type LogEntry struct {
 	IsComplete   bool           `json:"complete,omitempty"`
 	IsFailed     bool           `json:"failed,omitempty"`
 	IsSuccess    bool           `json:"success,omitempty"`
+	AppName      string         `json:"appName,omitempty"`
+	Domains      []string       `json:"domains,omitempty"`
 	Fields       map[string]any `json:"fields,omitempty"`
 }
 
@@ -147,8 +149,9 @@ func NewStreamHandler(publisher StreamPublisher, next slog.Handler) slog.Handler
 // Handle processes log records and publishes them to streams
 func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	// Extract deployment ID and other fields
-	var deploymentID string
+	var deploymentID, appName string
 	var isComplete, isFailed, isSuccess bool
+	var domains []string
 	fields := make(map[string]any)
 
 	// Process persistent attributes from With() calls
@@ -162,6 +165,12 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			isFailed = attr.Value.Bool()
 		case "success":
 			isSuccess = attr.Value.Bool()
+		case "appName":
+			appName = attr.Value.String()
+		case "domains":
+			if arr, ok := attr.Value.Any().([]string); ok {
+				domains = arr
+			}
 		case "error":
 			if err, ok := attr.Value.Any().(error); ok && err != nil {
 				fields[attr.Key] = err.Error()
@@ -184,6 +193,12 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			isFailed = a.Value.Bool()
 		case "success":
 			isSuccess = a.Value.Bool()
+		case "appName":
+			appName = a.Value.String()
+		case "domains":
+			if arr, ok := a.Value.Any().([]string); ok {
+				domains = arr
+			}
 		case "error":
 			if err, ok := a.Value.Any().(error); ok {
 				fields[a.Key] = err.Error()
@@ -206,6 +221,8 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			IsComplete:   isComplete,
 			IsFailed:     isFailed,
 			IsSuccess:    isSuccess,
+			AppName:      appName,
+			Domains:      domains,
 			Fields:       fields,
 		}
 		sh.publisher.Publish(deploymentID, entry)

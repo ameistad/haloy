@@ -266,9 +266,8 @@ func (s *LogStreamer) StreamLogs(ctx context.Context, command, deploymentID stri
 
 // displayLogEntry formats and displays a log entry using the UI package
 func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
-	timestamp := entry.Timestamp.Format("15:04:05")
-
 	message := entry.Message
+
 	// Handle the error field specially for multi-line errors
 	if len(entry.Fields) > 0 {
 		if errorValue, hasError := entry.Fields["error"]; hasError {
@@ -281,7 +280,7 @@ func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
 				// For multi-line errors, display them after the main message
 				switch strings.ToUpper(entry.Level) {
 				case "ERROR":
-					ui.Error("[%s] %s", timestamp, message)
+					ui.Error("%s", message)
 					// Display the detailed error with proper indentation
 					for _, line := range strings.Split(errorStr, "\n") {
 						if strings.TrimSpace(line) != "" {
@@ -289,14 +288,14 @@ func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
 						}
 					}
 				case "WARN":
-					ui.Warn("[%s] %s", timestamp, message)
+					ui.Warn("%s", message)
 					for _, line := range strings.Split(errorStr, "\n") {
 						if strings.TrimSpace(line) != "" {
 							ui.Warn("    %s", line)
 						}
 					}
 				default:
-					ui.Info("[%s] %s", timestamp, message)
+					ui.Info("%s", message)
 					for _, line := range strings.Split(errorStr, "\n") {
 						if strings.TrimSpace(line) != "" {
 							fmt.Printf("    %s\n", line)
@@ -312,18 +311,25 @@ func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
 	}
 	switch strings.ToUpper(entry.Level) {
 	case "ERROR":
-		ui.Error("[%s] %s", timestamp, message)
+		ui.Error("%s", message)
 	case "WARN":
-		ui.Warn("[%s] %s", timestamp, message)
+		ui.Warn("%s", message)
 	case "INFO":
 		if entry.IsSuccess {
-			ui.Success("[%s] %s", timestamp, message)
+			if len(entry.Domains) > 0 {
+				urls := make([]string, len(entry.Domains))
+				for i, domain := range entry.Domains {
+					urls[i] = fmt.Sprintf("https://%s", domain)
+				}
+				message = fmt.Sprintf("%s → %s", message, strings.Join(urls, ", "))
+			}
+			ui.Success("%s", message)
 		} else {
-			ui.Info("[%s] %s", timestamp, message)
+			ui.Info("%s", message)
 		}
 	case "DEBUG":
-		ui.Debug("[%s] %s", timestamp, message)
+		ui.Debug("%s", message)
 	default:
-		fmt.Printf("[%s] %s\n", timestamp, message)
+		fmt.Printf("%s", message)
 	}
 }

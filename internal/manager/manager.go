@@ -179,6 +179,7 @@ func RunManager(dryRun bool) {
 
 			updateAction := func() {
 				currentDeploymentID := latestDeploymentID[appName]
+				currentDomains := latestDomains[appName]
 				// Skip if we've already processed this deployment successfully
 				if lastProcessedDeployment[appName] == currentDeploymentID {
 					logger.Debug("Skipping already processed deployment",
@@ -198,7 +199,7 @@ func RunManager(dryRun bool) {
 
 				app := &TriggeredByApp{
 					appName:           appName,
-					domains:           latestDomains[appName],
+					domains:           currentDomains,
 					deploymentID:      currentDeploymentID,
 					dockerEventAction: latestEventAction[appName],
 				}
@@ -215,8 +216,12 @@ func RunManager(dryRun bool) {
 
 				if latestEventAction[appName] == events.ActionStart {
 					lastProcessedDeployment[appName] = currentDeploymentID
-					logging.LogDeploymentComplete(deploymentLogger, currentDeploymentID, appName,
-						"Successfully deployed app")
+					canonicalDomains := make([]string, len(currentDomains))
+					for i, domain := range currentDomains {
+						canonicalDomains[i] = domain.Canonical
+					}
+					logging.LogDeploymentComplete(deploymentLogger, canonicalDomains, currentDeploymentID, appName,
+						fmt.Sprintf("Successfully deployed %s", appName))
 				}
 			}
 

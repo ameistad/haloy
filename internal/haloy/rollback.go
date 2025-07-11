@@ -117,8 +117,6 @@ If no path is provided, the current directory is used.`,
 			defer cancel()
 
 			apiClient := NewAPIClient(appConfig.Server)
-
-			// Get rollback targets via API
 			targets, err := apiClient.RollbackTargets(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get rollback targets: %v", err)

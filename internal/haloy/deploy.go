@@ -41,7 +41,7 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			ui.Info("Deploying application: %s using server %s", appConfig.Name, appConfig.Server)
+			ui.Info("Starting deployment for application: %s using server %s", appConfig.Name, appConfig.Server)
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
