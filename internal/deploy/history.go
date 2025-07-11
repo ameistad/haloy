@@ -31,7 +31,9 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageTag st
 	}
 
 	// After writing, prune old deployment entries.
-	// List all history files ending with .yml in the history directory.
+	if err := database.PruneOldDeployments(appConfig.Name, deploymentsToKeep); err != nil {
+		return fmt.Errorf("failed to prune old deployments: %w", err)
+	}
 
 	return nil
 }

@@ -18,7 +18,7 @@ type RollbackTarget struct {
 	DeploymentID string
 	ImageID      string
 	ImageTag     string
-	IsLatest     bool
+	IsRunning    bool // The image is live
 	AppConfig    *config.AppConfig
 }
 
@@ -56,7 +56,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 		return targets, fmt.Errorf("app name cannot be empty")
 	}
 
-	// Get avaiable images for the app
+	// Get available images for the app
 	// List all images for the app that match the format appName:<deploymentID>.
 	images, err := cli.ImageList(ctx, image.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
@@ -64,11 +64,12 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 	if err != nil {
 		return targets, fmt.Errorf("failed to list images for %s: %w", appName, err)
 	}
-	var latestImageID string
+
+	runningDeploymentID, _ := getRunningDeploymentID(ctx, cli, appName)
+
 	for _, img := range images {
 		for _, tag := range img.RepoTags {
 			if strings.HasSuffix(tag, ":latest") {
-				latestImageID = img.ID
 				continue
 			}
 			// Expected tag format: "appName:deploymentID", e.g. "test-app:20250615214304"
@@ -78,13 +79,12 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 				continue
 			}
 			deploymentID := parts[1]
-			isLatest := img.ID == latestImageID
 			appConfig, _ := GetAppConfigHistory(deploymentID)
 			target := RollbackTarget{
 				DeploymentID: deploymentID,
 				ImageID:      img.ID,
 				ImageTag:     tag,
-				IsLatest:     isLatest,
+				IsRunning:    deploymentID == runningDeploymentID,
 				AppConfig:    appConfig,
 			}
 
@@ -100,7 +100,6 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 }
 
 func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName string) (string, error) {
-	// List all ContainerList for the app
 	ContainerList, err := docker.GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
 		return "", err
@@ -122,7 +121,7 @@ func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName str
 	}
 
 	sort.Slice(deploymentIDs, func(i, j int) bool {
-		return deploymentIDs[i] > deploymentIDs[j] // Newest first
+		return deploymentIDs[i] > deploymentIDs[j]
 	})
 
 	return deploymentIDs[0], nil

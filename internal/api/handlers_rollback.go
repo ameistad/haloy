@@ -45,10 +45,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			deploymentLogger.Info("Rollback initiated", "app", appName, "deploymentID", newDeploymentID)
 		}()
 
-		response := RollbackResponse{
-			DeploymentID: newDeploymentID,
-			Message:      "Rollback initiated successfully.",
-		}
+		response := RollbackResponse{DeploymentID: newDeploymentID}
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)
 		}

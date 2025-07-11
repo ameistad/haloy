@@ -21,7 +21,6 @@ type DeployResponse struct {
 
 type RollbackResponse struct {
 	DeploymentID string `json:"deploymentId"`
-	Message      string `json:"message"`
 }
 
 type RollbackTargetsResponse struct {

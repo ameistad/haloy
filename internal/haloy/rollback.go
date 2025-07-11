@@ -53,7 +53,7 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 				return
 			}
 
-			ui.Info("🌐 Using server: %s", appConfig.Server)
+			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, appConfig.Server)
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
@@ -63,9 +63,6 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 				ui.Error("Rollback failed: %v", err)
 				return
 			}
-
-			ui.Success("🔄 Rollback initiated: %s", resp.Message)
-			ui.Info("📋 New deployment ID: %s", resp.DeploymentID)
 
 			if !noLogs {
 				logStreamer := NewLogStreamer(appConfig.Server)
@@ -144,7 +141,7 @@ func displayRollbackTargets(appName string, targets []deploy.RollbackTarget, con
 	ui.Info("📋 Available rollback targets for '%s':", appName)
 	ui.Info("")
 
-	headers := []string{"DEPLOYMENT ID", "IMAGE TAG", "DATE"}
+	headers := []string{"DEPLOYMENT ID", "IMAGE TAG", "DATE", "STATUS"}
 	rows := make([][]string, 0, len(targets))
 
 	for _, target := range targets {
@@ -154,10 +151,16 @@ func displayRollbackTargets(appName string, targets []deploy.RollbackTarget, con
 			date = formattedDate
 		}
 
+		status := ""
+		if target.IsRunning {
+			status = "🟢 CURRENT"
+		}
+
 		rows = append(rows, []string{
 			target.DeploymentID,
 			target.ImageTag,
 			date,
+			status,
 		})
 	}
 

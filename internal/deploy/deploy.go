@@ -16,7 +16,6 @@ func CreateDeploymentID() string {
 	// Generate a unique deployment ID based on the current time.
 	// This format is YYYYMMDDHHMMSS, which is sortable and unique.
 	return time.Now().Format("20060102150405")
-
 }
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
