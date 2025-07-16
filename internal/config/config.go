@@ -6,28 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/spf13/viper"
-)
-
-const (
-	ManagerContainerName     = "haloy-manager"
-	HAProxyContainerName     = "haloy-haproxy"
-	DockerNetwork            = "haloy-public"
-	DefaultDeploymentsToKeep = 6
-	DefaultHealthCheckPath   = "/"
-	DefaultContainerPort     = "80"
-	DefaultReplicas          = 1
-	HAProxyConfigFileName    = "haproxy.cfg"
-
-	// Paths specific to the haloy manager which runs in a docker container. Important that they use consistent naming.
-	HaloyConfigPath         = "/haloy-config"
-	HAProxyConfigPath       = "/haproxy-config"
-	CertificatesStoragePath = "/cert-storage"
-	DBPath                  = "/db"
-
-	CertificatesHTTPProviderPort = "8080"
-	APIServerPort                = "9999"
-	DefaultAPIServerURL          = "http://localhost:9999" // Default URL for the haloy API server
 )
 
 type AppConfig struct {
@@ -48,25 +28,25 @@ type AppConfig struct {
 func (ac *AppConfig) Normalize() *AppConfig {
 	// Default DeploymentsToKeep to the default if not set.
 	if ac.DeploymentsToKeep == nil {
-		defaultMax := DefaultDeploymentsToKeep
+		defaultMax := constants.DefaultDeploymentsToKeep
 		ac.DeploymentsToKeep = &defaultMax
 	}
 
 	if ac.HealthCheckPath == "" {
-		ac.HealthCheckPath = DefaultHealthCheckPath
+		ac.HealthCheckPath = constants.DefaultHealthCheckPath
 	}
 
 	if ac.Port == "" {
-		ac.Port = DefaultContainerPort
+		ac.Port = constants.DefaultContainerPort
 	}
 
 	if ac.Replicas == nil {
-		defaultReplicas := DefaultReplicas
+		defaultReplicas := constants.DefaultReplicas
 		ac.Replicas = &defaultReplicas
 	}
 
 	if ac.Server == "" {
-		ac.Server = DefaultAPIServerURL
+		ac.Server = constants.DefaultAPIServerURL
 	}
 	return ac
 }

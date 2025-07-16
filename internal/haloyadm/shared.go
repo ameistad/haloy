@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/ui"
 )
 
@@ -27,19 +28,21 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
 		"--env-file", filepath.Join(configDir, ".env"),
-		"--name", config.ManagerContainerName,
-		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", config.CertificatesHTTPProviderPort, config.CertificatesHTTPProviderPort),
-		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", config.APIServerPort, config.APIServerPort),
-		"--volume", fmt.Sprintf("%s:%s:ro", configDir, config.HaloyConfigPath), // config directory
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.HAProxyConfigPath, config.HAProxyConfigPath), // haproxy config directory,
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.CertificatesStoragePath, config.CertificatesStoragePath), // cert storage directory
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, config.DBPath, config.DBPath), // database directory
+		"--name", constants.ManagerContainerName,
+		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.CertificatesHTTPProviderPort, constants.CertificatesHTTPProviderPort),
+		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.APIServerPort, constants.APIServerPort),
+		// mount the config dir read-only.
+		// /haloy-config in the container and defaults to ~/.config/haloy on the host machine
+		"--volume", fmt.Sprintf("%s:%s:ro", configDir, constants.HaloyConfigPath),
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.HAProxyConfigPath, constants.HAProxyConfigPath), // haproxy config directory,
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.CertificatesStoragePath, constants.CertificatesStoragePath), // cert storage directory
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.DBPath, constants.DBPath), // database directory
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		"--user", fmt.Sprintf("%d:%d", uid, gid), // Run as current user
 		"--group-add", dockerGID,
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
 		"--restart", "unless-stopped",
-		"--network", config.DockerNetwork,
+		"--network", constants.DockerNetwork,
 		image,
 	)
 
@@ -81,18 +84,18 @@ func getDockerGroupID() string {
 func startHaproxy(ctx context.Context, dataDir string) error {
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
-		"--name", config.HAProxyContainerName,
+		"--name", constants.HAProxyContainerName,
 		"--publish", "80:80",
 		"--publish", "443:443",
-		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy:ro", dataDir, config.HAProxyConfigPath),
-		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy-certs:rw", dataDir, config.CertificatesStoragePath),
+		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy:ro", dataDir, constants.HAProxyConfigPath),
+		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy-certs:rw", dataDir, constants.CertificatesStoragePath),
 		"--volume", fmt.Sprintf("%s/error-pages:/usr/local/etc/haproxy-errors:ro", dataDir),
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole),
 		// Running as root is necessary for privileged ports 80 and 443.
 		"--user", "root",
 		"--user", "root",
 		"--restart", "unless-stopped",
-		"--network", config.DockerNetwork,
+		"--network", constants.DockerNetwork,
 		"haproxy:3.1.5",
 	)
 
@@ -221,7 +224,7 @@ func stopContainer(ctx context.Context, role string) error {
 func ensureNetwork(ctx context.Context) error {
 	// List networks filtering by name
 	// The --format option outputs only the network names.
-	cmdList := exec.CommandContext(ctx, "docker", "network", "ls", "--filter", fmt.Sprintf("name=%s", config.DockerNetwork), "--format", "{{.Name}}")
+	cmdList := exec.CommandContext(ctx, "docker", "network", "ls", "--filter", fmt.Sprintf("name=%s", constants.DockerNetwork), "--format", "{{.Name}}")
 	var out bytes.Buffer
 	cmdList.Stdout = &out
 	if err := cmdList.Run(); err != nil {
@@ -232,7 +235,7 @@ func ensureNetwork(ctx context.Context) error {
 	networks := strings.Split(strings.TrimSpace(out.String()), "\n")
 	networkExists := false
 	for _, n := range networks {
-		if n == config.DockerNetwork {
+		if n == constants.DockerNetwork {
 			networkExists = true
 			break
 		}
@@ -248,7 +251,7 @@ func ensureNetwork(ctx context.Context) error {
 		"--driver", "bridge",
 		"--attachable",
 		"--label", "created-by=haloy",
-		config.DockerNetwork,
+		constants.DockerNetwork,
 	)
 	if output, err := cmdCreate.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to create Docker network: %w - output: %s", err, output)

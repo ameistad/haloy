@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/jmoiron/sqlx"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -18,7 +18,7 @@ type DB struct {
 }
 
 func New() (*DB, error) {
-	dbPath := filepath.Join(config.DBPath, dbName)
+	dbPath := filepath.Join(constants.DBPath, dbName)
 	database, err := sqlx.Connect(driverName, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

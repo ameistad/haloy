@@ -14,6 +14,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/api"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
@@ -54,7 +55,7 @@ func RunManager(dryRun bool) {
 
 	logger.Info("Haloy manager started",
 		"version", version.Version,
-		"network", config.DockerNetwork,
+		"network", constants.DockerNetwork,
 		"dryRun", dryRun)
 
 	if dryRun {
@@ -92,8 +93,8 @@ func RunManager(dryRun bool) {
 	// Pass the log broker to the API server so they share the same streaming
 	apiServer := api.NewServer(apiToken, logBroker, logLevel)
 	go func() {
-		logger.Info(fmt.Sprintf("Starting API server on :%s...", config.APIServerPort))
-		if err := apiServer.ListenAndServe(fmt.Sprintf(":%s", config.APIServerPort)); err != nil && err != http.ErrServerClosed {
+		logger.Info(fmt.Sprintf("Starting API server on :%s...", constants.APIServerPort))
+		if err := apiServer.ListenAndServe(fmt.Sprintf(":%s", constants.APIServerPort)); err != nil && err != http.ErrServerClosed {
 			logging.LogFatal(logger, "API server failed", "error", err)
 		}
 	}()
@@ -114,8 +115,8 @@ func RunManager(dryRun bool) {
 
 	// Create and start the certifications manager
 	certManagerConfig := CertificatesManagerConfig{
-		CertDir:          config.CertificatesStoragePath,
-		HTTPProviderPort: config.CertificatesHTTPProviderPort,
+		CertDir:          constants.CertificatesStoragePath,
+		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
 		TlsStaging:       dryRun,
 	}
 	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
@@ -124,7 +125,7 @@ func RunManager(dryRun bool) {
 	}
 
 	// Create the HAProxy manager
-	haproxyManager := NewHAProxyManager(cli, config.HAProxyConfigPath, dryRun)
+	haproxyManager := NewHAProxyManager(cli, constants.HAProxyConfigPath, dryRun)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
@@ -364,7 +365,7 @@ func IsAppContainer(container container.InspectResponse) bool {
 		return false
 	}
 
-	isOnNetwork := isOnNetworkCheck(container, config.DockerNetwork)
+	isOnNetwork := isOnNetworkCheck(container, constants.DockerNetwork)
 	return isOnNetwork
 }
 

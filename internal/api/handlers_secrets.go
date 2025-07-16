@@ -10,7 +10,7 @@ import (
 	"github.com/ameistad/haloy/internal/logging"
 )
 
-func (s *APIServer) handleRollback() http.HandlerFunc {
+func (s *APIServer) handleSecretsList() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		appName := r.PathValue("appName")
 		if appName == "" {
@@ -49,38 +49,5 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)
 		}
-	}
-}
-
-func (s *APIServer) handleRollbackTargets() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		appName := r.PathValue("appName")
-		if appName == "" {
-			http.Error(w, "App name is required", http.StatusBadRequest)
-			return
-		}
-
-		ctx := r.Context()
-		ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
-		defer cancel()
-
-		cli, err := docker.NewClient(ctx)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer cli.Close()
-
-		targets, err := deploy.GetRollbackTargets(ctx, cli, appName)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		response := RollbackTargetsResponse{
-			Targets: targets,
-		}
-
-		writeJSON(w, http.StatusOK, response)
 	}
 }

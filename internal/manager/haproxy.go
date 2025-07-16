@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/docker/docker/api/types/container"
@@ -57,7 +58,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, logger *slog.Logger,
 	}
 
 	// Write Config File
-	configPath := filepath.Join(hpm.configDir, config.HAProxyConfigFileName)
+	configPath := filepath.Join(hpm.configDir, constants.HAProxyConfigFileName)
 	logger.Info("HAProxyManager: Writing config")
 	if err := os.WriteFile(configPath, configBuf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("HAProxyManager: failed to write config file %s: %w", configPath, err)
@@ -148,7 +149,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 		}
 	}
 
-	data, err := embed.TemplatesFS.ReadFile(fmt.Sprintf("templates/%s", config.HAProxyConfigFileName))
+	data, err := embed.TemplatesFS.ReadFile(fmt.Sprintf("templates/%s", constants.HAProxyConfigFileName))
 	if err != nil {
 		return buf, fmt.Errorf("failed to read embedded file: %w", err)
 	}

@@ -14,7 +14,9 @@ import (
 	"text/template"
 	"time"
 
+	"filippo.io/age"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -104,14 +106,21 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				return
 			}
 
-			if err := createEnvFile(apiToken, configDir); err != nil {
+			// Generate age identity
+			identity, err := age.GenerateX25519Identity()
+			if err != nil {
+				ui.Error("Failed to generate age identity: %v\n", err)
+				return
+			}
+
+			if err := createEnvFile(apiToken, identity.String(), configDir); err != nil {
 				ui.Error("Failed to create .env file: %v\n", err)
 				return
 			}
 
 			var emptyDirs = []string{
-				strings.TrimPrefix(config.DBPath, "/"),
-				strings.TrimPrefix(config.HAProxyConfigPath, "/"),
+				strings.TrimPrefix(constants.HAProxyConfigPath, "/"),
+				strings.TrimPrefix(constants.DBPath, "/"),
 			}
 			if err := copyDataFiles(dataDir, emptyDirs); err != nil {
 				ui.Error("Failed to create configuration files: %v\n", err)
@@ -122,7 +131,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 			if err := ensureNetwork(ctx); err != nil {
 				ui.Warn("Failed to ensure Docker network exists: %v\n", err)
 				ui.Warn("You can manually create it with:\n")
-				ui.Warn("docker network create --driver bridge %s", config.DockerNetwork)
+				ui.Warn("docker network create --driver bridge %s", constants.DockerNetwork)
 			}
 
 			// Start the haloy-manager container and haproxy container.
@@ -215,7 +224,7 @@ func copyConfigTemplateFiles() error {
 		Backends:                "",
 	}
 
-	haproxyConfigFile, err := renderTemplate(fmt.Sprintf("templates/%s", config.HAProxyConfigFileName), haproxyConfigTemplateData)
+	haproxyConfigFile, err := renderTemplate(fmt.Sprintf("templates/%s", constants.HAProxyConfigFileName), haproxyConfigTemplateData)
 	if err != nil {
 		return fmt.Errorf("failed to build HAProxy template: %w", err)
 	}
@@ -260,8 +269,14 @@ func generateAPIToken() (string, error) {
 }
 
 // createEnvFile creates a .env file with the API token in the data directory
-func createEnvFile(apiToken, dataDir string) error {
-	envContent := fmt.Sprintf("# Haloy API Token - Keep this secure!\nHALOY_API_TOKEN=%s\n", apiToken)
+func createEnvFile(apiToken, encryptionKey, dataDir string) error {
+	envContent := fmt.Sprintf(`# Haloy Configuration
+# API token for haloy-manager authentication
+HALOY_API_TOKEN=%s
+
+# Encryption key for secrets (age X25519 private key)
+HALOY_ENCRYPTION_KEY=%s
+`, apiToken, encryptionKey)
 	envPath := filepath.Join(dataDir, ".env")
 
 	// Create .env file with strict permissions (owner read/write only)

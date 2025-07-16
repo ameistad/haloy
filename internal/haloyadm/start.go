@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -42,7 +43,7 @@ func StartCmd() *cobra.Command {
 			if err := ensureNetwork(ctx); err != nil {
 				ui.Error("Failed to ensure Docker network exists: %v", err)
 				ui.Info("You can manually create it with:")
-				ui.Info("docker network create --driver bridge --attachable %s", config.DockerNetwork)
+				ui.Info("docker network create --driver bridge --attachable %s", constants.DockerNetwork)
 				return
 			}
 

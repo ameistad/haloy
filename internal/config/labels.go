@@ -6,6 +6,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/fatih/color"
 )
@@ -54,14 +55,14 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 	if v, ok := labels[LabelPort]; ok {
 		cl.Port = v
 	} else {
-		cl.Port = DefaultContainerPort
+		cl.Port = constants.DefaultContainerPort
 	}
 
 	// Set HealthCheckPath with default value.
 	if v, ok := labels[LabelHealthCheckPath]; ok {
 		cl.HealthCheckPath = v
 	} else {
-		cl.HealthCheckPath = DefaultHealthCheckPath
+		cl.HealthCheckPath = constants.DefaultHealthCheckPath
 	}
 
 	// Parse domains

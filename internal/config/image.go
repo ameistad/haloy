@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/docker/docker/api/types/registry"
 )
 
@@ -75,24 +76,11 @@ func resolveRegistryAuthSource(ras RegistryAuthSource) (string, error) {
 	case "env":
 		return os.Getenv(ras.Value), nil
 	case "secret":
-		secrets, err := LoadSecrets()
+		secretsManager, err := secrets.NewManager()
 		if err != nil {
-			return "", fmt.Errorf("failed to load secrets: %w", err)
+			return "", fmt.Errorf("failed to create secrets manager: %w", err)
 		}
-
-		identity, err := GetAgeIdentity()
-		if err != nil {
-			return "", fmt.Errorf("failed to get age identity: %w", err)
-		}
-		record, exists := secrets[ras.Value]
-		if !exists {
-			return "", fmt.Errorf("secret '%s' not found in secrets", ras.Value)
-		}
-
-		decrypted, err := DecryptSecret(record.Encrypted, identity)
-		if err != nil {
-			return "", fmt.Errorf("failed to decrypt secret '%s': %w", ras.Value, err)
-		}
+		decrypted, err := secretsManager.GetDecryptedValue(ras.Value)
 		return decrypted, nil
 	case "plain":
 		return ras.Value, nil

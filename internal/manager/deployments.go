@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/docker/docker/client"
@@ -84,7 +85,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.
 			continue
 		}
 
-		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
+		ip, err := docker.ContainerNetworkIP(container, constants.DockerNetwork)
 		if err != nil {
 			logger.Error("Error getting IP for container", "container_id", helpers.SafeIDPrefix(container.ID), "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
@@ -99,7 +100,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.
 		if labels.Port != "" {
 			port = labels.Port
 		} else {
-			port = config.DefaultContainerPort
+			port = constants.DefaultContainerPort
 		}
 
 		instance := DeploymentInstance{ContainerID: container.ID, IP: ip, Port: port}

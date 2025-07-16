@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -40,19 +42,33 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTa
 
 	// Process environment variables
 	var envVars []string
-	decryptedEnvVars, err := config.DecryptEnvVars(appConfig.Env)
-	if err != nil {
-		return result, fmt.Errorf("failed to decrypt environment variables: %w", err)
-	}
-	for _, v := range decryptedEnvVars {
-		value, err := v.GetValue()
-		if err != nil {
-			return result, fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
+	var secretEnvVars []config.EnvVar
+
+	for _, envVar := range appConfig.Env {
+		if envVar.SecretName != "" {
+			secretEnvVars = append(secretEnvVars, envVar)
+		} else {
+			envVars = append(envVars, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
 		}
-		envVars = append(envVars, fmt.Sprintf("%s=%s", v.Name, value))
 	}
 
-	networkMode := container.NetworkMode(config.DockerNetwork)
+	// Process secret environment variables
+	if len(secretEnvVars) > 0 {
+		secretsManager, err := secrets.NewManager()
+		if err != nil {
+			return result, fmt.Errorf("failed to create secrets manager: %w", err)
+		}
+
+		for _, secretEnvVar := range secretEnvVars {
+			decrypted, err := secretsManager.GetDecryptedValue(secretEnvVar.SecretName)
+			if err != nil {
+				return result, fmt.Errorf("failed to decrypt secret: %w", err)
+			}
+			envVars = append(envVars, fmt.Sprintf("%s=%s", secretEnvVar.Name, decrypted))
+		}
+	}
+
+	networkMode := container.NetworkMode(constants.DockerNetwork)
 	if appConfig.NetworkMode != "" {
 		networkMode = container.NetworkMode(appConfig.NetworkMode)
 	}
@@ -264,7 +280,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 		return fmt.Errorf("container %s has no health check path set", helpers.SafeIDPrefix(containerID))
 	}
 
-	targetIP, err := ContainerNetworkIP(containerInfo, config.DockerNetwork)
+	targetIP, err := ContainerNetworkIP(containerInfo, constants.DockerNetwork)
 	if err != nil {
 		return fmt.Errorf("failed to get container IP address: %w", err)
 	}

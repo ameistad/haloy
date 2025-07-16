@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ameistad/haloy/internal/constants"
 )
 
 // EnsureDir creates the directory and any necessary parents, logging an error if it fails.
@@ -76,5 +78,5 @@ func HAProxyConfigFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dataDir, "haproxy-config", HAProxyConfigFileName), nil
+	return filepath.Join(dataDir, "haproxy-config", constants.HAProxyConfigFileName), nil
 }
