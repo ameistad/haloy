@@ -82,24 +82,16 @@ func (db *DB) SetSecret(name, value string) error {
 	}
 	now := time.Now()
 
-	secret := Secret{
-		Name:           name,
-		EncryptedValue: encryptedValue,
-		CreatedAt:      now,
-		UpdatedAt:      now,
-	}
-
 	// Upsert query: INSERT or UPDATE if name already exists
 	query := `
         INSERT INTO secrets (name, created_at, updated_at, encrypted_value)
-        VALUES (:name, :created_at, :updated_at, :encrypted_value)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             encrypted_value = excluded.encrypted_value,
             updated_at = excluded.updated_at
-        -- Note: we don't update created_at on conflict, keep the original
     `
 
-	_, err = db.NamedExec(query, &secret)
+	_, err = db.Exec(query, name, now, now, encryptedValue)
 	if err != nil {
 		return fmt.Errorf("failed to save secret: %w", err)
 	}
