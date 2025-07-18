@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ameistad/haloy/internal/secrets"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/docker/docker/api/types/registry"
 )
 
@@ -76,11 +76,18 @@ func resolveRegistryAuthSource(ras RegistryAuthSource) (string, error) {
 	case "env":
 		return os.Getenv(ras.Value), nil
 	case "secret":
-		secretsManager, err := secrets.NewManager()
+		database, err := db.New()
 		if err != nil {
 			return "", fmt.Errorf("failed to create secrets manager: %w", err)
 		}
-		decrypted, err := secretsManager.GetDecryptedValue(ras.Value)
+		defer database.Close()
+		decrypted, err := database.GetSecretDecryptedValue(ras.Value)
+		if err != nil {
+			return "", fmt.Errorf("failed to get secret '%s': %w", ras.Value, err)
+		}
+		if decrypted == "" {
+			return "", fmt.Errorf("secret '%s' is empty", ras.Value)
+		}
 		return decrypted, nil
 	case "plain":
 		return ras.Value, nil

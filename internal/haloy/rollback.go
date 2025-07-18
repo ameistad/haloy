@@ -12,6 +12,7 @@ import (
 
 func RollbackAppCmd() *cobra.Command {
 	var configPath string
+	var serverURL string
 	var noLogs bool
 
 	cmd := &cobra.Command{
@@ -46,18 +47,21 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 				targetDeploymentID = args[1]
 			}
 
-			ui.Info("📁 Loading configuration from: %s", configPath)
 			appConfig, err := config.LoadAndValidateAppConfig(configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
+			targetServer := appConfig.Server
+			if serverURL != "" {
+				targetServer = serverURL
+			}
 
-			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, appConfig.Server)
+			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(appConfig.Server)
+			apiClient := NewAPIClient(targetServer)
 			resp, err := apiClient.Rollback(ctx, appConfig.Name, targetDeploymentID)
 			if err != nil {
 				ui.Error("Rollback failed: %v", err)
@@ -65,7 +69,7 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 			}
 
 			if !noLogs {
-				logStreamer := NewLogStreamer(appConfig.Server)
+				logStreamer := NewLogStreamer(targetServer)
 				if err := logStreamer.StreamLogs(ctx, "deploy", resp.DeploymentID); err != nil {
 					ui.Warn("Failed to stream logs: %v", err)
 				}
@@ -74,6 +78,7 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 	}
 
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to haloy config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
 
 	return cmd
@@ -81,6 +86,7 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 
 func RollbackTargetsCmd() *cobra.Command {
 	var configPath string
+	var serverURL string
 
 	cmd := &cobra.Command{
 		Use:   "rollback-targets [path]",
@@ -95,25 +101,27 @@ The path can be:
 If no path is provided, the current directory is used.`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// Determine config path (same logic as other commands)
 			if len(args) > 0 {
 				configPath = args[0]
 			} else if configPath == "" {
 				configPath = "."
 			}
 
-			ui.Info("📁 Loading configuration from: %s", configPath)
 			appConfig, err := config.LoadAndValidateAppConfig(configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
+			targetServer := appConfig.Server
+			if serverURL != "" {
+				targetServer = serverURL
+			}
 
-			ui.Info("🌐 Using server: %s", appConfig.Server)
+			ui.Info("Rollback targets for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(appConfig.Server)
+			apiClient := NewAPIClient(targetServer)
 			targets, err := apiClient.RollbackTargets(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get rollback targets: %v", err)
@@ -130,6 +138,7 @@ If no path is provided, the current directory is used.`,
 	}
 
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to haloy config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 

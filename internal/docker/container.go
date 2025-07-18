@@ -10,8 +10,8 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -54,13 +54,13 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTa
 
 	// Process secret environment variables
 	if len(secretEnvVars) > 0 {
-		secretsManager, err := secrets.NewManager()
+		database, err := db.New()
 		if err != nil {
-			return result, fmt.Errorf("failed to create secrets manager: %w", err)
+			return result, fmt.Errorf("failed to create database: %w", err)
 		}
-
+		defer database.Close()
 		for _, secretEnvVar := range secretEnvVars {
-			decrypted, err := secretsManager.GetDecryptedValue(secretEnvVar.SecretName)
+			decrypted, err := database.GetSecretDecryptedValue(secretEnvVar.SecretName)
 			if err != nil {
 				return result, fmt.Errorf("failed to decrypt secret: %w", err)
 			}

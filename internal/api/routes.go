@@ -14,5 +14,7 @@ func (s *APIServer) setupRoutes() {
 
 	// Secrets routes
 	s.router.Handle("GET /v1/secrets", authMiddleware(s.handleSecretsList()))
+	s.router.Handle("POST /v1/secrets", authMiddleware(s.handleSetSecret()))
+	s.router.Handle("DELETE /v1/secrets/{name}", authMiddleware(s.handleDeleteSecret()))
 	// s.router.Handle("GET /v1/status/{appName}", authMiddleware(s.handleStatus()))
 }

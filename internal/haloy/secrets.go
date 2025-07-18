@@ -1,11 +1,12 @@
 package haloy
 
 import (
-	"crypto/md5"
-	"encoding/hex"
+	"context"
 	"fmt"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -13,95 +14,152 @@ import (
 
 // SecretsSetCommand encrypts a plain-text value and stores it under the provided key.
 func SecretsSetCommand() *cobra.Command {
+	var configPath string
+	var serverURL string
 	cmd := &cobra.Command{
-		Use:     "set <key> <value>",
-		Short:   "Encrypt a plain-text value and store it under <key>",
+		Use:     "set <name> <value>",
+		Short:   "Encrypt a plain-text value and store it under <name>",
 		Example: "  haloy secrets set MY_SECRET supersecretvalue\n  haloy secrets set DB_PASSWORD 'p@ssw0rd!'",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) < 2 {
-				ui.Error("Error: You must provide a <key> and a <value> to store a secret.\n")
+				ui.Error("Error: You must provide a <name> and a <value> to store a secret.\n")
 				ui.Info("%s", cmd.UsageString())
 				return fmt.Errorf("requires at least 2 arg(s), only received %d", len(args))
 			}
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-			key := args[0]
+			name := args[0]
 			value := strings.Join(args[1:], " ")
+
+			targetServer, err := getServerURL(serverURL, configPath)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			defer cancel()
+
+			apiClient := NewAPIClient(targetServer)
+			err = apiClient.SetSecret(ctx, name, value)
+			if err != nil {
+				ui.Error("Failed to set secret: %v", err)
+				return
+			}
+
+			ui.Success("Secret '%s' set successfully", name)
 
 		},
 	}
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
 // SecretsListCommand lists all stored secrets in a table.
 func SecretsListCommand() *cobra.Command {
+	var configPath string
+	var serverURL string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all stored secrets",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			secrets, err := config.LoadSecrets()
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			targetServer, err := getServerURL(serverURL, configPath)
 			if err != nil {
-				return err
+				ui.Error("%v", err)
+				return
 			}
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			defer cancel()
+			apiClient := NewAPIClient(targetServer)
+			response, err := apiClient.SecretsList(ctx)
+			if err != nil {
+				ui.Error("Failed to list secrets: %v", err)
+				return
+			}
+			secrets := response.Secrets
 			if len(secrets) == 0 {
-				fmt.Println("No secrets stored.")
-				return nil
+				ui.Info("No secrets found.")
+				return
 			}
 
 			headers := []string{"NAME", "DIGEST", "DATE"}
 			rows := make([][]string, 0, len(secrets))
-			for key, rec := range secrets {
-				// Compute the digest from the encrypted value using MD5.
-				digest := md5.Sum([]byte(rec.Encrypted))
-				digestStr := hex.EncodeToString(digest[:])
+			for _, secret := range secrets {
 
-				date, err := helpers.FormatDateString(rec.Date)
+				date, err := helpers.FormatDateString(secret.UpdatedAt)
 				if err != nil {
-					date = rec.Date // Fallback to raw date if formatting fails
+					date = secret.UpdatedAt // Fallback to raw date if formatting fails
 				}
-				rows = append(rows, []string{key, digestStr, date})
+				rows = append(rows, []string{secret.Name, secret.DigestValue, date})
 			}
 
 			ui.Table(headers, rows)
-			return nil
 		},
 	}
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
 func SecretsDeleteCommand() *cobra.Command {
+	var configPath string
+	var serverURL string
 	cmd := &cobra.Command{
-		Use:   "delete <key>",
-		Short: "Delete a stored secret by key",
+		Use:   "delete <name>",
+		Short: "Delete a secret from the server",
 		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			key := args[0]
+		Run: func(cmd *cobra.Command, args []string) {
+			name := args[0]
 
-			secretRecords, err := config.LoadSecrets()
+			targetServer, err := getServerURL(serverURL, configPath)
 			if err != nil {
-				return err
+				ui.Error("%v", err)
+				return
 			}
-			if _, exists := secretRecords[key]; !exists {
-				fmt.Printf("No secret found with key: %s\n", key)
-				return nil
+
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			defer cancel()
+
+			apiClient := NewAPIClient(targetServer)
+			err = apiClient.DeleteSecret(ctx, name)
+			if err != nil {
+				ui.Error("Failed to delete secret: %v", err)
+				return
 			}
-			delete(secretRecords, key)
-			if err := config.SaveSecrets(secretRecords); err != nil {
-				return err
-			}
-			fmt.Printf("Secret deleted with key: %s\n", key)
-			return nil
+
+			ui.Success("Secret '%s' deleted successfully", name)
 		},
 	}
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
-// SecretsCommand creates the parent secrets command with its subcommands.
+func getServerURL(serverURL, configPath string) (string, error) {
+	if serverURL != "" {
+		ui.Info("Using server URL from command line: %s", serverURL)
+		return serverURL, nil
+	}
+
+	if configPath == "" {
+		configPath = "."
+	}
+
+	appConfig, err := config.LoadAndValidateAppConfig(configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to load config: %w", err)
+	}
+
+	return appConfig.Server, nil
+}
+
 func SecretsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
-		Short: "Manage secrets using age encryption",
+		Short: "Manage encrypted secrets on the server",
 	}
 	cmd.AddCommand(SecretsSetCommand())
 	cmd.AddCommand(SecretsListCommand())

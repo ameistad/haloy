@@ -2,7 +2,6 @@ package haloy
 
 import (
 	"context"
-	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
@@ -15,8 +14,8 @@ func DeployAppCmd() *cobra.Command {
 	var serverURL string
 	var noLogs bool
 
-	deployAppCmd := &cobra.Command{
-		Use:   "deploy [path]",
+	cmd := &cobra.Command{
+		Use:   "deploy [config-path]",
 		Short: "Deploy an application",
 		Long: `Deploy an application using a haloy configuration file.
 
@@ -41,12 +40,16 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			ui.Info("Starting deployment for application: %s using server %s", appConfig.Name, appConfig.Server)
+			targetServer := appConfig.Server
+			if serverURL != "" {
+				targetServer = serverURL
+			}
+
+			ui.Info("Starting deployment for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(appConfig.Server)
-			logStreamer := NewLogStreamer(appConfig.Server)
+			apiClient := NewAPIClient(targetServer)
 			resp, err := apiClient.Deploy(ctx, appConfig)
 			if err != nil {
 				ui.Error("Deployment request failed: %v", err)
@@ -57,19 +60,18 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			logCtx, logCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			defer logCancel()
-
-			if err := logStreamer.StreamLogs(logCtx, "deploy", resp.DeploymentID); err != nil {
-				ui.Warn("Failed to stream logs from API: %v", err)
-				ui.Info("You can check operation status manually")
+			if !noLogs {
+				logStreamer := NewLogStreamer(targetServer)
+				if err := logStreamer.StreamLogs(ctx, "deploy", resp.DeploymentID); err != nil {
+					ui.Warn("Failed to stream logs: %v", err)
+				}
 			}
 		},
 	}
 
-	deployAppCmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
-	deployAppCmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
-	deployAppCmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
+	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
 
-	return deployAppCmd
+	return cmd
 }

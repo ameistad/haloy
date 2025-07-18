@@ -1,16 +1,43 @@
 package db
 
 import (
+	"bytes"
+	"crypto/md5"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"io"
+	"os"
 	"time"
+
+	"filippo.io/age"
+	"github.com/ameistad/haloy/internal/constants"
 )
 
 type Secret struct {
-	Name      string    `db:"name" json:"name"`
-	Value     string    `db:"value" json:"value"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+	Name           string    `db:"name" json:"name"`
+	EncryptedValue string    `db:"encrypted_value" json:"encrypted_value"`
+	CreatedAt      time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
+}
+
+type SecretAPIResponse struct {
+	Name        string `json:"name"`
+	DigestValue string `json:"digest_value"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+func (s Secret) ToAPIResponse() SecretAPIResponse {
+	digest := md5.Sum([]byte(s.EncryptedValue))
+	digestStr := hex.EncodeToString(digest[:])
+	return SecretAPIResponse{
+		Name:        s.Name,
+		DigestValue: digestStr,
+		CreatedAt:   s.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   s.UpdatedAt.Format(time.RFC3339),
+	}
 }
 
 func (s Secret) CreateTable(db *DB) error {
@@ -19,7 +46,7 @@ CREATE TABLE IF NOT EXISTS secrets (
     name TEXT PRIMARY KEY,                  -- User-defined secret name
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    value TEXT NOT NULL
+    encrypted_value TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_secrets_created_at ON secrets(created_at);
@@ -33,56 +60,85 @@ CREATE INDEX IF NOT EXISTS idx_secrets_updated_at ON secrets(updated_at);
 	return nil
 }
 
-func (db *DB) UpsertSecret(secret Secret) error {
-	if secret.Name == "" {
+// Will upsert a secret, creating it if it doesn't exist or updating it if it does.
+func (db *DB) SetSecret(name, value string) error {
+	if name == "" {
 		return fmt.Errorf("secret name cannot be empty")
 	}
 
-	now := time.Now()
-	if secret.CreatedAt.IsZero() {
-		secret.CreatedAt = now
+	if value == "" {
+		return fmt.Errorf("secret value cannot be empty")
 	}
-	secret.UpdatedAt = now
+	identity, err := getAgeIdentity()
+	if err != nil {
+		return fmt.Errorf("failed to get encryption key: %w", err)
+	}
+	encryptedValue, err := encryptSecret(value, identity.Recipient())
+	if err != nil {
+		return fmt.Errorf("failed to encrypt secret value: %w", err)
+	}
+	if encryptedValue == "" {
+		return fmt.Errorf("encrypted secret value is empty")
+	}
+	now := time.Now()
+
+	secret := Secret{
+		Name:           name,
+		EncryptedValue: encryptedValue,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
 
 	// Upsert query: INSERT or UPDATE if name already exists
 	query := `
-        INSERT INTO secrets (name, created_at, updated_at, value)
-        VALUES (:name, :created_at, :updated_at, :value)
+        INSERT INTO secrets (name, created_at, updated_at, encrypted_value)
+        VALUES (:name, :created_at, :updated_at, :encrypted_value)
         ON CONFLICT(name) DO UPDATE SET
-            value = excluded.value,
+            encrypted_value = excluded.encrypted_value,
             updated_at = excluded.updated_at
         -- Note: we don't update created_at on conflict, keep the original
     `
 
-	_, err := db.NamedExec(query, secret)
+	_, err = db.NamedExec(query, secret)
 	if err != nil {
 		return fmt.Errorf("failed to save secret: %w", err)
 	}
 	return nil
 }
 
-func (db *DB) GetSecret(name string) (*Secret, error) {
+func (db *DB) GetSecretDecryptedValue(name string) (string, error) {
 	if name == "" {
-		return nil, fmt.Errorf("secret name cannot be empty")
+		return "", fmt.Errorf("secret name cannot be empty")
 	}
 
-	var secret Secret
-	query := `SELECT name, created_at, updated_at, value FROM secrets WHERE name = ?`
+	var dbSecret Secret
+	query := `SELECT name, created_at, updated_at, encrypted_value FROM secrets WHERE name = ?`
 
-	err := db.Get(&secret, query, name)
+	err := db.Get(&dbSecret, query, name)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("secret '%s' not found", name)
+			return "", fmt.Errorf("secret '%s' not found", name)
 		}
-		return nil, fmt.Errorf("failed to get secret: %w", err)
+		return "", fmt.Errorf("failed to get secret: %w", err)
 	}
 
-	return &secret, nil
+	// Get age identity for decryption
+	identity, err := getAgeIdentity()
+	if err != nil {
+		return "", fmt.Errorf("failed to get encryption key: %w", err)
+	}
+
+	decryptedValue, err := decryptSecret(dbSecret.EncryptedValue, identity)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt secret '%s': %w", name, err)
+	}
+
+	return decryptedValue, nil
 }
 
-func (db *DB) ListSecrets() ([]Secret, error) {
+func (db *DB) GetSecretsList() ([]Secret, error) {
 	var secrets []Secret
-	query := `SELECT name, created_at, updated_at, value FROM secrets ORDER BY updated_at DESC`
+	query := `SELECT name, created_at, updated_at, encrypted_value FROM secrets ORDER BY updated_at DESC`
 
 	err := db.Select(&secrets, query)
 	if err != nil {
@@ -128,7 +184,53 @@ func (db *DB) SecretExists(name string) (bool, error) {
 	return exists, nil
 }
 
-// func isUniqueConstraintError(err error) bool {
-// 	// SQLite unique constraint error
-// 	return strings.Contains(err.Error(), "UNIQUE constraint failed")
-// }
+func getAgeIdentity() (*age.X25519Identity, error) {
+	identityStr := os.Getenv(constants.EnvVarAgeIdentity)
+	if identityStr == "" {
+		return nil, fmt.Errorf("environment variable %s is not set", constants.EnvVarAgeIdentity)
+	}
+	identity, err := age.ParseX25519Identity(identityStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse age identity from %s environment variable: %w", constants.EnvVarAgeIdentity, err)
+	}
+	return identity, nil
+}
+
+// EncryptSecret encrypts a plain-text value using the provided age recipient.
+// It returns the encrypted value as a base64-encoded string for storage.
+func encryptSecret(value string, recipient age.Recipient) (string, error) {
+	var rawBuffer bytes.Buffer
+	encryptWriter, err := age.Encrypt(&rawBuffer, recipient)
+	if err != nil {
+		return "", fmt.Errorf("failed to initialize encryptor: %w", err)
+	}
+	if _, err = io.WriteString(encryptWriter, value); err != nil {
+		return "", fmt.Errorf("failed to write value to encryption writer: %w", err)
+	}
+	if err := encryptWriter.Close(); err != nil {
+		return "", fmt.Errorf("failed to close encryption writer: %w", err)
+	}
+	encodedValue := base64.StdEncoding.EncodeToString(rawBuffer.Bytes())
+	return encodedValue, nil
+}
+
+// DecryptSecret decrypts a base64-encoded secret using the provided age identity.
+// It returns the decrypted secret as a string.
+func decryptSecret(secret string, identity age.Identity) (string, error) {
+	encryptedBytes, err := base64.StdEncoding.DecodeString(secret)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode base64 secret: %w", err)
+	}
+
+	decryptReader, err := age.Decrypt(bytes.NewReader(encryptedBytes), identity)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt value: %w", err)
+	}
+
+	var decryptedBuf bytes.Buffer
+	if _, err := io.Copy(&decryptedBuf, decryptReader); err != nil {
+		return "", fmt.Errorf("failed to read decrypted value: %w", err)
+	}
+
+	return decryptedBuf.String(), nil
+}

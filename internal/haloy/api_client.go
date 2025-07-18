@@ -155,6 +155,7 @@ func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*ap
 	err := c.Post(ctx, "deploy", request, &response)
 	return &response, err
 }
+
 func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*api.RollbackTargetsResponse, error) {
 	path := fmt.Sprintf("rollback/%s", appName)
 	var response api.RollbackTargetsResponse
@@ -163,6 +164,7 @@ func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*api.R
 	}
 	return &response, nil
 }
+
 func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID string) (*api.RollbackResponse, error) {
 	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
 	var response api.RollbackResponse
@@ -170,6 +172,53 @@ func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID st
 		return nil, err
 	}
 	return &response, nil
+}
+
+func (c *APIClient) SecretsList(ctx context.Context) (*api.SecretsListResponse, error) {
+	var response api.SecretsListResponse
+	if err := c.Get(ctx, "secrets", &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+func (c *APIClient) SetSecret(ctx context.Context, name, value string) error {
+	request := api.SetSecretRequest{
+		Name:  name,
+		Value: value,
+	}
+	if err := c.Post(ctx, "secrets", request, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *APIClient) DeleteSecret(ctx context.Context, name string) error {
+	if name == "" {
+		return fmt.Errorf("secret name is required")
+	}
+
+	path := fmt.Sprintf("secrets/%s", name)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("%s/v1/%s", c.baseURL, path), nil)
+	if err != nil {
+		return fmt.Errorf("failed to create DELETE request: %w", err)
+	}
+	c.setAuthHeader(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send DELETE request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
+		}
+		return fmt.Errorf("DELETE request failed with status %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 // LogStreamer handles streaming logs from the haloy API for any command

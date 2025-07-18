@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/deploy"
 )
 
@@ -25,4 +26,13 @@ type RollbackResponse struct {
 
 type RollbackTargetsResponse struct {
 	Targets []deploy.RollbackTarget `json:"targets"`
+}
+
+type SecretsListResponse struct {
+	Secrets []db.SecretAPIResponse `json:"secrets"`
+}
+
+type SetSecretRequest struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
