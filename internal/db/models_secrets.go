@@ -99,7 +99,7 @@ func (db *DB) SetSecret(name, value string) error {
         -- Note: we don't update created_at on conflict, keep the original
     `
 
-	_, err = db.NamedExec(query, secret)
+	_, err = db.NamedExec(query, &secret)
 	if err != nil {
 		return fmt.Errorf("failed to save secret: %w", err)
 	}
