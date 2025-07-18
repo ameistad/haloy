@@ -40,7 +40,7 @@ func (s Secret) ToAPIResponse() SecretAPIResponse {
 	}
 }
 
-func (s Secret) CreateTable(db *DB) error {
+func createSecretsTable(db *DB) error {
 	schema := `
 CREATE TABLE IF NOT EXISTS secrets (
     name TEXT PRIMARY KEY,                  -- User-defined secret name

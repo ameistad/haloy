@@ -13,7 +13,7 @@ type Deployment struct {
 	RolledBackFrom *string         `db:"rolled_back_from" json:"rolled_back_from,omitempty"`
 }
 
-func (d Deployment) CreateTable(db *DB) error {
+func createDeploymentsTable(db *DB) error {
 	schema := `
 CREATE TABLE IF NOT EXISTS deployments (
     id TEXT PRIMARY KEY,                    -- Timestamp-based ID
