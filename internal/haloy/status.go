@@ -7,6 +7,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -47,11 +48,16 @@ func StatusAppCmd() *cobra.Command {
 				return
 			}
 
+			containerIDs := make([]string, len(status.ContainerIDs))
+			for _, id := range status.ContainerIDs {
+				containerIDs = append(containerIDs, helpers.SafeIDPrefix(id))
+			}
+
 			state := displayState(status.State)
 			formattedOutput := []string{
 				fmt.Sprintf("State: %s", state),
-				fmt.Sprintf("Deployment ID:\n%s", status.DeploymentID),
-				fmt.Sprintf("Running container(s): %s", strings.Join(status.ContainerIDs, ", ")),
+				fmt.Sprintf("Deployment ID: %s", status.DeploymentID),
+				fmt.Sprintf("Running container(s): %s", strings.Join(containerIDs, ", ")),
 			}
 
 			ui.Section(appConfig.Name, formattedOutput)
