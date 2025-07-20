@@ -221,6 +221,19 @@ func (c *APIClient) DeleteSecret(ctx context.Context, name string) error {
 	return nil
 }
 
+func (c *APIClient) AppStatus(ctx context.Context, appName string) (*api.AppStatusResponse, error) {
+	if appName == "" {
+		return nil, fmt.Errorf("app name is required")
+	}
+
+	path := fmt.Sprintf("status/%s", appName)
+	var response api.AppStatusResponse
+	if err := c.Get(ctx, path, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // LogStreamer handles streaming logs from the haloy API for any command
 type LogStreamer struct {
 	client   *http.Client

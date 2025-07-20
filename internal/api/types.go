@@ -36,3 +36,10 @@ type SetSecretRequest struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
+
+type AppStatusResponse struct {
+	State        string
+	DeploymentID string
+	ContainerIDs []string
+	// TODO: env vars, domains
+}

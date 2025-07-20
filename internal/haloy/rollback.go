@@ -16,7 +16,7 @@ func RollbackAppCmd() *cobra.Command {
 	var noLogs bool
 
 	cmd := &cobra.Command{
-		Use:   "rollback [path] <deployment-id>",
+		Use:   "rollback [config-path] <deployment-id>",
 		Short: "Rollback an application to a specific deployment",
 		Long: `Rollback an application to a specific deployment using a haloy configuration file.
 
@@ -89,7 +89,7 @@ func RollbackTargetsCmd() *cobra.Command {
 	var serverURL string
 
 	cmd := &cobra.Command{
-		Use:   "rollback-targets [path]",
+		Use:   "rollback-targets [config-path]",
 		Short: "List available rollback targets for an application",
 		Long: `List available rollback targets for an application using a haloy configuration file.
 

@@ -215,30 +215,22 @@ func compareDeployments(oldDeployments, newDeployments map[string]Deployment) co
 	removedDeployments := make(map[string]Deployment)
 	addedDeployments := make(map[string]Deployment)
 
-	// Find removed and updated deployments by comparing previous to current
 	for appName, prevDeployment := range oldDeployments {
-		// Check if this deployment still exists
 		if currentDeployment, exists := newDeployments[appName]; exists {
-			// Deployment exists - check if it's been updated
 			if prevDeployment.Labels.DeploymentID != currentDeployment.Labels.DeploymentID {
-				// DeploymentID changed - it's an update
 				updatedDeployments[appName] = currentDeployment
 			} else {
-				// Check if instances changed (added or removed instances)
 				if !instancesEqual(prevDeployment.Instances, currentDeployment.Instances) {
 					updatedDeployments[appName] = currentDeployment
 				}
 			}
 		} else {
-			// Deployment no longer exists - it was removed
 			removedDeployments[appName] = prevDeployment
 		}
 	}
 
-	// Find added deployments by comparing current to previous
 	for appName, currentDeployment := range newDeployments {
 		if _, exists := oldDeployments[appName]; !exists {
-			// This is a new deployment
 			addedDeployments[appName] = currentDeployment
 		}
 	}
@@ -252,19 +244,16 @@ func compareDeployments(oldDeployments, newDeployments map[string]Deployment) co
 	return result
 }
 
-// Helper function to check if two instance lists are equal
 func instancesEqual(a, b []DeploymentInstance) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	// Create maps of container IDs for easy comparison
 	mapA := make(map[string]bool)
 	for _, instance := range a {
 		mapA[instance.ContainerID] = true
 	}
 
-	// Check if all instances in b exist in a
 	for _, instance := range b {
 		if !mapA[instance.ContainerID] {
 			return false
