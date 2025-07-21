@@ -2,80 +2,76 @@ package haloy
 
 import (
 	"context"
-	"fmt"
-	"time"
 
-	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-const (
-	stopAppTimeout = 2 * time.Minute // Timeout for stop operations
-)
-
 func StopAppCmd() *cobra.Command {
+	var configPath string
+	var serverURL string
 	var removeContainersFlag bool
 
 	cmd := &cobra.Command{
-		Use:   "stop <app-name>",
+		Use:   "stop [config-path]",
 		Short: "Stop an application's running containers",
-		Long: `Stops all running containers associated with the specified application.
-Containers are identified by the 'haloy.app=<app-name>' label.
-Optionally, it can also remove the containers after stopping them.`,
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 1 {
-				return fmt.Errorf("stop command requires exactly one argument: the app name (e.g., 'haloy stop my-app')")
-			}
-			return nil
-		},
+		Long: `Stop all running containers for an application using a haloy configuration file.
+
+The path can be:
+- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
+- A full path to a config file with supported extension
+- A relative path to either of the above
+
+If no path is provided, the current directory is used.`,
+		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			appName := args[0]
+			// Determine config path (consistent with other commands)
+			if len(args) > 0 {
+				configPath = args[0]
+			} else if configPath == "" {
+				configPath = "."
+			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), stopAppTimeout)
-			defer cancel()
-
-			cli, err := docker.NewClient(ctx)
+			appConfig, err := config.LoadAndValidateAppConfig(configPath)
 			if err != nil {
-				ui.Error("Failed to create Docker client: %v\n", err)
+				ui.Error("Failed to load config: %v", err)
 				return
 			}
-			defer cli.Close()
 
-			stoppedIDs, err := docker.StopContainers(ctx, cli, appName, "")
+			// Same server logic as other commands
+			targetServer := appConfig.Server
+			if serverURL != "" {
+				targetServer = serverURL
+			}
+
+			ui.Info("Stopping application: %s using server %s", appConfig.Name, targetServer)
+			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			defer cancel()
+
+			apiClient := NewAPIClient(targetServer)
+			response, err := apiClient.StopApp(ctx, appConfig.Name, removeContainersFlag)
 			if err != nil {
-				ui.Error("Error while stopping containers for app %q: %v\n", appName, err)
-				// If stopping failed and nothing was stopped, it's probably best to return.
-				if len(stoppedIDs) == 0 {
-					return
-				}
+				ui.Error("Failed to stop app: %v", err)
+				return
 			}
 
-			if len(stoppedIDs) > 0 {
-				ui.Success("Successfully stopped %d container(s) for app %q.\n", len(stoppedIDs), appName)
+			if len(response.StoppedIDs) > 0 {
+				ui.Success("Successfully stopped %d container(s) for app '%s'", len(response.StoppedIDs), appConfig.Name)
 			} else {
-				ui.Info("No running containers found for app %q to stop.\n", appName)
+				ui.Info("No running containers found for app '%s'", appConfig.Name)
 			}
 
-			if removeContainersFlag {
-				ui.Info("Attempting to remove containers for app %q...\n", appName)
-				removedIDs, removeErr := docker.RemoveContainers(ctx, cli, appName, "")
-				if removeErr != nil {
-					ui.Error("Error while removing containers for app %q: %v\n", appName, removeErr)
-				}
-
-				if len(removedIDs) > 0 {
-					ui.Success("Successfully removed %d container(s) for app %q.\n", len(removedIDs), appName)
-				} else {
-					if removeErr == nil { // No error, but no containers removed
-						ui.Info("No containers found for app %q to remove.\n", appName)
-					}
-					// If removeErr != nil, the error message was already printed.
-				}
+			if removeContainersFlag && len(response.RemovedIDs) > 0 {
+				ui.Success("Successfully removed %d container(s) for app '%s'", len(response.RemovedIDs), appConfig.Name)
 			}
 		},
 	}
 
-	cmd.Flags().BoolVarP(&removeContainersFlag, "remove-containers", "r", false, "Remove the containers after stopping them")
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
+	cmd.Flags().BoolVarP(&removeContainersFlag, "remove-containers", "r", false, "Remove containers after stopping them")
+
 	return cmd
 }

@@ -19,4 +19,7 @@ func (s *APIServer) setupRoutes() {
 
 	// Status routes
 	s.router.Handle("GET /v1/status/{appName}", authMiddleware(s.handleAppStatus()))
+
+	// Stop routes
+	s.router.Handle("POST /v1/stop/{appName}", authMiddleware(s.handleStopApp()))
 }

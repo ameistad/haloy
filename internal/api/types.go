@@ -43,3 +43,8 @@ type AppStatusResponse struct {
 	ContainerIDs []string
 	// TODO: env vars, domains
 }
+
+type StopAppResponse struct {
+	StoppedIDs []string `json:"stoppedIds"`
+	RemovedIDs []string `json:"removed_ids,omitempty"`
+}

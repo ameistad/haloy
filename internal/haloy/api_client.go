@@ -234,6 +234,21 @@ func (c *APIClient) AppStatus(ctx context.Context, appName string) (*api.AppStat
 	return &response, nil
 }
 
+func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainers bool) (*api.StopAppResponse, error) {
+	path := fmt.Sprintf("stop/%s", appName)
+
+	// Add query parameter if removeContainers is true
+	if removeContainers {
+		path += "?remove-containers=true"
+	}
+
+	var response api.StopAppResponse
+	if err := c.Post(ctx, path, nil, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // LogStreamer handles streaming logs from the haloy API for any command
 type LogStreamer struct {
 	client   *http.Client
