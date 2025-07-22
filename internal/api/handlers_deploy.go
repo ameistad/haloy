@@ -31,7 +31,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 		// Start deployment in background
 		go func() {
 			ctx := context.Background()
-			ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 			defer cancel()
 
 			cli, err := docker.NewClient(ctx)

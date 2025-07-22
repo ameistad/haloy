@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/charmbracelet/lipgloss"
@@ -46,7 +45,7 @@ If no path is provided, the current directory is used.`,
 			}
 
 			ui.Info("Getting status for application: %s using server %s", appConfig.Name, targetServer)
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
 			apiClient := NewAPIClient(targetServer)

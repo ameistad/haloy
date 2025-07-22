@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -38,7 +37,7 @@ func SecretsSetCommand() *cobra.Command {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
 			apiClient := NewAPIClient(targetServer)
@@ -71,7 +70,7 @@ func SecretsListCommand() *cobra.Command {
 				ui.Error("%v", err)
 				return
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 			apiClient := NewAPIClient(targetServer)
 			response, err := apiClient.SecretsList(ctx)
@@ -120,7 +119,7 @@ func SecretsDeleteCommand() *cobra.Command {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
 			apiClient := NewAPIClient(targetServer)

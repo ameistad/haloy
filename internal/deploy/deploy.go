@@ -33,7 +33,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageTag, appConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("failed to run new container: operation timed out after %v (%w)", DefaultContextTimeout, err)
+			return fmt.Errorf("failed to run new container: operation timed out (%w)", err)
 		} else if errors.Is(err, context.Canceled) {
 			logger.Warn("Deployment canceled", "error", err)
 			if ctx.Err() != nil {

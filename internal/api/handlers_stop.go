@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
-	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 )
 
@@ -20,7 +19,7 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 		removeContainers := r.URL.Query().Get("remove-containers") == "true"
 
 		ctx := r.Context()
-		ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
+		ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 		defer cancel()
 
 		cli, err := docker.NewClient(ctx)

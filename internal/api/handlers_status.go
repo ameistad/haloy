@@ -8,7 +8,6 @@ import (
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/docker/docker/api/types/container"
@@ -23,7 +22,7 @@ func (s *APIServer) handleAppStatus() http.HandlerFunc {
 		}
 
 		ctx := r.Context()
-		ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
+		ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 		defer cancel()
 
 		cli, err := docker.NewClient(ctx)

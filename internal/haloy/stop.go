@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -47,7 +46,7 @@ If no path is provided, the current directory is used.`,
 			}
 
 			ui.Info("Stopping application: %s using server %s", appConfig.Name, targetServer)
-			ctx, cancel := context.WithTimeout(context.Background(), deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
 			apiClient := NewAPIClient(targetServer)

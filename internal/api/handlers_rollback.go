@@ -29,7 +29,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 		// Start rollback in background
 		go func() {
 			ctx := context.Background()
-			ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
+			ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 			defer cancel()
 
 			cli, err := docker.NewClient(ctx)
@@ -62,7 +62,7 @@ func (s *APIServer) handleRollbackTargets() http.HandlerFunc {
 		}
 
 		ctx := r.Context()
-		ctx, cancel := context.WithTimeout(ctx, deploy.DefaultContextTimeout)
+		ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 		defer cancel()
 
 		cli, err := docker.NewClient(ctx)
