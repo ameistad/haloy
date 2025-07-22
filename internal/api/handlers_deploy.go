@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
@@ -17,7 +18,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 
 		// Create deployment-specific logger using the factory
 		deploymentLogger := logging.NewDeploymentLogger(deploymentID, s.logLevel, s.logBroker)
-		var req DeployRequest
+		var req apitypes.DeployRequest
 
 		// Decode and validate the JSON request from the user
 		if err := decodeJSON(r.Body, &req); err != nil {
@@ -46,7 +47,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			}
 		}()
 
-		response := DeployResponse{DeploymentID: deploymentID}
+		response := apitypes.DeployResponse{DeploymentID: deploymentID}
 
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)

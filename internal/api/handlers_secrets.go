@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/db"
 )
 
@@ -29,7 +30,7 @@ func (s *APIServer) handleSecretsList() http.HandlerFunc {
 		for i, secret := range secrets {
 			apiSecrets[i] = secret.ToAPIResponse()
 		}
-		response := SecretsListResponse{Secrets: apiSecrets}
+		response := apitypes.SecretsListResponse{Secrets: apiSecrets}
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)
 		}
@@ -63,7 +64,7 @@ func (s *APIServer) handleDeleteSecret() http.HandlerFunc {
 
 func (s *APIServer) handleSetSecret() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req SetSecretRequest
+		var req apitypes.SetSecretRequest
 		if err := decodeJSON(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -91,7 +92,7 @@ func (s *APIServer) handleSetSecret() http.HandlerFunc {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
-func validateSetSecretRequest(req SetSecretRequest) error {
+func validateSetSecretRequest(req apitypes.SetSecretRequest) error {
 	if strings.TrimSpace(req.Name) == "" {
 		return fmt.Errorf("secret name is required")
 	}

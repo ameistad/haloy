@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 )
@@ -43,7 +44,7 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 			}
 		}
 
-		response := StopAppResponse{
+		response := apitypes.StopAppResponse{
 			StoppedIDs: stoppedIDs,
 			RemovedIDs: removedIDs,
 		}

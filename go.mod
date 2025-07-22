@@ -6,7 +6,6 @@ require (
 	filippo.io/age v1.2.1
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/docker/docker v28.0.4+incompatible
-	github.com/fatih/color v1.18.0
 	github.com/go-acme/lego/v4 v4.22.2
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
@@ -37,7 +36,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/miekg/dns v1.1.64 // indirect

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ameistad/haloy/internal/api"
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
@@ -149,33 +149,33 @@ func (c *APIClient) Post(ctx context.Context, path string, request, response int
 	return nil
 }
 
-func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*api.DeployResponse, error) {
-	request := api.DeployRequest{AppConfig: appConfig}
-	var response api.DeployResponse
+func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*apitypes.DeployResponse, error) {
+	request := apitypes.DeployRequest{AppConfig: appConfig}
+	var response apitypes.DeployResponse
 	err := c.Post(ctx, "deploy", request, &response)
 	return &response, err
 }
 
-func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*api.RollbackTargetsResponse, error) {
+func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apitypes.RollbackTargetsResponse, error) {
 	path := fmt.Sprintf("rollback/%s", appName)
-	var response api.RollbackTargetsResponse
+	var response apitypes.RollbackTargetsResponse
 	if err := c.Get(ctx, path, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
-func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID string) (*api.RollbackResponse, error) {
+func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID string) (*apitypes.RollbackResponse, error) {
 	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
-	var response api.RollbackResponse
+	var response apitypes.RollbackResponse
 	if err := c.Post(ctx, path, nil, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
-func (c *APIClient) SecretsList(ctx context.Context) (*api.SecretsListResponse, error) {
-	var response api.SecretsListResponse
+func (c *APIClient) SecretsList(ctx context.Context) (*apitypes.SecretsListResponse, error) {
+	var response apitypes.SecretsListResponse
 	if err := c.Get(ctx, "secrets", &response); err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (c *APIClient) SecretsList(ctx context.Context) (*api.SecretsListResponse, 
 }
 
 func (c *APIClient) SetSecret(ctx context.Context, name, value string) error {
-	request := api.SetSecretRequest{
+	request := apitypes.SetSecretRequest{
 		Name:  name,
 		Value: value,
 	}
@@ -221,20 +221,20 @@ func (c *APIClient) DeleteSecret(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *APIClient) AppStatus(ctx context.Context, appName string) (*api.AppStatusResponse, error) {
+func (c *APIClient) AppStatus(ctx context.Context, appName string) (*apitypes.AppStatusResponse, error) {
 	if appName == "" {
 		return nil, fmt.Errorf("app name is required")
 	}
 
 	path := fmt.Sprintf("status/%s", appName)
-	var response api.AppStatusResponse
+	var response apitypes.AppStatusResponse
 	if err := c.Get(ctx, path, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
-func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainers bool) (*api.StopAppResponse, error) {
+func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainers bool) (*apitypes.StopAppResponse, error) {
 	path := fmt.Sprintf("stop/%s", appName)
 
 	// Add query parameter if removeContainers is true
@@ -242,7 +242,7 @@ func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainer
 		path += "?remove-containers=true"
 	}
 
-	var response api.StopAppResponse
+	var response apitypes.StopAppResponse
 	if err := c.Post(ctx, path, nil, &response); err != nil {
 		return nil, err
 	}

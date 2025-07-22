@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
@@ -45,7 +46,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			deploymentLogger.Info("Rollback initiated", "app", appName, "deploymentID", newDeploymentID)
 		}()
 
-		response := RollbackResponse{DeploymentID: newDeploymentID}
+		response := apitypes.RollbackResponse{DeploymentID: newDeploymentID}
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)
 		}
@@ -77,7 +78,7 @@ func (s *APIServer) handleRollbackTargets() http.HandlerFunc {
 			return
 		}
 
-		response := RollbackTargetsResponse{
+		response := apitypes.RollbackTargetsResponse{
 			Targets: targets,
 		}
 

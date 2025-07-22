@@ -8,19 +8,12 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 )
-
-type RollbackTarget struct {
-	DeploymentID string
-	ImageID      string
-	ImageTag     string
-	IsRunning    bool // The image is live
-	AppConfig    *config.AppConfig
-}
 
 // RollbackApp is basically a wrapper around DeployApp that allows rolling back to a previous deployment.
 func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID, newDeploymentID string, logger *slog.Logger) error {
@@ -51,7 +44,7 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 }
 
 // GetRollbackTargets retrieves and sorts all available rollback targets for the specified app.
-func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string) (targets []RollbackTarget, err error) {
+func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string) (targets []deploytypes.RollbackTarget, err error) {
 	if appName == "" {
 		return targets, fmt.Errorf("app name cannot be empty")
 	}
@@ -80,7 +73,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 			}
 			deploymentID := parts[1]
 			appConfig, _ := GetAppConfigHistory(deploymentID)
-			target := RollbackTarget{
+			target := deploytypes.RollbackTarget{
 				DeploymentID: deploymentID,
 				ImageID:      img.ID,
 				ImageTag:     tag,

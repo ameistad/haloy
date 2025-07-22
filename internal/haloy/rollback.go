@@ -5,6 +5,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -142,7 +143,7 @@ If no path is provided, the current directory is used.`,
 	return cmd
 }
 
-func displayRollbackTargets(appName string, targets []deploy.RollbackTarget, configPath string) {
+func displayRollbackTargets(appName string, targets []deploytypes.RollbackTarget, configPath string) {
 	if len(targets) == 0 {
 		ui.Info("No rollback targets available for app '%s'", appName)
 		return

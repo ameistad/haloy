@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploy"
 	"github.com/ameistad/haloy/internal/docker"
@@ -53,9 +54,9 @@ func (s *APIServer) handleAppStatus() http.HandlerFunc {
 	}
 }
 
-func getResponse(containers []container.Summary) (AppStatusResponse, error) {
+func getResponse(containers []container.Summary) (apitypes.AppStatusResponse, error) {
 	if len(containers) == 0 {
-		return AppStatusResponse{}, fmt.Errorf("no containers provided")
+		return apitypes.AppStatusResponse{}, fmt.Errorf("no containers provided")
 	}
 
 	// Collect all data by deployment ID in one pass
@@ -70,7 +71,7 @@ func getResponse(containers []container.Summary) (AppStatusResponse, error) {
 	for _, c := range containers {
 		labels, err := config.ParseContainerLabels(c.Labels)
 		if err != nil {
-			return AppStatusResponse{}, fmt.Errorf("failed to parse labels for container %s: %w", helpers.SafeIDPrefix(c.ID), err)
+			return apitypes.AppStatusResponse{}, fmt.Errorf("failed to parse labels for container %s: %w", helpers.SafeIDPrefix(c.ID), err)
 		}
 
 		// Initialize deployment data if not exists
@@ -92,7 +93,7 @@ func getResponse(containers []container.Summary) (AppStatusResponse, error) {
 	}
 
 	if latestDeploymentID == "" {
-		return AppStatusResponse{}, fmt.Errorf("no valid containers found")
+		return apitypes.AppStatusResponse{}, fmt.Errorf("no valid containers found")
 	}
 
 	// Get data for latest deployment
@@ -101,7 +102,7 @@ func getResponse(containers []container.Summary) (AppStatusResponse, error) {
 	// Determine overall state from all containers in latest deployment
 	overallState := determineOverallState(latestDeployment.states)
 
-	return AppStatusResponse{
+	return apitypes.AppStatusResponse{
 		State:        overallState,
 		DeploymentID: latestDeploymentID,
 		ContainerIDs: latestDeployment.containerIDs,

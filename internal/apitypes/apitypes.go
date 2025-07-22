@@ -1,9 +1,9 @@
-package api
+package apitypes
 
 import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/db"
-	"github.com/ameistad/haloy/internal/deploy"
+	"github.com/ameistad/haloy/internal/deploytypes"
 )
 
 type HealthResponse struct {
@@ -25,7 +25,7 @@ type RollbackResponse struct {
 }
 
 type RollbackTargetsResponse struct {
-	Targets []deploy.RollbackTarget `json:"targets"`
+	Targets []deploytypes.RollbackTarget `json:"targets"`
 }
 
 type SecretsListResponse struct {

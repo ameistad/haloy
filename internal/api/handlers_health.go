@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/version"
 )
 
 // handleHealth returns a simple health check endpoint
 func (s *APIServer) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		response := HealthResponse{
+		response := apitypes.HealthResponse{
 			Status:  "ok",
 			Service: "haloy-manager",
 			Version: version.Version,
