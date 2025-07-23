@@ -24,19 +24,19 @@ import (
 type HAProxyManager struct {
 	cli         *client.Client
 	configDir   string
-	dryRun      bool
+	debug       bool
 	updateMutex sync.Mutex // Mutex protects config writing and reload signaling
 }
 
-func NewHAProxyManager(cli *client.Client, configDir string, dryRun bool) *HAProxyManager {
+func NewHAProxyManager(cli *client.Client, configDir string, debug bool) *HAProxyManager {
 	return &HAProxyManager{
 		cli:       cli,
 		configDir: configDir,
-		dryRun:    dryRun,
+		debug:     debug,
 	}
 }
 
-// ApplyConfig generates, writes (if not dryRun), and reloads HAProxy config.
+// ApplyConfig generates, writes (if not debug), and reloads HAProxy config.
 // This method is concurrency-safe due to the internal mutex.
 func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, logger *slog.Logger, deployments map[string]Deployment) error {
 	logger.Info("HAProxyManager: Attempting to apply new configuration...")
@@ -51,8 +51,8 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, logger *slog.Logger,
 		return fmt.Errorf("HAProxyManager: failed to generate config: %w", err)
 	}
 
-	if hpm.dryRun {
-		logger.Info("HAProxyManager: DryRun - Skipping config write and reload.")
+	if hpm.debug {
+		logger.Info("HAProxyManager: debug - Skipping config write and reload.")
 		logger.Info(configBuf.String())
 		return nil
 	}

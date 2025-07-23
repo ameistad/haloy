@@ -8,12 +8,11 @@ import (
 )
 
 func main() {
-	// Parse command line flags
-	dryRunFlag := flag.Bool("dry-run", false, "Run in dry-run mode (don't actually send commands to HAProxy)")
+	debugFlag := flag.Bool("debug", false, "Run in debug mode (don't actually send commands to HAProxy)")
 	flag.Parse()
 
-	dryRunEnv := os.Getenv("DRY_RUN") == "true"
-	dryRun := *dryRunFlag || dryRunEnv
+	debugEnv := os.Getenv("HALOY_DEBUG") == "true"
+	debug := *debugFlag || debugEnv
 
-	manager.RunManager(dryRun)
+	manager.RunManager(debug)
 }

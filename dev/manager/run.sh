@@ -29,6 +29,6 @@ docker run -it --rm \
   -v $(pwd):/src \
   --network haloy-public \
   -p 9999:9999 \
-  -e DRY_RUN=true \
+  -e HALOY_DEBUG=true \
   -e HALOY_API_TOKEN="${DEV_API_TOKEN}" \
   haloy-manager-dev

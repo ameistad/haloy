@@ -38,13 +38,13 @@ type ContainerEvent struct {
 	Labels    *config.ContainerLabels
 }
 
-func RunManager(dryRun bool) {
+func RunManager(debug bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Set up slog with streaming capability
 	logLevel := slog.LevelInfo
-	if dryRun {
+	if debug {
 		logLevel = slog.LevelDebug
 	}
 
@@ -56,10 +56,10 @@ func RunManager(dryRun bool) {
 	logger.Info("Haloy manager started",
 		"version", version.Version,
 		"network", constants.DockerNetwork,
-		"dryRun", dryRun)
+		"debug", debug)
 
-	if dryRun {
-		logger.Info("Dry-run mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains. This run is for testing and validation only.")
+	if debug {
+		logger.Info("Debug mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains.")
 	}
 
 	// Initialize database first thing in manager
@@ -117,7 +117,7 @@ func RunManager(dryRun bool) {
 	certManagerConfig := CertificatesManagerConfig{
 		CertDir:          constants.CertificatesStoragePath,
 		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
-		TlsStaging:       dryRun,
+		TlsStaging:       debug,
 	}
 	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
 	if err != nil {
@@ -125,7 +125,7 @@ func RunManager(dryRun bool) {
 	}
 
 	// Create the HAProxy manager
-	haproxyManager := NewHAProxyManager(cli, constants.HAProxyConfigPath, dryRun)
+	haproxyManager := NewHAProxyManager(cli, constants.HAProxyConfigPath, debug)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
