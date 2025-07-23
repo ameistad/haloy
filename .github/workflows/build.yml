@@ -94,7 +94,7 @@ jobs:
               fi
 
               echo "Building $binary for $GOOS/$GOARCH..."
-              GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" -o "dist/$OUTPUT_NAME" ./cmd/$binary
+              GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" -o "dist/$OUTPUT_NAME" ./cmd/$binary
             done
           done
 
