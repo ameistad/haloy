@@ -1,11 +1,14 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 type ManagerConfig struct {
@@ -58,22 +61,20 @@ func LoadManagerConfig(configPath string) (*ManagerConfig, error) {
 }
 
 func Save(config *ManagerConfig, configPath string) error {
-	v := viper.New()
-	v.SetConfigFile(configPath)
-
-	// Auto-detect format from extension
 	ext := filepath.Ext(configPath)
+	var data []byte
+	var err error
+
 	switch ext {
-	case ".toml":
-		v.SetConfigType("toml")
 	case ".json":
-		v.SetConfigType("json")
-	default:
-		v.SetConfigType("yaml")
+		data, err = json.MarshalIndent(config, "", "  ")
+	default: // yaml
+		data, err = yaml.Marshal(config)
 	}
 
-	v.Set("api.domain", config.API.Domain)
-	v.Set("certificates.acme_email", config.Certificates.AcmeEmail)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
 
-	return v.WriteConfig()
+	return os.WriteFile(configPath, data, 0644)
 }
