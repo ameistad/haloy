@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/spf13/viper"
@@ -59,14 +60,20 @@ func LoadManagerConfig(configPath string) (*ManagerConfig, error) {
 func Save(config *ManagerConfig, configPath string) error {
 	v := viper.New()
 	v.SetConfigFile(configPath)
-	v.SetConfigType("yaml")
+
+	// Auto-detect format from extension
+	ext := filepath.Ext(configPath)
+	switch ext {
+	case ".toml":
+		v.SetConfigType("toml")
+	case ".json":
+		v.SetConfigType("json")
+	default:
+		v.SetConfigType("yaml")
+	}
 
 	v.Set("api.domain", config.API.Domain)
 	v.Set("certificates.acme_email", config.Certificates.AcmeEmail)
 
-	if err := v.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to write manager config: %w", err)
-	}
-
-	return nil
+	return v.WriteConfig()
 }

@@ -320,7 +320,7 @@ HALOY_ENCRYPTION_KEY=%s
 			return fmt.Errorf("invalid manager config: %w", err)
 		}
 
-		managerConfigPath := filepath.Join(configDir, "manager.yml")
+		managerConfigPath := filepath.Join(configDir, "manager.json")
 		if err := config.Save(managerConfig, managerConfigPath); err != nil {
 			return fmt.Errorf("failed to save manager config: %w", err)
 		}
