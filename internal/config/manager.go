@@ -56,13 +56,13 @@ func LoadManagerConfig(configPath string) (*ManagerConfig, error) {
 	return &managerConfig, nil
 }
 
-func SaveManagerConfig(config *ManagerConfig, configPath string) error {
+func Save(config *ManagerConfig, configPath string) error {
 	v := viper.New()
 	v.SetConfigFile(configPath)
 	v.SetConfigType("yaml")
 
 	v.Set("api.domain", config.API.Domain)
-	v.Set("certificates.acmeEmail", config.Certificates.AcmeEmail)
+	v.Set("certificates.acme_email", config.Certificates.AcmeEmail)
 
 	if err := v.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to write manager config: %w", err)
