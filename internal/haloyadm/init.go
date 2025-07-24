@@ -18,10 +18,8 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
-	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -62,11 +60,6 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 					cleanupDirectories(createdDirs)
 				}
 			}()
-
-			if err := validateDomain(managerDomain, acmeEmail); err != nil {
-				ui.Error("Domain validation failed: %v\n", err)
-				return
-			}
 
 			// Check if Docker is installed and available in PATH.
 			if _, err := exec.LookPath("docker"); err != nil {
@@ -148,7 +141,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 
 			successMsg := "Haloy initialized successfully!\n\n"
 			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
-			successMsg += fmt.Sprintf("⚙️  Config directory: %s\n", configDir)
+			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
 			if managerDomain != "" {
 				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", managerDomain)
 			}
@@ -166,27 +159,6 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 	cmd.Flags().StringVar(&managerDomain, "domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
 	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
 	return cmd
-}
-
-func validateDomain(domain, acmeEmail string) error {
-	if domain == "" {
-		return nil
-	}
-
-	// Validate domain format
-	if err := helpers.IsValidDomain(domain); err != nil {
-		return fmt.Errorf("invalid domain format: %w", err)
-	}
-
-	if acmeEmail == "" {
-		return fmt.Errorf("acme-email must be set when domain is provided")
-	}
-
-	if !helpers.IsValidEmail(acmeEmail) {
-		return fmt.Errorf("invalid acme-email format: %s", acmeEmail)
-	}
-
-	return nil
 }
 
 func copyDataFiles(dst string, emptyDirs []string) error {
@@ -340,18 +312,17 @@ HALOY_ENCRYPTION_KEY=%s
 	}
 
 	if domain != "" {
-		managerConfigFile := config.ManagerConfig{}
-		managerConfigFile.API.Domain = domain
-		managerConfigFile.Certificates.AcmeEmail = acmeEmail
+		managerConfig := &config.ManagerConfig{}
+		managerConfig.API.Domain = domain
+		managerConfig.Certificates.AcmeEmail = acmeEmail
 
-		yamlData, err := yaml.Marshal(&managerConfigFile)
-		if err != nil {
-			return fmt.Errorf("failed to generate manager config: %w", err)
+		if err := managerConfig.Validate(); err != nil {
+			return fmt.Errorf("invalid manager config: %w", err)
 		}
 
 		managerConfigPath := filepath.Join(configDir, "manager.yml")
-		if err := os.WriteFile(managerConfigPath, yamlData, configFileMode); err != nil {
-			return fmt.Errorf("failed to write manager.yml: %w", err)
+		if err := config.SaveManagerConfig(managerConfig, managerConfigPath); err != nil {
+			return fmt.Errorf("failed to save manager config: %w", err)
 		}
 	}
 	return nil
