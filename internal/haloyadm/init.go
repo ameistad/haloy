@@ -18,17 +18,25 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 const (
-	initTimeout = 5 * time.Minute
+	initTimeout    = 5 * time.Minute
+	apiTokenLength = 32                // bytes, results in 64 character hex string
+	envFileMode    = os.FileMode(0600) // owner read/write only
+	configFileMode = os.FileMode(0644) // owner read/write, group/others read
+	executableMode = os.FileMode(0755) // owner read/write/execute, group/others read/execute
 )
 
 func InitCmd() *cobra.Command {
 	var skipServices bool
 	var overrideExisting bool
+	var managerDomain string
+	var acmeEmail string
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -36,6 +44,7 @@ func InitCmd() *cobra.Command {
 		Long: `Initialize Haloy by creating the data directory structure and starting core services.
 
 This command will:
+- Create the config directory (default: ~/.config/haloy)
 - Create the data directory (default: ~/.local/share/haloy)
 - Copy initial files and templates
 - Create the Docker network for Haloy services
@@ -43,6 +52,30 @@ This command will:
 
 The data directory can be customized by setting the HALOY_DATA_DIR environment variable.`,
 		Run: func(cmd *cobra.Command, args []string) {
+
+			var createdDirs []string
+			var cleanupOnFailure bool = true
+
+			// If we encounter an error, we will clean up any directories created so far.
+			defer func() {
+				if cleanupOnFailure && len(createdDirs) > 0 {
+					cleanupDirectories(createdDirs)
+				}
+			}()
+
+			if err := validateDomain(managerDomain, acmeEmail); err != nil {
+				ui.Error("Domain validation failed: %v\n", err)
+				return
+			}
+
+			// Check if Docker is installed and available in PATH.
+			if _, err := exec.LookPath("docker"); err != nil {
+				ui.Error("Docker executable not found.\n" +
+					"Please ensure Docker is installed and in your PATH.\n" +
+					"Download from: https://www.docker.com/get-started")
+				return
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
 			defer cancel()
 
@@ -58,47 +91,17 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				return
 			}
 
-			// Check the status of the data directory
-			fileInfo, statErr := os.Stat(dataDir)
-			if statErr == nil { // Directory exists
-				if !fileInfo.IsDir() {
-					ui.Error("Data directory path '%s' exists but is not a directory. Please remove it or use a different path.", dataDir)
-					return
-				}
-				// Directory exists
-				if !overrideExisting {
-					ui.Error("Data directory '%s' already exists. Use --override-existing to overwrite.", dataDir)
-					return
-				}
-				// overrideExisting is true, so remove the existing directory
-				ui.Info("Removing existing data directory at: %s\n", dataDir)
-				if err := os.RemoveAll(dataDir); err != nil {
-					ui.Error("Failed to remove existing data directory: %v\n", err)
-					return
-				}
-				// Proceed to create the directory below
-			} else if !os.IsNotExist(statErr) {
-				// An error other than "does not exist" occurred with os.Stat
-				ui.Error("Failed to check status of data directory '%s': %v\n", dataDir, statErr)
+			if err := validateAndPrepareDirectory(configDir, "Config", overrideExisting); err != nil {
+				ui.Error("%v\n", err)
 				return
 			}
-			// At this point, the directory either did not exist,
-			// or it existed, was a directory, and has been removed (if overrideExisting was true).
-			// Now, (re)create the configuration directory.
-			if err := os.MkdirAll(dataDir, 0755); err != nil {
-				ui.Error("Failed to create data directory '%s': %v\n", dataDir, err)
-				return
-			}
+			createdDirs = append(createdDirs, configDir)
 
-			// Check if Docker is installed and available in PATH.
-			_, err = exec.LookPath("docker")
-			if err != nil {
-				ui.Error("Docker executable not found.\n" +
-					"Please ensure Docker is installed and that its binary is in your system's PATH.\n" +
-					"You can download and install Docker from: https://www.docker.com/get-started\n" +
-					"If Docker is installed, verify your PATH environment variable includes the directory where Docker is located.")
+			if err := validateAndPrepareDirectory(dataDir, "Data", overrideExisting); err != nil {
+				ui.Error("%v\n", err)
 				return
 			}
+			createdDirs = append(createdDirs, dataDir)
 
 			apiToken, err := generateAPIToken()
 			if err != nil {
@@ -113,14 +116,15 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				return
 			}
 
-			if err := createEnvFile(apiToken, identity.String(), configDir); err != nil {
-				ui.Error("Failed to create .env file: %v\n", err)
+			// Use createdDirs for cleanup if later steps fail
+			if err := createConfigFiles(apiToken, identity.String(), managerDomain, acmeEmail, configDir); err != nil {
+				ui.Error("Failed to create config files: %v\n", err)
 				return
 			}
 
 			var emptyDirs = []string{
-				strings.TrimPrefix(constants.HAProxyConfigPath, "/"),
-				strings.TrimPrefix(constants.DBPath, "/"),
+				filepath.Base(constants.HAProxyConfigPath),
+				filepath.Base(constants.DBPath),
 			}
 			if err := copyDataFiles(dataDir, emptyDirs); err != nil {
 				ui.Error("Failed to create configuration files: %v\n", err)
@@ -142,25 +146,54 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				}
 			}
 
-			successMsg := "Haloy initialized successfully!\n"
-			successMsg += fmt.Sprintf("Data directory: %s\n", dataDir)
-			if !skipServices {
-				successMsg += "HAProxy and haloy-manager started successfully.\n"
+			successMsg := "Haloy initialized successfully!\n\n"
+			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
+			successMsg += fmt.Sprintf("⚙️  Config directory: %s\n", configDir)
+			if managerDomain != "" {
+				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", managerDomain)
 			}
+			if !skipServices {
+				successMsg += "\n✅ HAProxy and haloy-manager started successfully.\n"
+				successMsg += "   Use 'haloy status' to check service health.\n"
+			}
+			cleanupOnFailure = false
 			ui.Success("%s", successMsg)
 		},
 	}
 
 	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloy-manager containers")
 	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
+	cmd.Flags().StringVar(&managerDomain, "domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
+	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
 	return cmd
+}
+
+func validateDomain(domain, acmeEmail string) error {
+	if domain == "" {
+		return nil
+	}
+
+	// Validate domain format
+	if err := helpers.IsValidDomain(domain); err != nil {
+		return fmt.Errorf("invalid domain format: %w", err)
+	}
+
+	if acmeEmail == "" {
+		return fmt.Errorf("acme-email must be set when domain is provided")
+	}
+
+	if !helpers.IsValidEmail(acmeEmail) {
+		return fmt.Errorf("invalid acme-email format: %s", acmeEmail)
+	}
+
+	return nil
 }
 
 func copyDataFiles(dst string, emptyDirs []string) error {
 	// First create empty directories
 	for _, dir := range emptyDirs {
 		dirPath := filepath.Join(dst, dir)
-		if err := os.MkdirAll(dirPath, 0755); err != nil {
+		if err := os.MkdirAll(dirPath, executableMode); err != nil {
 			return fmt.Errorf("failed to create empty directory %s: %w", dirPath, err)
 		}
 	}
@@ -179,7 +212,7 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 
 		targetPath := filepath.Join(dst, relPath)
 		if d.IsDir() {
-			return os.MkdirAll(targetPath, 0755)
+			return os.MkdirAll(targetPath, executableMode)
 		}
 
 		// Skip template files - they'll be handled by copyConfigTemplateFiles
@@ -193,9 +226,9 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 		}
 
 		// Determine the file mode - make shell scripts executable
-		fileMode := fs.FileMode(0644)
+		fileMode := configFileMode
 		if filepath.Ext(targetPath) == ".sh" {
-			fileMode = 0755
+			fileMode = executableMode
 		}
 
 		if err := os.WriteFile(targetPath, data, fileMode); err != nil {
@@ -234,7 +267,7 @@ func copyConfigTemplateFiles() error {
 		return fmt.Errorf("failed to determine HAProxy config file path: %w", err)
 	}
 
-	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), configFileMode); err != nil {
 		return fmt.Errorf("failed to write updated haproxy config file: %w", err)
 	}
 
@@ -261,15 +294,39 @@ func renderTemplate(templateFilePath string, templateData any) (bytes.Buffer, er
 
 // generateAPIToken creates a secure random API token
 func generateAPIToken() (string, error) {
-	bytes := make([]byte, 32) // 64 character hex string
-	if _, err := rand.Read(bytes); err != nil {
+	tokenBytes := make([]byte, apiTokenLength)
+	if _, err := rand.Read(tokenBytes); err != nil {
 		return "", fmt.Errorf("failed to generate random token: %w", err)
 	}
-	return hex.EncodeToString(bytes), nil
+	token := hex.EncodeToString(tokenBytes)
+
+	// Validate generated token
+	if len(token) != apiTokenLength*2 {
+		return "", fmt.Errorf("generated token has unexpected length: got %d, expected %d",
+			len(token), apiTokenLength*2)
+	}
+
+	return token, nil
 }
 
-// createEnvFile creates a .env file with the API token in the data directory
-func createEnvFile(apiToken, encryptionKey, dataDir string) error {
+// createConfigFiles creates a .env file with the API token in the data directory
+func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir string) error {
+	if apiToken == "" {
+		return fmt.Errorf("apiToken cannot be empty")
+	}
+	if encryptionKey == "" {
+		return fmt.Errorf("encryptionKey cannot be empty")
+	}
+	if configDir == "" {
+		return fmt.Errorf("configDir cannot be empty")
+	}
+	envPath := filepath.Join(configDir, ".env")
+	envFile, err := os.OpenFile(envPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, envFileMode)
+	if err != nil {
+		return fmt.Errorf("failed to create .env file: %w", err)
+	}
+	defer envFile.Close()
+
 	envContent := fmt.Sprintf(`# Haloy Configuration
 # API token for haloy-manager authentication
 HALOY_API_TOKEN=%s
@@ -277,11 +334,61 @@ HALOY_API_TOKEN=%s
 # Encryption key for secrets (age X25519 private key)
 HALOY_ENCRYPTION_KEY=%s
 `, apiToken, encryptionKey)
-	envPath := filepath.Join(dataDir, ".env")
 
-	// Create .env file with strict permissions (owner read/write only)
-	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
-		return fmt.Errorf("failed to create .env file: %w", err)
+	if _, err := envFile.WriteString(envContent); err != nil {
+		return fmt.Errorf("failed to write .env content: %w", err)
+	}
+
+	if domain != "" {
+		managerConfigFile := config.ManagerConfig{}
+		managerConfigFile.API.Domain = domain
+		managerConfigFile.Certificates.AcmeEmail = acmeEmail
+
+		yamlData, err := yaml.Marshal(&managerConfigFile)
+		if err != nil {
+			return fmt.Errorf("failed to generate manager config: %w", err)
+		}
+
+		managerConfigPath := filepath.Join(configDir, "manager.yml")
+		if err := os.WriteFile(managerConfigPath, yamlData, configFileMode); err != nil {
+			return fmt.Errorf("failed to write manager.yml: %w", err)
+		}
 	}
 	return nil
+}
+
+func validateAndPrepareDirectory(dirPath, dirType string, overrideExisting bool) error {
+	fileInfo, statErr := os.Stat(dirPath)
+	if statErr == nil {
+		if !fileInfo.IsDir() {
+			return fmt.Errorf("%s directory path exists but is a file, not a directory: %s",
+				strings.ToLower(dirType), dirPath)
+		}
+		if !overrideExisting {
+			return fmt.Errorf("%s directory already exists: %s\nUse --override-existing to overwrite",
+				strings.ToLower(dirType), dirPath)
+		}
+		ui.Info("Removing existing %s directory: %s\n", strings.ToLower(dirType), dirPath)
+		if err := os.RemoveAll(dirPath); err != nil {
+			return fmt.Errorf("failed to remove existing %s directory %s: %w",
+				strings.ToLower(dirType), dirPath, err)
+		}
+	} else if !os.IsNotExist(statErr) {
+		return fmt.Errorf("failed to access %s directory %s: %w",
+			strings.ToLower(dirType), dirPath, statErr)
+	}
+
+	if err := os.MkdirAll(dirPath, executableMode); err != nil {
+		return fmt.Errorf("failed to create %s directory %s: %w",
+			strings.ToLower(dirType), dirPath, err)
+	}
+	return nil
+}
+
+func cleanupDirectories(dirs []string) {
+	for _, dir := range dirs {
+		if err := os.RemoveAll(dir); err != nil {
+			ui.Warn("Failed to cleanup directory %s: %v", dir, err)
+		}
+	}
 }
