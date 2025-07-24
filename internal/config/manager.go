@@ -12,7 +12,7 @@ type ManagerConfig struct {
 		Domain string `yaml:"domain" json:"domain"`
 	} `yaml:"api" json:"api"`
 	Certificates struct {
-		AcmeEmail string `yaml:"acmeEmail" json:"acmeEmail"`
+		AcmeEmail string `yaml:"acme_email" json:"acmeEmail"`
 	} `yaml:"certificates" json:"certificates"`
 }
 
