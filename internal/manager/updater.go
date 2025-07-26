@@ -171,9 +171,9 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 	}
 
 	// Get deployments AFTER checking HasChanged
-	deployments := u.deploymentManager.Deployments() // Gets a safe copy
+	deployments := u.deploymentManager.Deployments()
 
-	// Delegate the entire HAProxy update process (lock, generate, write, signal)
+	// Apply the HAProxy configuration
 	if err := u.haproxyManager.ApplyConfig(ctx, logger, deployments); err != nil {
 		return fmt.Errorf("failed to apply HAProxy config for app: %w", err)
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -62,7 +63,7 @@ func RunManager(debug bool) {
 		logger.Info("Debug mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains.")
 	}
 
-	// Initialize database first thing in manager
+	// Initialize database
 	logger.Info("Initializing database.")
 	database, err := db.New()
 	if err != nil {
@@ -73,6 +74,14 @@ func RunManager(debug bool) {
 
 	if err := database.Migrate(); err != nil {
 		logger.Error("Failed to run database migrations", "error", err)
+		return
+	}
+
+	// Read config file if it exists
+	configFilePath := filepath.Join(constants.HaloyConfigPath, constants.ManagerConfigFileName)
+	managerConfig, err := config.LoadManagerConfig(configFilePath)
+	if err != nil {
+		logger.Error("Failed to load configuration file", "error", err)
 		return
 	}
 
@@ -118,6 +127,7 @@ func RunManager(debug bool) {
 		CertDir:          constants.CertificatesStoragePath,
 		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
 		TlsStaging:       debug,
+		ManagerConfig:    managerConfig,
 	}
 	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
 	if err != nil {
@@ -125,7 +135,7 @@ func RunManager(debug bool) {
 	}
 
 	// Create the HAProxy manager
-	haproxyManager := NewHAProxyManager(cli, constants.HAProxyConfigPath, debug)
+	haproxyManager := NewHAProxyManager(cli, managerConfig, constants.HAProxyConfigPath, debug)
 
 	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{

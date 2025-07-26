@@ -75,51 +75,19 @@ For TLS (HTTPS) to work, you need to set up DNS records pointing to your server'
 
 ### Configure Your Apps
 
-Edit the configuration file at `~/.config/haloy/apps.yml`. Haloy needs to know where to get your application's code, which is defined under the `source` property. You can either build from a local `Dockerfile` or pull a pre-built `image` from a registry.
-
-#### Example 1: Building from a local Dockerfile
-Use this when you have the code available on the machine Haloy is running on. 
-
-```yaml
-apps:
-  - name: "example-app"
-    source:
-      dockerfile:
-         path: "/path/to/your/Dockerfile"
-         buildContext: "/path/to/your/app"
-    domains:
-      - domain: "example.com"
-        aliases:
-          - "www.example.com"
-      - domain: "api.example.com"
-    acmeEmail: "your-email@example.com"
-```
-
-#### Example 2: Pulling a pre-built image from a registry
-This is ideal for deploying applications built by your CI/CD pipeline.
-```yaml
-apps:
-  - name: "example-app"
-    source:
-      image:
-        repository: "ghcr.io/ameistad/example-app"
-        tag: "latest"
-    domains:
-      - domain: "example.com"
-    acmeEmail: "your-email@example.com"
-```
+TODO
 
 ### Deploy
 
 ```bash
 # Deploy app
-haloy deploy example-app
+haloy deploy my-app.yaml
 
 # Check the status
-haloy status example-app
+haloy status my-app.yaml
 
 # Roll back to a previous deployment
-haloy rollback example-app 20231026143000
+haloy rollback my-app.yaml 20231026143000
 ```
 
 ## Full List of Commands

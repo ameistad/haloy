@@ -9,7 +9,7 @@ import (
 type EnvVar struct {
 	Name       string `json:"name"`
 	Value      string `json:"value,omitempty"`
-	SecretName string `json:"secretName,omitempty"`
+	SecretName string `json:"secret_name,omitempty"`
 }
 
 // Validate ensures the EnvVar is correctly configured.

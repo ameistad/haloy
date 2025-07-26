@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
@@ -143,6 +144,7 @@ type CertificatesManagerConfig struct {
 	CertDir          string
 	HTTPProviderPort string
 	TlsStaging       bool
+	ManagerConfig    *config.ManagerConfig
 }
 
 type CertificatesDomain struct {
@@ -159,6 +161,7 @@ type CertificatesManager struct {
 	clientManager *CertificatesClientManager
 	updateSignal  chan<- string // Channel to signal successful updates
 	debouncer     *helpers.Debouncer
+	managerConfig *config.ManagerConfig
 }
 
 func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<- string) (*CertificatesManager, error) {
@@ -180,8 +183,9 @@ func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<
 		ctx:           ctx,
 		cancel:        cancel,
 		clientManager: clientManager,
-		updateSignal:  updateSignal, // Store the channel
+		updateSignal:  updateSignal,
 		debouncer:     helpers.NewDebouncer(refreshDebounceDelay),
+		managerConfig: config.ManagerConfig,
 	}
 
 	return m, nil
@@ -244,13 +248,31 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		cm.checkMutex.Unlock()
 	}()
 
+	// We'll add the domain set in the manager config file if it exists.
+	if cm.managerConfig != nil && cm.managerConfig.API.Domain != "" && cm.managerConfig.Certificates.AcmeEmail != "" {
+		apiDomain := CertificatesDomain{
+			Canonical: cm.managerConfig.API.Domain,
+			Aliases:   []string{},
+			Email:     cm.managerConfig.Certificates.AcmeEmail,
+		}
+		domains = append(domains, apiDomain)
+		logger.Debug("Added manager API domain to certificate processing",
+			"domain", apiDomain.Canonical, "email", apiDomain.Email)
+	}
+
 	if len(domains) == 0 {
 		return renewedDomains, nil
 	}
 
+	uniqueDomains := deduplicateDomains(domains)
+	if len(uniqueDomains) != len(domains) {
+		logger.Debug("Deduplicated certificate domains",
+			"original", len(domains), "unique", len(uniqueDomains))
+	}
+
 	// Build the current desired state - only one entry per canonical domain
 	currentState := make(map[string]CertificatesDomain)
-	for _, domain := range domains {
+	for _, domain := range uniqueDomains {
 		if existing, exists := currentState[domain.Canonical]; exists {
 			// Prefer the configuration with more aliases
 			if len(domain.Aliases) > len(existing.Aliases) {
@@ -723,4 +745,18 @@ func (km *CertificatesKeyManager) createKey(path string) (crypto.PrivateKey, err
 	}
 
 	return privateKey, nil
+}
+
+func deduplicateDomains(domains []CertificatesDomain) []CertificatesDomain {
+	seen := make(map[string]bool)
+	var unique []CertificatesDomain
+
+	for _, domain := range domains {
+		if !seen[domain.Canonical] {
+			seen[domain.Canonical] = true
+			unique = append(unique, domain)
+		}
+	}
+
+	return unique
 }

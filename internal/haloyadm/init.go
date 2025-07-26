@@ -35,6 +35,7 @@ func InitCmd() *cobra.Command {
 	var overrideExisting bool
 	var managerDomain string
 	var acmeEmail string
+	var debug bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -133,7 +134,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 
 			// Start the haloy-manager container and haproxy container.
 			if !skipServices {
-				if err := startServices(ctx, dataDir, configDir, false, overrideExisting); err != nil {
+				if err := startServices(ctx, dataDir, configDir, false, overrideExisting, debug); err != nil {
 					ui.Error("%s", err)
 					return
 				}
@@ -158,6 +159,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
 	cmd.Flags().StringVar(&managerDomain, "domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
 	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
+	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
 	return cmd
 }
 
@@ -320,7 +322,7 @@ HALOY_ENCRYPTION_KEY=%s
 			return fmt.Errorf("invalid manager config: %w", err)
 		}
 
-		managerConfigPath := filepath.Join(configDir, "manager.json")
+		managerConfigPath := filepath.Join(configDir, constants.ManagerConfigFileName)
 		if err := config.Save(managerConfig, managerConfigPath); err != nil {
 			return fmt.Errorf("failed to save manager config: %w", err)
 		}

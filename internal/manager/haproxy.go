@@ -22,17 +22,19 @@ import (
 )
 
 type HAProxyManager struct {
-	cli         *client.Client
-	configDir   string
-	debug       bool
-	updateMutex sync.Mutex // Mutex protects config writing and reload signaling
+	cli           *client.Client
+	managerConfig *config.ManagerConfig // Reference to the manager config for API domain
+	configDir     string
+	debug         bool
+	updateMutex   sync.Mutex // Mutex protects config writing and reload signaling
 }
 
-func NewHAProxyManager(cli *client.Client, configDir string, debug bool) *HAProxyManager {
+func NewHAProxyManager(cli *client.Client, managerConfig *config.ManagerConfig, configDir string, debug bool) *HAProxyManager {
 	return &HAProxyManager{
-		cli:       cli,
-		configDir: configDir,
-		debug:     debug,
+		cli:           cli,
+		managerConfig: managerConfig,
+		configDir:     configDir,
+		debug:         debug,
 	}
 }
 
@@ -97,19 +99,39 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 	var backends string
 	const indent = "    "
 
+	// Add ACLs for api
+	if hpm.managerConfig != nil && hpm.managerConfig.API.Domain != "" {
+		apiDomain := hpm.managerConfig.API.Domain
+		apiACLName := generateACLName("haloy_api", apiDomain, "acl")
+
+		httpsFrontend += fmt.Sprintf("%sacl %s hdr(host) -i %s\n", indent, apiACLName, apiDomain)
+		httpsFrontendUseBackend += fmt.Sprintf("%suse_backend haloy_api if %s\n", indent, apiACLName)
+
+		httpFrontend += fmt.Sprintf("%sacl %s hdr(host) -i %s\n", indent, apiACLName, apiDomain)
+		httpFrontend += fmt.Sprintf("%shttp-request redirect code 301 location https://%s%%[path] if %s !is_acme_challenge\n",
+			indent, apiDomain, apiACLName)
+
+		backends += "backend haloy_api\n"
+		backends += fmt.Sprintf("%smode http\n", indent)
+		backends += fmt.Sprintf("%s# Forward to the manager container API server\n", indent)
+		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-For %%[src]\n", indent)
+		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-Proto https\n", indent)
+		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-Port %%[dst_port]\n", indent)
+		backends += fmt.Sprintf("%shttp-request set-header Host %%[req.hdr(host)]\n", indent)
+		backends += fmt.Sprintf("%sserver haloy-manager haloy-manager:%s check\n", indent, constants.APIServerPort)
+		backends += "\n"
+	}
+
 	for appName, d := range deployments {
-		backendName := appName
 		var canonicalACLs []string
 
-		// Skip processing if no domains are set for this deployment.
 		if len(d.Labels.Domains) == 0 {
 			continue
 		}
 
 		for _, domain := range d.Labels.Domains {
 			if domain.Canonical != "" {
-				canonicalKey := strings.ReplaceAll(domain.Canonical, ".", "_")
-				canonicalACLName := fmt.Sprintf("%s_%s_canonical", backendName, canonicalKey)
+				canonicalACLName := generateACLName(appName, domain.Canonical, "canonical")
 
 				httpsFrontend += fmt.Sprintf("%sacl %s hdr(host) -i %s\n", indent, canonicalACLName, domain.Canonical)
 				canonicalACLs = append(canonicalACLs, canonicalACLName)
@@ -122,7 +144,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 				for _, alias := range domain.Aliases {
 					if alias != "" {
 						aliasKey := strings.ReplaceAll(alias, ".", "_")
-						aliasACLName := fmt.Sprintf("%s_%s_alias", backendName, aliasKey)
+						aliasACLName := fmt.Sprintf("%s_%s_alias", appName, aliasKey)
 
 						httpsFrontend += fmt.Sprintf("%sacl %s hdr(host) -i %s\n", indent, aliasACLName, alias)
 						httpsFrontend += fmt.Sprintf("%shttp-request redirect code 301 location https://%s%%[path] if %s !is_acme_challenge\n",
@@ -137,7 +159,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 		}
 
 		if len(canonicalACLs) > 0 {
-			httpsFrontendUseBackend += fmt.Sprintf("%suse_backend %s if %s\n", indent, backendName, strings.Join(canonicalACLs, " or "))
+			httpsFrontendUseBackend += fmt.Sprintf("%suse_backend %s if %s\n", indent, appName, strings.Join(canonicalACLs, " or "))
 		}
 	}
 
@@ -219,4 +241,14 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context, logger *slog.Logg
 
 	return "", fmt.Errorf("timed out waiting for HAProxy container to be in running state after %d seconds",
 		maxRetries)
+}
+
+// sanitizeForACL converts a domain name to a safe ACL identifier
+func sanitizeForACL(domain string) string {
+	return strings.ReplaceAll(domain, ".", "_")
+}
+
+// generateACLName creates a consistent ACL name
+func generateACLName(appName, domain, suffix string) string {
+	return fmt.Sprintf("%s_%s_%s", appName, sanitizeForACL(domain), suffix)
 }

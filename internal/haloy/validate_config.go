@@ -11,7 +11,7 @@ func ValidateAppConfigCmd() *cobra.Command {
 	var configPath string
 
 	cmd := &cobra.Command{
-		Use:   "validate-config [path]",
+		Use:   "validate-config [config-path]",
 		Short: "Validate a haloy config file",
 		Long: `Validate a haloy configuration file.
 

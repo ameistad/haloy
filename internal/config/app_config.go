@@ -11,18 +11,18 @@ import (
 )
 
 type AppConfig struct {
-	Name              string   `json:"name"`
-	Image             Image    `json:"image"`
-	Server            string   `json:"server,omitempty"`
-	Domains           []Domain `json:"domains,omitempty"`
-	ACMEEmail         string   `json:"acmeEmail,omitempty"`
-	Env               []EnvVar `json:"env,omitempty"`
-	DeploymentsToKeep *int     `json:"deploymentsToKeep,omitempty"`
-	HealthCheckPath   string   `json:"healthCheckPath,omitempty"`
-	Port              string   `json:"port,omitempty"`
-	Replicas          *int     `json:"replicas,omitempty"`
-	Volumes           []string `json:"volumes,omitempty"`
-	NetworkMode       string   `json:"networkMode,omitempty"` // defaults to "bridge"
+	Name              string   `yaml:"name" json:"name"`
+	Image             Image    `yaml:"image" json:"image"`
+	Server            string   `yaml:"server,omitempty" json:"server,omitempty"`
+	Domains           []Domain `yaml:"domains,omitempty" json:"domains,omitempty"`
+	ACMEEmail         string   `yaml:"acme_email,omitempty" json:"acme_email,omitempty"`
+	Env               []EnvVar `yaml:"env,omitempty" json:"env,omitempty"`
+	DeploymentsToKeep *int     `yaml:"deployments_to_keep,omitempty" json:"deploymentsToKeep,omitempty"`
+	HealthCheckPath   string   `yaml:"health_check_path,omitempty" json:"healthCheckPath,omitempty"`
+	Port              string   `yaml:"port,omitempty" json:"port,omitempty"`
+	Replicas          *int     `yaml:"replicas,omitempty" json:"replicas,omitempty"`
+	Volumes           []string `yaml:"volumes,omitempty" json:"volumes,omitempty"`
+	NetworkMode       string   `yaml:"network_mode,omitempty" json:"networkMode,omitempty"`
 }
 
 func (ac *AppConfig) Normalize() *AppConfig {

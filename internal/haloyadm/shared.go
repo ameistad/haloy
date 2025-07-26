@@ -15,7 +15,7 @@ import (
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
-func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool) error {
+func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
 	image := "ghcr.io/ameistad/haloy-manager:latest"
 	if devMode {
 		image = "haloy-manager:latest" // Use local image in dev mode
@@ -25,26 +25,32 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	gid := os.Getgid()
 	dockerGID := getDockerGroupID()
 
-	cmd := exec.CommandContext(ctx, "docker", "run",
+	args := []string{
+		"run",
 		"--detach",
 		"--env-file", filepath.Join(configDir, ".env"),
 		"--name", constants.ManagerContainerName,
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.CertificatesHTTPProviderPort, constants.CertificatesHTTPProviderPort),
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.APIServerPort, constants.APIServerPort),
-		// mount the config dir read-only.
-		// /haloy-config in the container and defaults to ~/.config/haloy on the host machine
 		"--volume", fmt.Sprintf("%s:%s:ro", configDir, constants.HaloyConfigPath),
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.HAProxyConfigPath, constants.HAProxyConfigPath), // haproxy config directory,
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.CertificatesStoragePath, constants.CertificatesStoragePath), // cert storage directory
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.DBPath, constants.DBPath), // database directory
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.HAProxyConfigPath, constants.HAProxyConfigPath),
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.CertificatesStoragePath, constants.CertificatesStoragePath),
+		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.DBPath, constants.DBPath),
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
-		"--user", fmt.Sprintf("%d:%d", uid, gid), // Run as current user
+		"--user", fmt.Sprintf("%d:%d", uid, gid),
 		"--group-add", dockerGID,
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
 		"--restart", "unless-stopped",
 		"--network", constants.DockerNetwork,
-		image,
-	)
+	}
+
+	if debug {
+		args = append(args[:2], append([]string{"--env", "HALOY_DEBUG=true"}, args[2:]...)...)
+	}
+
+	args = append(args, image)
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -131,7 +137,7 @@ func containerExists(ctx context.Context, role string) (bool, error) {
 	return output != "", nil
 }
 
-func startServices(ctx context.Context, dataDir, configDir string, devMode, restart bool) error {
+func startServices(ctx context.Context, dataDir, configDir string, devMode, restart, debug bool) error {
 	// Check if containers exist
 	managerExists, err := containerExists(ctx, config.ManagerLabelRole)
 	if err != nil {
@@ -170,7 +176,7 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 	}
 
 	// Start the services
-	if err := startHaloyManager(ctx, dataDir, configDir, devMode); err != nil {
+	if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
 		return err
 	}
 
