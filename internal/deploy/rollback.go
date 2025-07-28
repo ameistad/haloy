@@ -3,26 +3,20 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/docker"
-	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 )
 
-type RollbackTarget struct {
-	DeploymentID string
-	ImageID      string
-	ImageTag     string
-	IsLatest     bool
-	AppConfig    *config.AppConfig
-}
-
-func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID string) error {
+// RollbackApp is basically a wrapper around DeployApp that allows rolling back to a previous deployment.
+func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID, newDeploymentID string, logger *slog.Logger) error {
 	targets, err := GetRollbackTargets(ctx, cli, appName)
 	if err != nil {
 		return err
@@ -34,22 +28,10 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 
 	for _, t := range targets {
 		if t.DeploymentID == targetDeploymentID {
-			newDeploymentID := createDeploymentID()
-			newImageTag, err := tagImage(ctx, cli, t.ImageTag, appName, newDeploymentID)
-			if err != nil {
-				return fmt.Errorf("failed to tag image: %w", err)
+			if t.AppConfig == nil {
+				return fmt.Errorf("failed to load app config for %s: %w", appName, err)
 			}
-			ui.Info("Creating new deployment from image %s", t.ImageTag)
-			appConfig := t.AppConfig
-			if appConfig == nil {
-				ui.Warn("Could not find old app config for %s, trying current config: %v", appName, err)
-				loadedAppConfig, err := config.AppConfigByName(appName)
-				if err != nil {
-					return fmt.Errorf("failed to load app config for %s: %w", appName, err)
-				}
-				appConfig = loadedAppConfig
-			}
-			if err := DeployApp(ctx, cli, appConfig, newImageTag); err != nil {
+			if err := DeployApp(ctx, cli, newDeploymentID, *t.AppConfig, logger); err != nil {
 				return fmt.Errorf("failed to deploy app %s: %w", appName, err)
 			}
 
@@ -61,13 +43,13 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 	return nil
 }
 
-// getRollbackTargets retrieves and sorts all available rollback targets for the specified app.
-func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string) (targets []RollbackTarget, err error) {
+// GetRollbackTargets retrieves and sorts all available rollback targets for the specified app.
+func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string) (targets []deploytypes.RollbackTarget, err error) {
 	if appName == "" {
 		return targets, fmt.Errorf("app name cannot be empty")
 	}
 
-	// Get avaiable images for the app
+	// Get available images for the app
 	// List all images for the app that match the format appName:<deploymentID>.
 	images, err := cli.ImageList(ctx, image.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
@@ -75,11 +57,12 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 	if err != nil {
 		return targets, fmt.Errorf("failed to list images for %s: %w", appName, err)
 	}
-	var latestImageID string
+
+	runningDeploymentID, _ := getRunningDeploymentID(ctx, cli, appName)
+
 	for _, img := range images {
 		for _, tag := range img.RepoTags {
 			if strings.HasSuffix(tag, ":latest") {
-				latestImageID = img.ID
 				continue
 			}
 			// Expected tag format: "appName:deploymentID", e.g. "test-app:20250615214304"
@@ -89,13 +72,12 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 				continue
 			}
 			deploymentID := parts[1]
-			isLatest := img.ID == latestImageID
 			appConfig, _ := GetAppConfigHistory(deploymentID)
-			target := RollbackTarget{
+			target := deploytypes.RollbackTarget{
 				DeploymentID: deploymentID,
 				ImageID:      img.ID,
 				ImageTag:     tag,
-				IsLatest:     isLatest,
+				IsRunning:    deploymentID == runningDeploymentID,
 				AppConfig:    appConfig,
 			}
 
@@ -111,7 +93,6 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 }
 
 func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName string) (string, error) {
-	// List all ContainerList for the app
 	ContainerList, err := docker.GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
 		return "", err
@@ -133,7 +114,7 @@ func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName str
 	}
 
 	sort.Slice(deploymentIDs, func(i, j int) bool {
-		return deploymentIDs[i] > deploymentIDs[j] // Newest first
+		return deploymentIDs[i] > deploymentIDs[j]
 	})
 
 	return deploymentIDs[0], nil

@@ -10,6 +10,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,8 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/lego"
@@ -89,11 +91,10 @@ func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.C
 		return client, nil
 	}
 
-	// Client doesn't exist, acquire write lock for creation
 	cm.clientsMutex.Lock()
 	defer cm.clientsMutex.Unlock()
 
-	// Check again in case another goroutine created it while we were waiting
+	// Just to be safe, we check again in case another goroutine created it while we were waiting
 	if client, ok := cm.clients[email]; ok {
 		return client, nil
 	}
@@ -143,6 +144,7 @@ type CertificatesManagerConfig struct {
 	CertDir          string
 	HTTPProviderPort string
 	TlsStaging       bool
+	ManagerConfig    *config.ManagerConfig
 }
 
 type CertificatesDomain struct {
@@ -159,6 +161,7 @@ type CertificatesManager struct {
 	clientManager *CertificatesClientManager
 	updateSignal  chan<- string // Channel to signal successful updates
 	debouncer     *helpers.Debouncer
+	managerConfig *config.ManagerConfig
 }
 
 func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<- string) (*CertificatesManager, error) {
@@ -180,8 +183,9 @@ func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<
 		ctx:           ctx,
 		cancel:        cancel,
 		clientManager: clientManager,
-		updateSignal:  updateSignal, // Store the channel
+		updateSignal:  updateSignal,
 		debouncer:     helpers.NewDebouncer(refreshDebounceDelay),
+		managerConfig: config.ManagerConfig,
 	}
 
 	return m, nil
@@ -192,35 +196,39 @@ func (m *CertificatesManager) Stop() {
 	m.debouncer.Stop() // Stop the debouncer to clean up any pending timers
 }
 
-// RefereshSync is used for synchronous refreshes of certificates for app updates.
-func (cm *CertificatesManager) RefreshSync(logger *logging.Logger, domains []CertificatesDomain) {
+func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []CertificatesDomain) error {
 	renewedDomains, err := cm.checkRenewals(logger, domains)
 	if err != nil {
-		logger.Error("Certificate refresh failed", err)
+		return err
 	}
 	if len(renewedDomains) > 0 {
 		for _, domain := range renewedDomains {
-			logger.Info(fmt.Sprintf("CertificatesManager: Renewed certificate for %s and aliases %s", domain.Canonical, strings.Join(domain.Aliases, ", ")))
+			logger.Info("CertificatesManager: Renewed certificate",
+				"domain", domain.Canonical,
+				"aliases", strings.Join(domain.Aliases, ", "))
 		}
 	}
+	return nil
 }
 
 // Refresh is used for periodoc refreshes of certificates.
-func (cm *CertificatesManager) Refresh(logger *logging.Logger, domains []CertificatesDomain) {
+func (cm *CertificatesManager) Refresh(logger *slog.Logger, domains []CertificatesDomain) {
 	logger.Debug("Refresh requested for certificate manager, using debouncer.")
 
 	// Define the action to perform after the debounce delay
 	refreshAction := func() {
 		renewedDomains, err := cm.checkRenewals(logger, domains)
 		if err != nil {
-			logger.Error("Certificate refresh failed", err)
+			logger.Error("Certificate refresh failed", "error", err)
 			return
 		}
 		// Signal the update channel to update HAProxy on async Refresh
 		// Only signal if we actually renewed something
 		if len(renewedDomains) > 0 {
 			for _, domain := range renewedDomains {
-				logger.Info(fmt.Sprintf("CertificatesManager: Renewed certificate for %s and aliases %s", domain.Canonical, strings.Join(domain.Aliases, ", ")))
+				logger.Info("CertificatesManager: Renewed certificate",
+					"domain", domain.Canonical,
+					"aliases", strings.Join(domain.Aliases, ", "))
 			}
 			if cm.updateSignal != nil {
 				cm.updateSignal <- "certificates_renewed"
@@ -234,101 +242,290 @@ func (cm *CertificatesManager) Refresh(logger *logging.Logger, domains []Certifi
 	cm.debouncer.Debounce(refreshDebounceKey, refreshAction)
 }
 
-func (cm *CertificatesManager) checkRenewals(logger *logging.Logger, domains []CertificatesDomain) (renewedDomains []CertificatesDomain, err error) {
+func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []CertificatesDomain) (renewedDomains []CertificatesDomain, err error) {
 	cm.checkMutex.Lock()
 	defer func() {
 		cm.checkMutex.Unlock()
 	}()
 
+	logger.Debug("=== CERTIFICATE MANAGER DEBUG ===")
+	logger.Debug("Certificate manager config check",
+		"cm.managerConfig_is_nil", cm.managerConfig == nil,
+		"api_domain", func() string {
+			if cm.managerConfig == nil {
+				return "CONFIG_IS_NIL"
+			}
+			return fmt.Sprintf("'%s'", cm.managerConfig.API.Domain)
+		}(),
+		"acme_email", func() string {
+			if cm.managerConfig == nil {
+				return "CONFIG_IS_NIL"
+			}
+			return fmt.Sprintf("'%s'", cm.managerConfig.Certificates.AcmeEmail)
+		}())
+
+	// We'll add the domain set in the manager config file if it exists.
+	if cm.managerConfig != nil && cm.managerConfig.API.Domain != "" && cm.managerConfig.Certificates.AcmeEmail != "" {
+		apiDomain := CertificatesDomain{
+			Canonical: cm.managerConfig.API.Domain,
+			Aliases:   []string{},
+			Email:     cm.managerConfig.Certificates.AcmeEmail,
+		}
+		domains = append(domains, apiDomain)
+		logger.Debug("Added manager API domain to certificate processing",
+			"domain", apiDomain.Canonical, "email", apiDomain.Email)
+	}
+
 	if len(domains) == 0 {
 		return renewedDomains, nil
 	}
 
-	for _, domain := range domains {
-		// File paths always use the canonical domain name
-		certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt")
-		// Combined file used by HAProxy
-		combinedCertKeyPath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt.key")
+	uniqueDomains := deduplicateDomains(domains)
+	if len(uniqueDomains) != len(domains) {
+		logger.Debug("Deduplicated certificate domains",
+			"original", len(domains), "unique", len(uniqueDomains))
+	}
 
-		_, err := os.Stat(combinedCertKeyPath) // Check for the combined file HAProxy needs
-		needsObtain := os.IsNotExist(err)
-		needsRenewalDueToExpiry := false
-		sanMismatch := false // Flag for SAN list mismatch
-
-		if !needsObtain {
-			// Load the .crt file to check expiry and SANs
-			certData, err := os.ReadFile(certFilePath)
-			if err != nil {
-				logger.Error(fmt.Sprintf("%s: Failed to read certificate file", domain))
-				// If we can't read the .crt file, we can't check expiry/SANs.
-				needsObtain = true // Treat read error as needing obtainment
+	// Build the current desired state - only one entry per canonical domain
+	currentState := make(map[string]CertificatesDomain)
+	for _, domain := range uniqueDomains {
+		if existing, exists := currentState[domain.Canonical]; exists {
+			// Prefer the configuration with more aliases
+			if len(domain.Aliases) > len(existing.Aliases) {
+				logger.Info("Using domain configuration with more aliases",
+					"domain", domain.Canonical,
+					"newAliases", domain.Aliases,
+					"oldAliases", existing.Aliases)
+				currentState[domain.Canonical] = domain
 			} else {
-				// Use the local parseCertificate helper
-				parsedCert, err := parseCertificate(certData)
-				if err != nil {
-					logger.Warn(fmt.Sprintf("%s: Failed to parse certificate", domain))
-					// Treat parse error as needing obtainment
-					needsObtain = true
-				} else {
-					// Check expiry
-					if time.Until(parsedCert.NotAfter) < 30*24*time.Hour {
-						logger.Info(fmt.Sprintf("%s: Certficate expires soon and needs renewal...", domain))
-						needsRenewalDueToExpiry = true
-					}
+				logger.Debug("Keeping existing domain configuration",
+					"domain", domain.Canonical,
+					"aliases", existing.Aliases)
+			}
+		} else {
+			currentState[domain.Canonical] = domain
+		}
+	}
 
-					// Build the list of required domains (canonical + aliases)
-					requiredDomains := []string{domain.Canonical}
-					if len(domain.Aliases) > 0 {
-						requiredDomains = append(requiredDomains, domain.Aliases...)
-					}
+	for canonical, domain := range currentState {
+		configChanged, err := cm.hasConfigurationChanged(logger, domain)
+		if err != nil {
+			logger.Error("Failed to check configuration", "domain", canonical, "error", err)
+			continue
+		}
 
-					currentDomains := parsedCert.DNSNames // Get SANs from loaded cert
-					if currentDomains == nil {
-						currentDomains = []string{}
-					}
+		// Check if certificate needs renewal due to expiry
+		needsRenewal, err := cm.needsRenewalDueToExpiry(logger, domain)
+		if err != nil {
+			logger.Error("Failed to check expiry", "domain", canonical, "error", err)
+			// Treat error as needing renewal to be safe
+			needsRenewal = true
+		}
 
-					// Sort both slices for consistent comparison
-					sort.Strings(requiredDomains)
-					sort.Strings(currentDomains)
-
-					if !reflect.DeepEqual(requiredDomains, currentDomains) {
-						sanMismatch = true
-						logger.Info(fmt.Sprintf("%s: SAN list mismatch. Required: %v, Current: %v", domain, requiredDomains, currentDomains))
-					}
-				}
+		// If configuration changed, clean up all related certificates first
+		if configChanged {
+			logger.Info("Configuration changed, cleaning up existing certificates", "domain", canonical)
+			if err := cm.cleanupDomainCertificates(logger, canonical); err != nil {
+				logger.Warn("Failed to cleanup certificates", "domain", canonical, "error", err)
+				// Continue anyway, might still work
 			}
 		}
 
-		// Trigger obtain if file doesn't exist OR expiry nearing OR SAN list mismatch
-		if needsObtain || needsRenewalDueToExpiry || sanMismatch {
+		// Obtain certificate if needed
+		if configChanged || needsRenewal {
 			obtainedDomain, err := cm.obtainCertificate(domain, logger)
 			if err != nil {
-				logger.Error(fmt.Sprintf("Failed to obtain certificate for %s: %v", domain, err))
-			} else {
-				renewedDomains = append(renewedDomains, obtainedDomain)
+				return renewedDomains, err
 			}
-		} else if !os.IsNotExist(err) { // Only log skipping if we actually checked a cert file
-			var aliasMsg string
-			if len(domain.Aliases) > 0 {
-				aliasMsg = fmt.Sprintf(" (aliases: %s)", strings.Join(domain.Aliases, ", "))
-			}
-			logger.Info(fmt.Sprintf("Skipping renewal for %s%s: certificate is valid.", domain.Canonical, aliasMsg))
+			renewedDomains = append(renewedDomains, obtainedDomain)
+		} else {
+			logger.Info("Skipping renewal: certificate is valid and configuration unchanged",
+				"domain", canonical,
+				"aliases", domain.Aliases)
 		}
 	}
 
 	return renewedDomains, nil
 }
 
+// hasConfigurationChanged checks if the domain configuration has changed compared to existing certificate
+func (cm *CertificatesManager) hasConfigurationChanged(logger *slog.Logger, domain CertificatesDomain) (bool, error) {
+	certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt")
+	combinedCertKeyPath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt.key")
+
+	// If certificate files don't exist, configuration has "changed" (need to create)
+	if _, err := os.Stat(combinedCertKeyPath); os.IsNotExist(err) {
+		logger.Debug("Certificate files don't exist, needs creation", "domain", domain.Canonical)
+		return true, nil
+	}
+
+	certData, err := os.ReadFile(certFilePath)
+	if err != nil {
+		logger.Debug("Cannot read certificate file, treating as changed", "domain", domain.Canonical)
+		return true, nil
+	}
+
+	parsedCert, err := parseCertificate(certData)
+	if err != nil {
+		logger.Debug("Cannot parse certificate, treating as changed", "domain", domain.Canonical)
+		return true, nil
+	}
+
+	requiredDomains := []string{domain.Canonical}
+	requiredDomains = append(requiredDomains, domain.Aliases...)
+	sort.Strings(requiredDomains)
+
+	existingDomains := parsedCert.DNSNames
+	sort.Strings(existingDomains)
+
+	return !reflect.DeepEqual(requiredDomains, existingDomains), nil
+}
+
+// needsRenewalDueToExpiry checks if certificate needs renewal due to expiry
+func (cm *CertificatesManager) needsRenewalDueToExpiry(logger *slog.Logger, domain CertificatesDomain) (bool, error) {
+	certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt")
+
+	// If certificate doesn't exist, we need to obtain one
+	certData, err := os.ReadFile(certFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil // File doesn't exist, need to obtain
+		}
+		return false, err // Other error
+	}
+
+	parsedCert, err := parseCertificate(certData)
+	if err != nil {
+		return true, nil // Can't parse, need to obtain new one
+	}
+
+	// Check if certificate expires within 30 days
+	if time.Until(parsedCert.NotAfter) < 30*24*time.Hour {
+		logger.Info("Certificate expires soon and needs renewal", "domain", domain.Canonical)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// cleanupDomainCertificates removes all certificate files for a domain
+func (cm *CertificatesManager) cleanupDomainCertificates(logger *slog.Logger, canonical string) error {
+	certPath := filepath.Join(cm.config.CertDir, canonical+".crt")
+	keyPath := filepath.Join(cm.config.CertDir, canonical+".key")
+	combinedPath := filepath.Join(cm.config.CertDir, canonical+".crt.key")
+
+	files := []string{certPath, keyPath, combinedPath}
+	var errors []error
+
+	for _, file := range files {
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+			errors = append(errors, fmt.Errorf("failed to remove %s: %w", file, err))
+		} else if err == nil {
+			logger.Debug("Removed file", "file", file)
+		}
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("cleanup partially failed: %v", errors)
+	}
+
+	return nil
+}
+
+func (cm *CertificatesManager) validateDomain(domain string) error {
+	// Check if domain resolves
+	ips, err := net.LookupIP(domain)
+	if err != nil {
+		// Try to determine the specific issue
+		errorMessage := cm.buildDomainErrorMessage(domain, err)
+		return fmt.Errorf("\n\n%s", errorMessage)
+	}
+
+	// Additional check: ensure domain resolves to a reachable IP
+	if len(ips) == 0 {
+		return fmt.Errorf(`domain %s has no IP addresses assigned
+
+Please add DNS records:
+- A record: %s → YOUR_SERVER_IP
+- Test with: dig A %s`, domain, domain, domain)
+	}
+
+	return nil
+}
+
+func (cm *CertificatesManager) buildDomainErrorMessage(domain string, originalErr error) string {
+	errorStr := originalErr.Error()
+
+	// Extract parent domain for whois commands
+	parts := strings.Split(domain, ".")
+	var parentDomain string
+	if len(parts) >= 2 {
+		parentDomain = strings.Join(parts[len(parts)-2:], ".")
+	} else {
+		parentDomain = domain
+	}
+
+	if strings.Contains(errorStr, "NXDOMAIN") || strings.Contains(errorStr, "no such host") {
+		return fmt.Sprintf(`🔍 DNS Resolution Failed - Domain not found
+
+Common causes for "%s":
+
+1. 📅 DOMAIN EXPIRED
+   • Check expiry: whois %s | grep -i expir
+   • Renew at your registrar if expired
+
+2. 🌐 DNS NOT CONFIGURED
+   • Add A record: %s → YOUR_SERVER_IP
+   • In your DNS provider (Cloudflare, Route53, etc.)
+
+3. ⏰ DNS PROPAGATION DELAY
+   • Recent changes take 5-60 minutes
+   • Test: dig A %s @8.8.8.8
+
+4. 🎯 WRONG NAMESERVERS
+   • Check: dig NS %s
+   • Should point to your DNS provider
+
+🛠️  Quick Debug Commands:
+   dig A %s                    # Test resolution
+   whois %s | head -20         # Check registration
+   nslookup %s 8.8.8.8        # Test with Google DNS`,
+			domain, parentDomain, domain, domain, parentDomain, domain, parentDomain, domain)
+	}
+
+	if strings.Contains(errorStr, "timeout") {
+		return fmt.Sprintf(`⏰ DNS Timeout - Slow or unreachable DNS servers
+
+For domain "%s":
+• Try different DNS: dig A %s @1.1.1.1
+• Check network connectivity
+• DNS servers may be overloaded`, domain, domain)
+	}
+
+	// Generic fallback
+	return fmt.Sprintf(`❌ DNS Resolution Error for "%s"
+
+Troubleshooting steps:
+1. Check domain exists: whois %s
+2. Verify DNS records: dig A %s
+3. Test different DNS: nslookup %s 8.8.8.8
+4. Check nameservers: dig NS %s
+
+If domain recently changed, wait 1-24 hours for propagation.`,
+		domain, domain, domain, domain, domain)
+}
+
 // obtainCertificate requests a certificate from ACME provider for the canonical domain and its aliases.
-func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain, logger *logging.Logger) (obtainedDomain CertificatesDomain, err error) {
+func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain, logger *slog.Logger) (obtainedDomain CertificatesDomain, err error) {
 	canonicalDomain := managedDomain.Canonical
 	email := managedDomain.Email
-	// Ensure Aliases is not nil before appending
 	aliases := managedDomain.Aliases
-	if aliases == nil {
-		aliases = []string{}
-	}
 	allDomains := append([]string{canonicalDomain}, aliases...)
+
+	// Validate domain resolves before attempting certificate
+	if err := m.validateDomain(canonicalDomain); err != nil {
+		return obtainedDomain, fmt.Errorf("domain validation failed for %s: %w", canonicalDomain, err)
+	}
 
 	client, err := m.clientManager.LoadOrRegisterClient(email)
 	if err != nil {
@@ -340,14 +537,14 @@ func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain
 		Bundle:  true,       // Bundle intermediate certs
 	}
 
-	logger.Debug(fmt.Sprintf("%s: Requesting certificate from ACME provider", canonicalDomain))
+	logger.Debug("Requesting certificate from ACME provider", "domain", canonicalDomain)
 
-	logger.Info(fmt.Sprintf("Requesting new certificate for %s and aliases %s", canonicalDomain, strings.Join(aliases, ", ")))
+	logger.Info("Requesting new certificate", "canonical", canonicalDomain, "aliases", strings.Join(aliases, ", "))
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
 		return obtainedDomain, fmt.Errorf("failed to obtain certificate for %s: %w", canonicalDomain, err)
 	}
-	err = m.saveCertificate(canonicalDomain, certificates, logger)
+	err = m.saveCertificate(canonicalDomain, certificates)
 	if err != nil {
 		return obtainedDomain, fmt.Errorf("failed to save certificate for %s: %w", canonicalDomain, err)
 	} else {
@@ -361,7 +558,7 @@ func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain
 	return obtainedDomain, nil
 }
 
-func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.Resource, logger *logging.Logger) error {
+func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.Resource) error {
 	// Save certificate (.crt)
 	certPath := filepath.Join(m.config.CertDir, domain+".crt")
 	if err := os.WriteFile(certPath, cert.Certificate, 0644); err != nil {
@@ -386,7 +583,6 @@ func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.R
 		pemContent.WriteByte('\n')
 	}
 	pemContent.Write(cert.PrivateKey)
-
 	if err := os.WriteFile(combinedPath, pemContent.Bytes(), 0600); err != nil {
 		// Attempt cleanup of .crt and .key files if combined saving fails
 		os.Remove(certPath)
@@ -394,16 +590,15 @@ func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.R
 		return fmt.Errorf("failed to save combined certificate/key: %w", err)
 	}
 
-	logger.Debug(fmt.Sprintf("%s: Saved certificate files", domain))
 	return nil
 }
 
-func (m *CertificatesManager) CleanupExpiredCertificates(logger *logging.Logger, domains []CertificatesDomain) {
+func (m *CertificatesManager) CleanupExpiredCertificates(logger *slog.Logger, domains []CertificatesDomain) {
 	logger.Debug("Starting certificate cleanup check")
 
 	files, err := os.ReadDir(m.config.CertDir)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to read certificates directory: %s", m.config.CertDir), err)
+		logger.Error("Failed to read certificates directory", "dir", m.config.CertDir, "error", err)
 		return
 	}
 
@@ -419,8 +614,6 @@ func (m *CertificatesManager) CleanupExpiredCertificates(logger *logging.Logger,
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".crt.key") {
 			domain := strings.TrimSuffix(file.Name(), ".crt.key")
 			_, isManaged := managedDomainsMap[domain]
-
-			// Define paths for all related files
 			combinedPath := filepath.Join(m.config.CertDir, file.Name())
 			certPath := filepath.Join(m.config.CertDir, domain+".crt")
 			keyPath := filepath.Join(m.config.CertDir, domain+".key")
@@ -428,29 +621,27 @@ func (m *CertificatesManager) CleanupExpiredCertificates(logger *logging.Logger,
 			// Check expiry using the .crt file
 			certData, err := os.ReadFile(certPath)
 			if err != nil {
-				// If .crt is missing but .crt.key exists, log and potentially clean up if unmanaged
 				if os.IsNotExist(err) && !isManaged {
-					logger.Warn(fmt.Sprintf("%s: Found orphaned combined file for unmanaged domain (.crt missing). Deleting.", domain))
+					logger.Warn("Found orphaned combined file for unmanaged domain (.crt missing). Deleting", "domain", domain)
 					os.Remove(combinedPath)
-					os.Remove(keyPath) // Try removing .key too if it exists
+					os.Remove(keyPath)
 					deleted++
 				} else if !os.IsNotExist(err) {
-					// Log other read errors
-					logger.Warn(fmt.Sprintf("Failed to read certificate file during cleanup: %s", certPath), err)
+					logger.Warn("Failed to read certificate file during cleanup", "file", certPath, "error", err)
 				}
-				continue // Skip if we can't read the cert
+				continue
 			}
 
 			// Use the local parseCertificate helper
 			parsedCert, err := parseCertificate(certData)
 			if err != nil {
-				logger.Warn(fmt.Sprintf("Failed to parse certificate during cleanup: %s", certPath))
-				continue // Skip if parsing fails
+				logger.Warn("Failed to parse certificate during cleanup", "file", certPath)
+				continue
 			}
 
 			// Delete if expired AND unmanaged
 			if time.Now().After(parsedCert.NotAfter) && !isManaged {
-				logger.Debug(fmt.Sprintf("%s: Deleting expired certificate files for unmanaged domain", domain))
+				logger.Debug("Deleting expired certificate files for unmanaged domain", "domain", domain)
 				os.Remove(combinedPath)
 				os.Remove(certPath)
 				os.Remove(keyPath)
@@ -570,4 +761,18 @@ func (km *CertificatesKeyManager) createKey(path string) (crypto.PrivateKey, err
 	}
 
 	return privateKey, nil
+}
+
+func deduplicateDomains(domains []CertificatesDomain) []CertificatesDomain {
+	seen := make(map[string]bool)
+	var unique []CertificatesDomain
+
+	for _, domain := range domains {
+		if !seen[domain.Canonical] {
+			seen[domain.Canonical] = true
+			unique = append(unique, domain)
+		}
+	}
+
+	return unique
 }

@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.24'
-          cache: false  # Disabling cache to avoid tar extraction errors
+          cache: false
 
       - name: Run tests
         run: go test -v ./...
@@ -30,7 +30,6 @@ jobs:
   build-and-publish:
     name: Build and Publish
     needs: test
-    # Only run this job for tag pushes, not branch pushes or PRs
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
@@ -41,7 +40,7 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.24'
-          cache: false  # Disabling cache to avoid tar extraction errors
+          cache: false
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -75,30 +74,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build CLI for multiple platforms
+      - name: Build CLI tools for multiple platforms
         env:
           VERSION: ${{ github.ref_name }}
         run: |
           mkdir -p dist
           PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+          BINARIES=("haloy" "haloyadm")
 
-          for platform in "${PLATFORMS[@]}"; do
-            IFS="/" read -r -a parts <<< "$platform"
-            GOOS="${parts[0]}"
-            GOARCH="${parts[1]}"
+          for binary in "${BINARIES[@]}"; do
+            for platform in "${PLATFORMS[@]}"; do
+              IFS="/" read -r -a parts <<< "$platform"
+              GOOS="${parts[0]}"
+              GOARCH="${parts[1]}"
 
-            # Set the output filename based on OS
-            if [ "$GOOS" == "windows" ]; then
-              OUTPUT="dist/haloy-${GOOS}-${GOARCH}.exe"
-            else
-              OUTPUT="dist/haloy-${GOOS}-${GOARCH}"
-            fi
+              OUTPUT_NAME="$binary-${GOOS}-${GOARCH}"
+              if [ "$GOOS" == "windows" ]; then
+                OUTPUT_NAME+=".exe"
+              fi
 
-            echo "Building for $GOOS/$GOARCH..."
-            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" -o "$OUTPUT" ./cmd/cli
+              echo "Building $binary for $GOOS/$GOARCH..."
+              GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" -o "dist/$OUTPUT_NAME" ./cmd/$binary
+            done
           done
 
-          # Create checksums
+          # Create checksums for all built artifacts
           cd dist
           sha256sum * > checksums.txt
           cd ..
@@ -130,6 +130,11 @@ jobs:
             dist/haloy-darwin-amd64
             dist/haloy-darwin-arm64
             dist/haloy-windows-amd64.exe
+            dist/haloyadm-linux-amd64
+            dist/haloyadm-linux-arm64
+            dist/haloyadm-darwin-amd64
+            dist/haloyadm-darwin-arm64
+            dist/haloyadm-windows-amd64.exe
             dist/checksums.txt
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}

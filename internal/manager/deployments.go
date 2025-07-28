@@ -3,14 +3,13 @@ package manager
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 )
 
@@ -33,21 +32,17 @@ type FailedContainerInfo struct {
 }
 
 type DeploymentManager struct {
-	Ctx context.Context
-	Cli *client.Client
+	cli *client.Client
 	// deployments is a map of appName to Deployment, key is the app name.
 	deployments      map[string]Deployment
-	logger           *logging.Logger
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
 }
 
-func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *logging.Logger) *DeploymentManager {
+func NewDeploymentManager(cli *client.Client) *DeploymentManager {
 	return &DeploymentManager{
-		Ctx:         ctx,
-		Cli:         cli,
+		cli:         cli,
 		deployments: make(map[string]Deployment),
-		logger:      logger,
 	}
 }
 
@@ -55,24 +50,17 @@ func NewDeploymentManager(ctx context.Context, cli *client.Client, logger *loggi
 // current deployments in the system. It compares the new deployment state with the previous state
 // to determine if any changes have occurred (additions, removals, or updates to deployments).
 // Returns true if the deployment state has changed, along with any error encountered.
-func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged bool, failedContainers []FailedContainerInfo, err error) {
+func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.Logger) (hasChanged bool, failedContainers []FailedContainerInfo, err error) {
 	newDeployments := make(map[string]Deployment)
-
-	// Filter for containers with the app label
-	filtersArgs := filters.NewArgs()
-	filtersArgs.Add("label", fmt.Sprintf("%s=%s", config.LabelRole, config.AppLabelRole))
-	containers, err := dm.Cli.ContainerList(ctx, container.ListOptions{
-		Filters: filtersArgs,
-		All:     false, // Only running containers
-	})
+	containers, err := docker.GetAppContainers(ctx, dm.cli, false, "")
 	if err != nil {
 		return hasChanged, failedContainers, fmt.Errorf("failed to get containers: %w", err)
 	}
 
 	for _, containerSummary := range containers {
-		container, err := dm.Cli.ContainerInspect(ctx, containerSummary.ID)
+		container, err := dm.cli.ContainerInspect(ctx, containerSummary.ID)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Failed to inspect container %s", containerSummary.ID), err)
+			logger.Error("Failed to inspect container", "container_id", containerSummary.ID, "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: containerSummary.ID,
 				Error:       err.Error(),
@@ -82,13 +70,13 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 		}
 
 		if !IsAppContainer(container) {
-			dm.logger.Info(fmt.Sprintf("Container %s is not eligible for haloy management", containerSummary.ID))
+			logger.Info("Container not eligible for haloy management", "container_id", containerSummary.ID)
 			continue
 		}
 
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Error parsing labels for container %s", containerSummary.ID), err)
+			logger.Error("Error parsing labels for container", "container_id", containerSummary.ID, "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: containerSummary.ID,
 				Error:       err.Error(),
@@ -97,9 +85,9 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 			continue
 		}
 
-		ip, err := docker.ContainerNetworkIP(container, config.DockerNetwork)
+		ip, err := docker.ContainerNetworkIP(container, constants.DockerNetwork)
 		if err != nil {
-			dm.logger.Error(fmt.Sprintf("Error getting IP for container %s", helpers.SafeIDPrefix(container.ID)), err)
+			logger.Error("Error getting IP for container", "container_id", helpers.SafeIDPrefix(container.ID), "error", err)
 			failedContainers = append(failedContainers, FailedContainerInfo{
 				ContainerID: container.ID,
 				Error:       err.Error(),
@@ -112,7 +100,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 		if labels.Port != "" {
 			port = labels.Port
 		} else {
-			port = config.DefaultContainerPort
+			port = constants.DefaultContainerPort
 		}
 
 		instance := DeploymentInstance{ContainerID: container.ID, IP: ip, Port: port}
@@ -148,7 +136,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context) (hasChanged b
 	return hasChanged, failedContainers, nil
 }
 
-func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, failedContainerIDs []string) {
+func (dm *DeploymentManager) HealthCheckNewContainers(ctx context.Context, logger *slog.Logger) (checked []Deployment, failedContainerIDs []string) {
 	for _, deployment := range dm.compareResult.AddedDeployments {
 		checked = append(checked, deployment)
 	}
@@ -159,7 +147,7 @@ func (dm *DeploymentManager) HealthCheckNewContainers() (checked []Deployment, f
 
 	for _, deployment := range checked {
 		for _, instance := range deployment.Instances {
-			if err := docker.HealthCheckContainer(dm.Ctx, dm.Cli, dm.logger, instance.ContainerID); err != nil {
+			if err := docker.HealthCheckContainer(ctx, dm.cli, logger, instance.ContainerID); err != nil {
 				failedContainerIDs = append(failedContainerIDs, instance.ContainerID)
 			}
 		}
@@ -227,30 +215,22 @@ func compareDeployments(oldDeployments, newDeployments map[string]Deployment) co
 	removedDeployments := make(map[string]Deployment)
 	addedDeployments := make(map[string]Deployment)
 
-	// Find removed and updated deployments by comparing previous to current
 	for appName, prevDeployment := range oldDeployments {
-		// Check if this deployment still exists
 		if currentDeployment, exists := newDeployments[appName]; exists {
-			// Deployment exists - check if it's been updated
 			if prevDeployment.Labels.DeploymentID != currentDeployment.Labels.DeploymentID {
-				// DeploymentID changed - it's an update
 				updatedDeployments[appName] = currentDeployment
 			} else {
-				// Check if instances changed (added or removed instances)
 				if !instancesEqual(prevDeployment.Instances, currentDeployment.Instances) {
 					updatedDeployments[appName] = currentDeployment
 				}
 			}
 		} else {
-			// Deployment no longer exists - it was removed
 			removedDeployments[appName] = prevDeployment
 		}
 	}
 
-	// Find added deployments by comparing current to previous
 	for appName, currentDeployment := range newDeployments {
 		if _, exists := oldDeployments[appName]; !exists {
-			// This is a new deployment
 			addedDeployments[appName] = currentDeployment
 		}
 	}
@@ -264,19 +244,16 @@ func compareDeployments(oldDeployments, newDeployments map[string]Deployment) co
 	return result
 }
 
-// Helper function to check if two instance lists are equal
 func instancesEqual(a, b []DeploymentInstance) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	// Create maps of container IDs for easy comparison
 	mapA := make(map[string]bool)
 	for _, instance := range a {
 		mapA[instance.ContainerID] = true
 	}
 
-	// Check if all instances in b exist in a
 	for _, instance := range b {
 		if !mapA[instance.ContainerID] {
 			return false

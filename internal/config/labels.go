@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/fatih/color"
 )
 
 const (
@@ -54,14 +53,14 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 	if v, ok := labels[LabelPort]; ok {
 		cl.Port = v
 	} else {
-		cl.Port = DefaultContainerPort
+		cl.Port = constants.DefaultContainerPort
 	}
 
 	// Set HealthCheckPath with default value.
 	if v, ok := labels[LabelHealthCheckPath]; ok {
 		cl.HealthCheckPath = v
 	} else {
-		cl.HealthCheckPath = DefaultHealthCheckPath
+		cl.HealthCheckPath = constants.DefaultHealthCheckPath
 	}
 
 	// Parse domains
@@ -180,32 +179,4 @@ func (cl *ContainerLabels) Validate() error {
 	}
 
 	return nil
-}
-
-func (cl *ContainerLabels) String() string {
-	bold := color.New(color.Bold).SprintFunc()
-	yellow := color.New(color.FgHiYellow).SprintFunc()
-	cyan := color.New(color.FgHiCyan).SprintFunc()
-
-	var builder strings.Builder
-	// Create a tabwriter with padding settings.
-	w := tabwriter.NewWriter(&builder, 0, 0, 2, ' ', 0)
-
-	// TODO: use ui package for colors
-	fmt.Fprintf(w, "%s:\t%s\n", yellow("App Name"), cyan(cl.AppName))
-	fmt.Fprintf(w, "%s:\t%s\n", yellow("Deployment ID"), cyan(cl.DeploymentID))
-	fmt.Fprintf(w, "%s:\t%s\n", yellow("Health Check Path"), cyan(cl.HealthCheckPath))
-	fmt.Fprintf(w, "%s:\t%s\n", yellow("ACME Email"), cyan(cl.ACMEEmail))
-	fmt.Fprintf(w, "%s:\t%s\n", yellow("Port"), cyan(cl.Port))
-
-	fmt.Fprintln(w, yellow("Domains:"))
-	for i, domain := range cl.Domains {
-		fmt.Fprintf(w, "\t%s\t%s\n", bold(fmt.Sprintf("Domain %d", i+1)), cyan(domain.Canonical))
-		if len(domain.Aliases) > 0 {
-			fmt.Fprintf(w, "\t%s\t%s\n", yellow("Aliases"), cyan(strings.Join(domain.Aliases, ", ")))
-		}
-	}
-	w.Flush()
-
-	return builder.String()
 }

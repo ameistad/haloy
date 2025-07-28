@@ -5,9 +5,11 @@ cd $(git rev-parse --show-toplevel)
 
 CERT_STORAGE=$(mktemp -d /tmp/haloy-cert-storage-XXXXXX)
 LOGS=$(mktemp -d /tmp/haloy-logs-XXXXXX)
+DB_STORAGE=$(mktemp -d /tmp/haloy-db-storage-XXXXXX)
+DEV_API_TOKEN="test-123"
 
 cleanup() {
-  rm -rf "$CERT_STORAGE" "$LOGS"
+  rm -rf "$CERT_STORAGE" "$LOGS" "$DB_STORAGE"
 }
 trap cleanup EXIT
 
@@ -23,7 +25,10 @@ docker run -it --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$CERT_STORAGE":/cert-storage:rw \
   -v "$LOGS":/logs:rw \
+  -v "$DB_STORAGE":/db:rw \
   -v $(pwd):/src \
   --network haloy-public \
-  -e DRY_RUN=true \
+  -p 9999:9999 \
+  -e HALOY_DEBUG=true \
+  -e HALOY_API_TOKEN="${DEV_API_TOKEN}" \
   haloy-manager-dev

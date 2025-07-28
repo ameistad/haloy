@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -22,7 +24,7 @@ type ContainerRunResult struct {
 	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTag string, appConfig *config.AppConfig) ([]ContainerRunResult, error) {
+func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTag string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
 
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
@@ -40,19 +42,33 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTa
 
 	// Process environment variables
 	var envVars []string
-	decryptedEnvVars, err := config.DecryptEnvVars(appConfig.Env)
-	if err != nil {
-		return result, fmt.Errorf("failed to decrypt environment variables: %w", err)
-	}
-	for _, v := range decryptedEnvVars {
-		value, err := v.GetValue()
-		if err != nil {
-			return result, fmt.Errorf("failed to get value for env var '%s': %w", v.Name, err)
+	var secretEnvVars []config.EnvVar
+
+	for _, envVar := range appConfig.Env {
+		if envVar.SecretName != "" {
+			secretEnvVars = append(secretEnvVars, envVar)
+		} else {
+			envVars = append(envVars, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
 		}
-		envVars = append(envVars, fmt.Sprintf("%s=%s", v.Name, value))
 	}
 
-	networkMode := container.NetworkMode(config.DockerNetwork)
+	// Process secret environment variables
+	if len(secretEnvVars) > 0 {
+		database, err := db.New()
+		if err != nil {
+			return result, fmt.Errorf("failed to create database: %w", err)
+		}
+		defer database.Close()
+		for _, secretEnvVar := range secretEnvVars {
+			decrypted, err := database.GetSecretDecryptedValue(secretEnvVar.SecretName)
+			if err != nil {
+				return result, fmt.Errorf("failed to decrypt secret: %w", err)
+			}
+			envVars = append(envVars, fmt.Sprintf("%s=%s", secretEnvVar.Name, decrypted))
+		}
+	}
+
+	networkMode := container.NetworkMode(constants.DockerNetwork)
 	if appConfig.NetworkMode != "" {
 		networkMode = container.NetworkMode(appConfig.NetworkMode)
 	}
@@ -164,7 +180,7 @@ func RemoveContainers(ctx context.Context, cli *client.Client, appName, ignoreDe
 	return removedIDs, nil
 }
 
-func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *logging.Logger, containerID string, initialWaitTime ...time.Duration) error {
+func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.Logger, containerID string, initialWaitTime ...time.Duration) error {
 	// Check if container is running - wait up to 30 seconds for it to start
 	startCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -235,10 +251,10 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 		// If container has healthcheck and it's healthy, we can skip our manual check@
 		switch containerInfo.State.Health.Status {
 		case "healthy":
-			logger.Debug(fmt.Sprintf("Container %s is healthy according to Docker healthcheck", helpers.SafeIDPrefix(containerID)))
+			logger.Debug("Container is healthy according to Docker healthcheck", "container_id", helpers.SafeIDPrefix(containerID))
 			return nil
 		case "starting":
-			logger.Info(fmt.Sprintf("Container %s is still starting, falling back to manual health check", helpers.SafeIDPrefix(containerID)))
+			logger.Info("Container is still starting, falling back to manual health check", "container_id", helpers.SafeIDPrefix(containerID))
 		case "unhealthy":
 			if len(containerInfo.State.Health.Log) > 0 {
 				lastLog := containerInfo.State.Health.Log[len(containerInfo.State.Health.Log)-1]
@@ -264,7 +280,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 		return fmt.Errorf("container %s has no health check path set", helpers.SafeIDPrefix(containerID))
 	}
 
-	targetIP, err := ContainerNetworkIP(containerInfo, config.DockerNetwork)
+	targetIP, err := ContainerNetworkIP(containerInfo, constants.DockerNetwork)
 	if err != nil {
 		return fmt.Errorf("failed to get container IP address: %w", err)
 	}
@@ -283,7 +299,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 	// Use traditional for loop for clarity
 	for retry := 0; retry < maxRetries; retry++ {
 		if retry > 0 {
-			logger.Info(fmt.Sprintf("Retrying health check in %v... (attempt %d/%d)\n", backoff, retry+1, maxRetries))
+			logger.Info("Retrying health check...", "backoff", backoff, "attempt", retry+1, "max_retries", maxRetries)
 			time.Sleep(backoff)
 			backoff *= 2 // Exponential backoff
 		}
@@ -295,7 +311,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			logger.Warn("Health check attempt failed", err)
+			logger.Warn("Health check attempt failed", "error", err)
 			continue
 		}
 		defer resp.Body.Close()
@@ -305,7 +321,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *loggi
 		}
 
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		logger.Warn(fmt.Sprintf("Health check returned status %d: %s", resp.StatusCode, string(bodyBytes)))
+		logger.Warn("Health check returned error status", "status_code", resp.StatusCode, "response", string(bodyBytes))
 	}
 
 	return fmt.Errorf("container %s failed health check after %d attempts", helpers.SafeIDPrefix(containerID), maxRetries)
@@ -342,4 +358,20 @@ func GetAppContainers(ctx context.Context, cli *client.Client, listAll bool, app
 	}
 
 	return containerList, nil
+}
+
+// ContainerNetworkInfo extracts the container's IP address
+func ContainerNetworkIP(container container.InspectResponse, networkName string) (string, error) {
+	if _, exists := container.NetworkSettings.Networks[networkName]; !exists {
+		return "", fmt.Errorf("specified network not found: %s", networkName)
+	}
+	if container.State == nil || !container.State.Running {
+		return "", fmt.Errorf("container is not running")
+	}
+	ipAddress := container.NetworkSettings.Networks[networkName].IPAddress
+	if ipAddress == "" {
+		return "", fmt.Errorf("container has no IP address on the specified network: %s", networkName)
+	}
+
+	return ipAddress, nil
 }

@@ -49,15 +49,16 @@ func ValidateHealthCheckPath(path string) error {
 
 func (ac *AppConfig) Validate() error {
 
-	if isValidAppName(ac.Name) {
+	if !isValidAppName(ac.Name) {
 		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
 	}
 
-	if err := ac.Source.Validate(); err != nil {
-		return fmt.Errorf("invalid source: %w", err)
+	if err := ac.Image.Validate(); err != nil {
+		return fmt.Errorf("invalid image: %w", err)
 	}
 
 	if len(ac.Domains) > 0 {
+
 		for _, domain := range ac.Domains {
 			if err := domain.Validate(); err != nil {
 				return err
@@ -98,71 +99,19 @@ func (ac *AppConfig) Validate() error {
 	}
 
 	// Validate health check path.
-	if err := ValidateHealthCheckPath(ac.HealthCheckPath); err != nil {
-		return err
+	if ac.HealthCheckPath != "" {
+		if err := ValidateHealthCheckPath(ac.HealthCheckPath); err != nil {
+			return err
+		}
 	}
 
 	// Validate replicas.
-	if ac.Replicas == nil {
-		return errors.New("replicas cannot be nil")
-	}
-	if *ac.Replicas < 1 {
-		return errors.New("replicas must be at least 1")
-	}
-
-	return nil
-}
-
-// ValidateConfigFile checks that the Config is well-formed.
-func (c *Config) Validate() error {
-	// Check that at least one app is defined.
-	if len(c.Apps) == 0 {
-		return errors.New("config: no apps defined")
-	}
-
-	// Keep track of appNames and domains to ensure uniqueness.
-	seenAppNames := make(map[string]struct{})
-	allCanonicals := make(map[string]string) // Stores canonical -> appName
-	allAliases := make(map[string]string)    // Stores alias -> appName
-	for _, app := range c.Apps {
-		if app.Name == "" {
-			return errors.New("name cannot be empty")
-		}
-
-		if _, exists := seenAppNames[app.Name]; exists {
-			return fmt.Errorf("duplicate app name: '%s'", app.Name)
-		}
-
-		seenAppNames[app.Name] = struct{}{}
-
-		err := app.Validate()
-		if err != nil {
-			return fmt.Errorf("app '%s': %w", app.Name, err)
-		}
-
-		// Check for unique domains across all apps
-		for _, domain := range app.Domains {
-			// Check canonical domain
-			if conflictingApp, exists := allCanonicals[domain.Canonical]; exists {
-				return fmt.Errorf("config: canonical domain '%s' in app '%s' is already used as a canonical domain in app '%s'", domain.Canonical, app.Name, conflictingApp)
-			}
-			if conflictingApp, exists := allAliases[domain.Canonical]; exists {
-				return fmt.Errorf("config: canonical domain '%s' in app '%s' is already used as an alias in app '%s'", domain.Canonical, app.Name, conflictingApp)
-			}
-			allCanonicals[domain.Canonical] = app.Name
-
-			// Check aliases
-			for _, alias := range domain.Aliases {
-				if conflictingApp, exists := allAliases[alias]; exists {
-					return fmt.Errorf("config: alias '%s' in app '%s' is already used as an alias in app '%s'", alias, app.Name, conflictingApp)
-				}
-				if conflictingApp, exists := allCanonicals[alias]; exists {
-					return fmt.Errorf("config: alias '%s' in app '%s' is already used as a canonical domain in app '%s'", alias, app.Name, conflictingApp)
-				}
-				allAliases[alias] = app.Name
-			}
+	if ac.Replicas != nil {
+		if int(*ac.Replicas) < 1 {
+			return errors.New("replicas must be at least 1")
 		}
 	}
+
 	return nil
 }
 
@@ -216,5 +165,5 @@ func isValidAppName(name string) bool {
 		// If regex fails, treat as invalid
 		return true
 	}
-	return !matched
+	return matched
 }

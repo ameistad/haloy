@@ -3,12 +3,12 @@ package manager
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
@@ -87,9 +87,9 @@ func (r TriggerReason) String() string {
 	}
 }
 
-func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason TriggerReason, app *TriggeredByApp) error {
+func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason TriggerReason, app *TriggeredByApp) error {
 	// Build Deployments and check if anything has changed (Thread-safe)
-	deploymentsHasChanged, failedContainers, err := u.deploymentManager.BuildDeployments(ctx)
+	deploymentsHasChanged, failedContainers, err := u.deploymentManager.BuildDeployments(ctx, logger)
 	if err != nil {
 		return fmt.Errorf("updater: failed to build deployments: %w", err)
 	}
@@ -98,24 +98,18 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 	if len(failedContainers) > 0 {
 		for _, failedContainer := range failedContainers {
 			if failedContainer.Labels != nil {
-				logger.Info(fmt.Sprintf(
-					"Error: Container %s [App: %s, DeploymentID: %s] failed to start. Verify the container's configuration and label settings.",
-					helpers.SafeIDPrefix(failedContainer.ContainerID),
-					failedContainer.Labels.AppName,
-					failedContainer.Labels.DeploymentID,
-				))
+				logger.Info("Container failed to start - verify configuration and label settings",
+					"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID),
+					"app", failedContainer.Labels.AppName,
+					"deployment_id", failedContainer.Labels.DeploymentID)
 			} else {
-				logger.Info(fmt.Sprintf(
-					"Error: Container %s failed to start and no label info is available. Please check the container configuration.",
-					helpers.SafeIDPrefix(failedContainer.ContainerID),
-				))
+				logger.Info("Container failed to start - no label info available, check container configuration",
+					"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID))
 			}
 
-			logger.Info(fmt.Sprintf(
-				"Attempting to stop container %s due to error: %s. This error could be caused by network issues or misconfiguration. Check if the container is attached to the correct network.",
-				helpers.SafeIDPrefix(failedContainer.ContainerID),
-				failedContainer.Error,
-			))
+			logger.Info("Attempting to stop container due to error - check if container is attached to correct network",
+				"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID),
+				"error", failedContainer.Error)
 
 			err := u.cli.ContainerStop(ctx, failedContainer.ContainerID, container.StopOptions{})
 			if err != nil {
@@ -124,11 +118,8 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 					helpers.SafeIDPrefix(failedContainer.ContainerID),
 				), err)
 			} else {
-				logger.Info(fmt.Sprintf(
-					"Stop command issued successfully for container %s. For further details, review logs with: docker logs %s",
-					helpers.SafeIDPrefix(failedContainer.ContainerID),
-					helpers.SafeIDPrefix(failedContainer.ContainerID),
-				))
+				logger.Info("Stop command issued successfully for container - check logs with docker logs",
+					"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID))
 			}
 		}
 	}
@@ -139,7 +130,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 		return nil
 	}
 
-	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers()
+	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers(ctx, logger)
 	if len(failedContainerIDs) > 0 {
 		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", strings.Join(failedContainerIDs, ", "), err)
 	} else {
@@ -147,7 +138,7 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 		for _, dep := range checkedDeployments {
 			apps = append(apps, dep.Labels.AppName)
 		}
-		logger.Info(fmt.Sprintf("Health check completed for %s", strings.Join(apps, ", ")))
+		logger.Info("Health check completed", "apps", strings.Join(apps, ", "))
 	}
 
 	certDomains := u.deploymentManager.GetCertificateDomains()
@@ -167,7 +158,9 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 				appCertDomains = append(appCertDomains, certDomain)
 			}
 		}
-		u.certManager.RefreshSync(logger, appCertDomains)
+		if err := u.certManager.RefreshSync(logger, appCertDomains); err != nil {
+			return fmt.Errorf("failed to refresh certificates for app %s: %w", app.appName, err)
+		}
 	} else {
 		u.certManager.Refresh(logger, certDomains)
 	}
@@ -178,13 +171,11 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 	}
 
 	// Get deployments AFTER checking HasChanged
-	deployments := u.deploymentManager.Deployments() // Gets a safe copy
+	deployments := u.deploymentManager.Deployments()
 
-	// Delegate the entire HAProxy update process (lock, generate, write, signal)
-	if err := u.haproxyManager.ApplyConfig(ctx, deployments); err != nil {
+	// Apply the HAProxy configuration
+	if err := u.haproxyManager.ApplyConfig(ctx, logger, deployments); err != nil {
 		return fmt.Errorf("failed to apply HAProxy config for app: %w", err)
-	} else {
-		logger.Info("HAProxy configuration updated successfully")
 	}
 
 	// If an app is provided:
@@ -200,7 +191,6 @@ func (u *Updater) Update(ctx context.Context, logger *logging.Logger, reason Tri
 		if err != nil {
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}
-		logger.Success(fmt.Sprintf("Successfully deployed %s with deployment ID %s", app.appName, app.deploymentID))
 	}
 
 	return nil
