@@ -2,52 +2,68 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 )
 
-// LogEntry represents a structured log entry for streaming
+// LogEntry represents a structured log entry for streaming logs
 type LogEntry struct {
-	Level        string         `json:"level"`
-	Message      string         `json:"message"`
-	Timestamp    time.Time      `json:"timestamp"`
-	DeploymentID string         `json:"deploymentID,omitempty"`
-	IsComplete   bool           `json:"complete,omitempty"`
-	IsFailed     bool           `json:"failed,omitempty"`
-	IsSuccess    bool           `json:"success,omitempty"`
-	AppName      string         `json:"appName,omitempty"`
-	Domains      []string       `json:"domains,omitempty"`
-	Fields       map[string]any `json:"fields,omitempty"`
+	Level                 string         `json:"level"`
+	Message               string         `json:"message"`
+	Timestamp             time.Time      `json:"timestamp"`
+	DeploymentID          string         `json:"deploymentID,omitempty"`
+	AppName               string         `json:"appName,omitempty"`
+	Domains               []string       `json:"domains,omitempty"`
+	Fields                map[string]any `json:"fields,omitempty"`
+	IsDeploymentComplete  bool           `json:"isDeploymentComplete,omitempty"`
+	IsDeploymentFailed    bool           `json:"isDeploymentFailed,omitempty"`
+	IsDeploymentSuccess   bool           `json:"isDeploymentSuccess,omitempty"`
+	IsManagerInitComplete bool           `json:"isManagerInitComplete,omitempty"`
 }
 
 // StreamPublisher defines the interface for publishing log entries to streams
 type StreamPublisher interface {
-	Publish(deploymentID string, entry LogEntry)
-	Subscribe(deploymentID string) <-chan LogEntry
-	Unsubscribe(deploymentID string)
+	Publish(entry LogEntry)
+
+	SubscribeGeneral() (<-chan LogEntry, string)
+	UnsubscribeGeneral(subscriberID string)
+
+	SubscribeDeployment(deploymentID string) <-chan LogEntry
+	UnsubscribeDeployment(deploymentID string)
+
+	Close()
 }
 
 // LogBroker manages log streams for different deployment IDs
 type LogBroker struct {
-	streams   map[string]chan LogEntry // One channel per deployment ID
-	logBuffer map[string][]LogEntry    // Create a buffer so subscribers can get historical logs
-	maxBuffer int                      // Maximum buffered logs per deployment
-	mutex     sync.RWMutex
-	closed    bool
+	streams map[string]chan LogEntry // subscriberID -> channel
+	buffer  []LogEntry               // Buffer for historical logs
+
+	deploymentStreams map[string]chan LogEntry // One channel per deployment ID
+	deploymentBuffer  map[string][]LogEntry
+
+	maxBuffer        int // Maximum buffered logs
+	subscriberIDSeed int
+	mutex            sync.RWMutex
+	closed           bool
 }
 
 // NewLogBroker creates a new log broker
 func NewLogBroker() StreamPublisher {
 	return &LogBroker{
-		streams:   make(map[string]chan LogEntry),
-		logBuffer: make(map[string][]LogEntry),
-		maxBuffer: 100,
+		streams:           make(map[string]chan LogEntry),
+		buffer:            make([]LogEntry, 0),
+		deploymentStreams: make(map[string]chan LogEntry),
+		deploymentBuffer:  make(map[string][]LogEntry),
+		maxBuffer:         100,
+		subscriberIDSeed:  1,
 	}
 }
 
-// Publish sends a log entry to all subscribers of a deployment ID
-func (lb *LogBroker) Publish(deploymentID string, entry LogEntry) {
+// Publish publishes a log entry to the general stream and deployment-specific streams
+func (lb *LogBroker) Publish(entry LogEntry) {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
 
@@ -55,26 +71,112 @@ func (lb *LogBroker) Publish(deploymentID string, entry LogEntry) {
 		return
 	}
 
-	// Add to buffer
-	buffer := lb.logBuffer[deploymentID]
+	lb.buffer = append(lb.buffer, entry)
+	if len(lb.buffer) > lb.maxBuffer {
+		lb.buffer = lb.buffer[len(lb.buffer)-lb.maxBuffer:]
+	}
+
+	// Send to all general subscribers
+	for subscriberID, ch := range lb.streams {
+		select {
+		case ch <- entry:
+		default:
+			// Channel full, close slow subscriber
+			close(ch)
+			delete(lb.streams, subscriberID)
+		}
+	}
+
+	if entry.DeploymentID != "" {
+		lb.publishToDeployment(entry.DeploymentID, entry)
+	}
+}
+
+// publishToDeployment is a private helper for deployment-specific publishing
+func (lb *LogBroker) publishToDeployment(deploymentID string, entry LogEntry) {
+	buffer := lb.deploymentBuffer[deploymentID]
 	buffer = append(buffer, entry)
 	if len(buffer) > lb.maxBuffer {
 		buffer = buffer[len(buffer)-lb.maxBuffer:]
 	}
-	lb.logBuffer[deploymentID] = buffer
+	lb.deploymentBuffer[deploymentID] = buffer
 
-	// Send to subscriber if exists
-	if ch, exists := lb.streams[deploymentID]; exists {
+	// Send to deployment subscriber if exists
+	if ch, exists := lb.deploymentStreams[deploymentID]; exists {
 		select {
 		case ch <- entry:
 		default:
-			// Channel full, could close slow subscriber
+			// Channel full, close slow subscriber
+			close(ch)
+			delete(lb.deploymentStreams, deploymentID)
+			delete(lb.deploymentBuffer, deploymentID)
 		}
 	}
 }
 
-// Subscribe creates a new subscription for a deployment ID
-func (lb *LogBroker) Subscribe(deploymentID string) <-chan LogEntry {
+// SubscribeGeneral creates a subscription for all logs and returns the channel and subscriber ID
+func (lb *LogBroker) SubscribeGeneral() (<-chan LogEntry, string) {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
+
+	if lb.closed {
+		ch := make(chan LogEntry)
+		close(ch)
+		return ch, ""
+	}
+
+	// Generate unique subscriber ID
+	subscriberID := lb.generateSubscriberID()
+
+	// Create new general subscription
+	ch := make(chan LogEntry, 100)
+
+	// Copy buffered general logs
+	var bufferCopy []LogEntry
+	if len(lb.buffer) > 0 {
+		bufferCopy = make([]LogEntry, len(lb.buffer))
+		copy(bufferCopy, lb.buffer)
+	}
+
+	// Store the channel
+	lb.streams[subscriberID] = ch
+
+	// Send buffered logs in a separate goroutine
+	if len(bufferCopy) > 0 {
+		go func() {
+			for _, entry := range bufferCopy {
+				select {
+				case ch <- entry:
+				case <-time.After(2 * time.Second):
+					// Timeout, subscriber is too slow
+					lb.mutex.Lock()
+					if existingCh, exists := lb.streams[subscriberID]; exists && existingCh == ch {
+						close(ch)
+						delete(lb.streams, subscriberID)
+					}
+					lb.mutex.Unlock()
+					return
+				}
+			}
+		}()
+	}
+
+	return ch, subscriberID
+}
+
+// UnsubscribeGeneral removes a specific general subscriber
+func (lb *LogBroker) UnsubscribeGeneral(subscriberID string) {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
+
+	if ch, exists := lb.streams[subscriberID]; exists {
+		close(ch)
+		delete(lb.streams, subscriberID)
+	}
+}
+
+// SubscribeDeployment creates a new subscription for a deployment ID
+func (lb *LogBroker) SubscribeDeployment(deploymentID string) <-chan LogEntry {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
 
@@ -85,7 +187,7 @@ func (lb *LogBroker) Subscribe(deploymentID string) <-chan LogEntry {
 	}
 
 	// Check if already subscribed
-	if existingCh, exists := lb.streams[deploymentID]; exists {
+	if existingCh, exists := lb.deploymentStreams[deploymentID]; exists {
 		return existingCh
 	}
 
@@ -94,21 +196,29 @@ func (lb *LogBroker) Subscribe(deploymentID string) <-chan LogEntry {
 
 	// Copy buffered logs
 	var bufferCopy []LogEntry
-	if buffer, exists := lb.logBuffer[deploymentID]; exists && len(buffer) > 0 {
+	if buffer, exists := lb.deploymentBuffer[deploymentID]; exists && len(buffer) > 0 {
 		bufferCopy = make([]LogEntry, len(buffer))
 		copy(bufferCopy, buffer)
 	}
 
 	// Store the channel
-	lb.streams[deploymentID] = ch
+	lb.deploymentStreams[deploymentID] = ch
 
-	// Send buffered logs
+	// Send buffered logs in a separate goroutine
 	if len(bufferCopy) > 0 {
 		go func() {
 			for _, entry := range bufferCopy {
 				select {
 				case ch <- entry:
 				case <-time.After(2 * time.Second):
+					// Timeout, close the channel
+					lb.mutex.Lock()
+					if existingCh, exists := lb.deploymentStreams[deploymentID]; exists && existingCh == ch {
+						close(ch)
+						delete(lb.deploymentStreams, deploymentID)
+						delete(lb.deploymentBuffer, deploymentID)
+					}
+					lb.mutex.Unlock()
 					return
 				}
 			}
@@ -118,16 +228,51 @@ func (lb *LogBroker) Subscribe(deploymentID string) <-chan LogEntry {
 	return ch
 }
 
-// Removes all subscribers for a deployment ID and closes their channels.
-func (lb *LogBroker) Unsubscribe(deploymentID string) {
+// UnsubscribeDeployment removes a deployment subscriber
+func (lb *LogBroker) UnsubscribeDeployment(deploymentID string) {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
 
-	if ch, exists := lb.streams[deploymentID]; exists {
+	if ch, exists := lb.deploymentStreams[deploymentID]; exists {
 		close(ch)
-		delete(lb.streams, deploymentID)
+		delete(lb.deploymentStreams, deploymentID)
 	}
-	delete(lb.logBuffer, deploymentID)
+	delete(lb.deploymentBuffer, deploymentID)
+}
+
+// Close shuts down the log broker and closes all channels
+func (lb *LogBroker) Close() {
+	lb.mutex.Lock()
+	defer lb.mutex.Unlock()
+
+	if lb.closed {
+		return
+	}
+
+	lb.closed = true
+
+	// Close all general streams
+	for subscriberID, ch := range lb.streams {
+		close(ch)
+		delete(lb.streams, subscriberID)
+	}
+
+	// Close all deployment streams
+	for deploymentID, ch := range lb.deploymentStreams {
+		close(ch)
+		delete(lb.deploymentStreams, deploymentID)
+	}
+
+	// Clear buffers
+	lb.buffer = nil
+	lb.deploymentBuffer = nil
+}
+
+// generateSubscriberID creates a unique subscriber ID
+func (lb *LogBroker) generateSubscriberID() string {
+	id := lb.subscriberIDSeed
+	lb.subscriberIDSeed++
+	return fmt.Sprintf("general_%d", id)
 }
 
 // StreamHandler wraps another slog.Handler and publishes logs to streams
@@ -150,28 +295,30 @@ func NewStreamHandler(publisher StreamPublisher, next slog.Handler) slog.Handler
 func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	// Extract deployment ID and other fields
 	var deploymentID, appName string
-	var isComplete, isFailed, isSuccess bool
+	var isDeploymentComplete, isDeploymentFailed, isDeploymentSuccess, isManagerInitComplete bool
 	var domains []string
 	fields := make(map[string]any)
 
 	// Process persistent attributes from With() calls
 	for _, attr := range sh.persistentAttrs {
 		switch attr.Key {
-		case "deploymentID":
+		case AttrDeploymentID:
 			deploymentID = attr.Value.String()
-		case "complete":
-			isComplete = attr.Value.Bool()
-		case "failed":
-			isFailed = attr.Value.Bool()
-		case "success":
-			isSuccess = attr.Value.Bool()
-		case "appName":
+		case AttrDeploymentComplete:
+			isDeploymentComplete = attr.Value.Bool()
+		case AttrDeploymentFailed:
+			isDeploymentFailed = attr.Value.Bool()
+		case AttrDeploymentSuccess:
+			isDeploymentSuccess = attr.Value.Bool()
+		case AttrManagerInitComplete:
+			isManagerInitComplete = attr.Value.Bool()
+		case AttrAppName, AttrApp: // Handle both "appName" and "app"
 			appName = attr.Value.String()
-		case "domains":
+		case AttrDomains:
 			if arr, ok := attr.Value.Any().([]string); ok {
 				domains = arr
 			}
-		case "error":
+		case AttrError:
 			if err, ok := attr.Value.Any().(error); ok && err != nil {
 				fields[attr.Key] = err.Error()
 			} else {
@@ -185,21 +332,23 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	// Process record attributes (these can override persistent ones)
 	rec.Attrs(func(a slog.Attr) bool {
 		switch a.Key {
-		case "deploymentID":
+		case AttrDeploymentID:
 			deploymentID = a.Value.String()
-		case "complete":
-			isComplete = a.Value.Bool()
-		case "failed":
-			isFailed = a.Value.Bool()
-		case "success":
-			isSuccess = a.Value.Bool()
-		case "appName":
+		case AttrDeploymentComplete:
+			isDeploymentComplete = a.Value.Bool()
+		case AttrDeploymentFailed:
+			isDeploymentFailed = a.Value.Bool()
+		case AttrDeploymentSuccess:
+			isDeploymentSuccess = a.Value.Bool()
+		case AttrManagerInitComplete:
+			isManagerInitComplete = a.Value.Bool()
+		case AttrAppName, AttrApp: // Handle both "appName" and "app"
 			appName = a.Value.String()
-		case "domains":
+		case AttrDomains:
 			if arr, ok := a.Value.Any().([]string); ok {
 				domains = arr
 			}
-		case "error":
+		case AttrError:
 			if err, ok := a.Value.Any().(error); ok {
 				fields[a.Key] = err.Error()
 			} else {
@@ -211,21 +360,24 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 		return true
 	})
 
-	// Publish to stream if we have a deployment ID
-	if deploymentID != "" && sh.publisher != nil {
-		entry := LogEntry{
-			Level:        rec.Level.String(),
-			Message:      rec.Message,
-			Timestamp:    rec.Time,
-			DeploymentID: deploymentID,
-			IsComplete:   isComplete,
-			IsFailed:     isFailed,
-			IsSuccess:    isSuccess,
-			AppName:      appName,
-			Domains:      domains,
-			Fields:       fields,
-		}
-		sh.publisher.Publish(deploymentID, entry)
+	// Create single log entry that routes automatically
+	entry := LogEntry{
+		Level:                 rec.Level.String(),
+		Message:               rec.Message,
+		Timestamp:             rec.Time,
+		DeploymentID:          deploymentID,
+		AppName:               appName,
+		Domains:               domains,
+		Fields:                fields,
+		IsDeploymentComplete:  isDeploymentComplete,
+		IsDeploymentFailed:    isDeploymentFailed,
+		IsDeploymentSuccess:   isDeploymentSuccess,
+		IsManagerInitComplete: isManagerInitComplete,
+	}
+
+	// Single publish call handles all routing
+	if sh.publisher != nil {
+		sh.publisher.Publish(entry)
 	}
 
 	// Pass to next handler (console output)

@@ -3,6 +3,7 @@ package haloy
 import (
 	"context"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/helpers"
@@ -61,17 +62,19 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			resp, err := apiClient.Rollback(ctx, appConfig.Name, targetDeploymentID)
+			api := apiclient.New(targetServer)
+			resp, err := api.Rollback(ctx, appConfig.Name, targetDeploymentID)
 			if err != nil {
 				ui.Error("Rollback failed: %v", err)
 				return
 			}
 
 			if !noLogs {
-				logStreamer := NewLogStreamer(targetServer)
-				if err := logStreamer.StreamLogs(ctx, "deploy", resp.DeploymentID); err != nil {
-					ui.Warn("Failed to stream logs: %v", err)
+				// No timeout for streaming logs
+				streamCtx, streamCancel := context.WithCancel(context.Background())
+				defer streamCancel()
+				if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID); err != nil {
+					ui.Warn("Failed to stream rollback logs: %v", err)
 				}
 			}
 		},
@@ -121,8 +124,8 @@ If no path is provided, the current directory is used.`,
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			targets, err := apiClient.RollbackTargets(ctx, appConfig.Name)
+			api := apiclient.New(targetServer)
+			targets, err := api.RollbackTargets(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get rollback targets: %v", err)
 				return

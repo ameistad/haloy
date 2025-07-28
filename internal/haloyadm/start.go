@@ -11,13 +11,15 @@ import (
 )
 
 const (
-	startTimeout = 5 * time.Minute
+	startTimeout   = 5 * time.Minute
+	apiWaitTimeout = 30 * time.Second
 )
 
 func StartCmd() *cobra.Command {
 	var devMode bool
 	var restart bool
 	var debug bool
+	var noLogs bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -53,11 +55,22 @@ func StartCmd() *cobra.Command {
 				ui.Error("%s", err)
 				return
 			}
-			ui.Success("Haloy services started successfully")
+
+			if !noLogs {
+				ui.Info("Waiting for manager API to become available...")
+
+				// Wait for API to become available and stream init logs
+				if err := streamManagerInitLogs(ctx); err != nil {
+					ui.Warn("Failed to stream manager initialization logs: %v", err)
+					ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
+				}
+			}
 		},
 	}
 	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
 	cmd.Flags().BoolVar(&restart, "restart", false, "Restart services if they are already running")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
+	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream manager initialization logs")
+
 	return cmd
 }

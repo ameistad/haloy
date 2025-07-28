@@ -151,6 +151,11 @@ func RunManager(debug bool) {
 		logger.Error("Background update failed", "error", err)
 	}
 
+	// Log the successful initialization of the manager for log streams
+	logger.Info("Haloy manager initialized",
+		logging.AttrManagerInitComplete, true,
+	)
+
 	// Create a debouncer to prevent multiple updates in quick succession
 	debouncer := helpers.NewDebouncer(EventDebounceDelay)
 

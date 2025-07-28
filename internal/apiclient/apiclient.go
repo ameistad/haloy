@@ -1,4 +1,4 @@
-package haloy
+package apiclient
 
 import (
 	"bufio"
@@ -23,7 +23,7 @@ type APIClient struct {
 	apiToken string
 }
 
-func NewAPIClient(serverURL string) *APIClient {
+func New(serverURL string) *APIClient {
 	token, err := config.LoadAPIToken()
 	if err != nil {
 		ui.Error("Failed to load API token: %v", err)
@@ -45,7 +45,7 @@ func (c *APIClient) setAuthHeader(req *http.Request) {
 	}
 }
 
-func (c *APIClient) healthCheck(ctx context.Context) error {
+func (c *APIClient) HealthCheck(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/health", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create health check request: %w", err)
@@ -65,8 +65,8 @@ func (c *APIClient) healthCheck(ctx context.Context) error {
 	return nil
 }
 
-func (c *APIClient) Get(ctx context.Context, path string, v any) error {
-	if err := c.healthCheck(ctx); err != nil {
+func (c *APIClient) get(ctx context.Context, path string, v any) error {
+	if err := c.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}
 
@@ -98,9 +98,9 @@ func (c *APIClient) Get(ctx context.Context, path string, v any) error {
 }
 
 // ExecuteCommand sends a command to the API
-func (c *APIClient) Post(ctx context.Context, path string, request, response interface{}) error {
+func (c *APIClient) post(ctx context.Context, path string, request, response interface{}) error {
 
-	if err := c.healthCheck(ctx); err != nil {
+	if err := c.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}
 
@@ -149,17 +149,85 @@ func (c *APIClient) Post(ctx context.Context, path string, request, response int
 	return nil
 }
 
+// Generic streaming method that handles any SSE endpoint
+func (c *APIClient) stream(ctx context.Context, path string, handler func(data string) (bool, error)) error {
+	// Create streaming client with no timeout
+	streamingClient := &http.Client{Timeout: 0}
+
+	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create SSE request: %w", err)
+	}
+
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
+	c.setAuthHeader(req)
+
+	resp, err := streamingClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to stream: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("authentication failed for stream - check your HALOY_API_TOKEN")
+		}
+		return fmt.Errorf("stream returned status %d", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		line := scanner.Text()
+
+		// Skip empty lines and SSE comment lines
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+
+		// Parse SSE data lines
+		if strings.HasPrefix(line, "data: ") {
+			data := strings.TrimPrefix(line, "data: ")
+
+			// Call the handler function to process the data
+			shouldStop, err := handler(data)
+			if err != nil {
+				ui.Warn("Failed to handle stream data: %v", err)
+				continue
+			}
+
+			// If handler returns true, stop streaming
+			if shouldStop {
+				return nil
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading stream: %w", err)
+	}
+
+	return nil
+}
+
 func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*apitypes.DeployResponse, error) {
 	request := apitypes.DeployRequest{AppConfig: appConfig}
 	var response apitypes.DeployResponse
-	err := c.Post(ctx, "deploy", request, &response)
+	err := c.post(ctx, "deploy", request, &response)
 	return &response, err
 }
 
 func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apitypes.RollbackTargetsResponse, error) {
 	path := fmt.Sprintf("rollback/%s", appName)
 	var response apitypes.RollbackTargetsResponse
-	if err := c.Get(ctx, path, &response); err != nil {
+	if err := c.get(ctx, path, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -168,7 +236,7 @@ func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apity
 func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID string) (*apitypes.RollbackResponse, error) {
 	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
 	var response apitypes.RollbackResponse
-	if err := c.Post(ctx, path, nil, &response); err != nil {
+	if err := c.post(ctx, path, nil, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -176,7 +244,7 @@ func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID st
 
 func (c *APIClient) SecretsList(ctx context.Context) (*apitypes.SecretsListResponse, error) {
 	var response apitypes.SecretsListResponse
-	if err := c.Get(ctx, "secrets", &response); err != nil {
+	if err := c.get(ctx, "secrets", &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -187,7 +255,7 @@ func (c *APIClient) SetSecret(ctx context.Context, name, value string) error {
 		Name:  name,
 		Value: value,
 	}
-	if err := c.Post(ctx, "secrets", request, nil); err != nil {
+	if err := c.post(ctx, "secrets", request, nil); err != nil {
 		return err
 	}
 	return nil
@@ -228,7 +296,7 @@ func (c *APIClient) AppStatus(ctx context.Context, appName string) (*apitypes.Ap
 
 	path := fmt.Sprintf("status/%s", appName)
 	var response apitypes.AppStatusResponse
-	if err := c.Get(ctx, path, &response); err != nil {
+	if err := c.get(ctx, path, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -243,159 +311,150 @@ func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainer
 	}
 
 	var response apitypes.StopAppResponse
-	if err := c.Post(ctx, path, nil, &response); err != nil {
+	if err := c.post(ctx, path, nil, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
 }
 
-// LogStreamer handles streaming logs from the haloy API for any command
-type LogStreamer struct {
-	client   *http.Client
-	baseURL  string
-	apiToken string
+// StreamDeploymentLogs streams logs for a specific deployment
+func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID string) error {
+	path := fmt.Sprintf("deploy/%s/logs", deploymentID)
+
+	return c.stream(ctx, path, func(data string) (bool, error) {
+		var logEntry logging.LogEntry
+		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+			return false, fmt.Errorf("failed to parse log entry: %w", err)
+		}
+
+		// Display deployment log (no deployment ID prefix needed)
+		c.displayDeploymentLogEntry(logEntry)
+
+		// Stop streaming when deployment is complete
+		return logEntry.IsDeploymentComplete, nil
+	})
 }
 
-// NewLogStreamer creates a new log streamer
-func NewLogStreamer(serverURL string) *LogStreamer {
-	token, err := config.LoadAPIToken()
-	if err != nil {
-		ui.Warn("Failed to load API token for log streaming: %v", err)
-	}
-	return &LogStreamer{
-		baseURL:  serverURL,
-		apiToken: token,
-		client: &http.Client{
-			Timeout: 0, // No timeout for streaming
-		},
-	}
+// StreamLogs streams all manager logs
+func (c *APIClient) StreamLogs(ctx context.Context) error {
+	return c.stream(ctx, "logs", func(data string) (bool, error) {
+		var logEntry logging.LogEntry
+		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+			return false, fmt.Errorf("failed to parse log entry: %w", err)
+		}
+
+		c.displayGeneralLogEntry(logEntry)
+
+		// Never stop streaming for general logs
+		return false, nil
+	})
 }
 
-// StreamLogs connects to the SSE endpoint and displays logs for any command
-func (s *LogStreamer) StreamLogs(ctx context.Context, command, deploymentID string) error {
-	url := fmt.Sprintf("%s/v1/%s/%s/logs", s.baseURL, command, deploymentID)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create SSE request: %w", err)
-	}
-
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Cache-Control", "no-cache")
-	if s.apiToken != "" {
-		req.Header.Set("Authorization", "Bearer "+s.apiToken)
-	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to connect to log stream: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("authentication failed for log streaming - check your HALOY_API_TOKEN")
-		}
-		return fmt.Errorf("log stream returned status %d", resp.StatusCode)
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+func (c *APIClient) StreamManagerInitLogs(ctx context.Context) error {
+	return c.stream(ctx, "logs", func(data string) (bool, error) {
+		var logEntry logging.LogEntry
+		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+			return false, fmt.Errorf("failed to parse log entry: %w", err)
 		}
 
-		line := scanner.Text()
+		c.displayGeneralLogEntry(logEntry)
 
-		// Skip empty lines and SSE comment lines
-		if line == "" || strings.HasPrefix(line, ":") {
-			continue
-		}
-
-		// Parse SSE data lines
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
-
-			var logEntry logging.LogEntry
-			if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
-				ui.Warn("Failed to parse log entry: %v", err)
-				continue
-			}
-
-			// Format and display the log entry
-			s.displayLogEntry(logEntry)
-
-			// Check if operation is complete
-			if logEntry.IsComplete {
-				return nil
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("error reading log stream: %w", err)
-	}
-
-	return nil
+		// Stop streaming when manager init is complete
+		return logEntry.IsManagerInitComplete, nil
+	})
 }
 
-// displayLogEntry formats and displays a log entry using the UI package
-func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
+// displayDeploymentLogEntry formats and displays a deployment-specific log entry
+func (c *APIClient) displayDeploymentLogEntry(entry logging.LogEntry) {
 	message := entry.Message
 
-	// Handle the error field specially for multi-line errors
+	// Handle multi-line errors
+	if errorStr := c.extractErrorField(entry); errorStr != "" {
+		if strings.Contains(errorStr, "\n") {
+			c.displayMultiLineError(entry.Level, message, errorStr)
+			return
+		} else {
+			message = fmt.Sprintf("%s (error=%s)", message, errorStr)
+		}
+	}
+
+	c.displayMessage(entry.Level, message, entry.IsDeploymentSuccess, entry.Domains)
+}
+
+// displayGeneralLogEntry formats and displays a general manager log entry
+func (c *APIClient) displayGeneralLogEntry(entry logging.LogEntry) {
+	message := entry.Message
+
+	// Add deployment context for general logs
+	if entry.DeploymentID != "" {
+		message = fmt.Sprintf("[%s] %s", entry.DeploymentID, message)
+	}
+	if entry.AppName != "" && entry.AppName != entry.DeploymentID {
+		message = fmt.Sprintf("[%s] %s", entry.AppName, message)
+	}
+
+	// Handle multi-line errors
+	if errorStr := c.extractErrorField(entry); errorStr != "" {
+		if strings.Contains(errorStr, "\n") {
+			c.displayMultiLineError(entry.Level, message, errorStr)
+			return
+		} else {
+			message = fmt.Sprintf("%s (error=%s)", message, errorStr)
+		}
+	}
+
+	c.displayMessage(entry.Level, message, entry.IsDeploymentSuccess, entry.Domains)
+}
+
+// extractErrorField extracts the error field from log entry if present
+func (c *APIClient) extractErrorField(entry logging.LogEntry) string {
 	if len(entry.Fields) > 0 {
 		if errorValue, hasError := entry.Fields["error"]; hasError {
+			return fmt.Sprintf("%v", errorValue)
+		}
+	}
+	return ""
+}
 
-			// Convert error to string
-			errorStr := fmt.Sprintf("%v", errorValue)
-
-			// Check if it's a multi-line error (contains newlines)
-			if strings.Contains(errorStr, "\n") {
-				// For multi-line errors, display them after the main message
-				switch strings.ToUpper(entry.Level) {
-				case "ERROR":
-					ui.Error("%s", message)
-					// Display the detailed error with proper indentation
-					for _, line := range strings.Split(errorStr, "\n") {
-						if strings.TrimSpace(line) != "" {
-							ui.Error("    %s", line) // Indent error details
-						}
-					}
-				case "WARN":
-					ui.Warn("%s", message)
-					for _, line := range strings.Split(errorStr, "\n") {
-						if strings.TrimSpace(line) != "" {
-							ui.Warn("    %s", line)
-						}
-					}
-				default:
-					ui.Info("%s", message)
-					for _, line := range strings.Split(errorStr, "\n") {
-						if strings.TrimSpace(line) != "" {
-							fmt.Printf("    %s\n", line)
-						}
-					}
-				}
-				return // Early return since we handled the error specially
-			} else {
-				// Single-line error, append to message
-				message = fmt.Sprintf("%s (error=%s)", message, errorStr)
+// displayMultiLineError displays multi-line errors with proper formatting
+func (c *APIClient) displayMultiLineError(level, message, errorStr string) {
+	switch strings.ToUpper(level) {
+	case "ERROR":
+		ui.Error("%s", message)
+		for _, line := range strings.Split(errorStr, "\n") {
+			if strings.TrimSpace(line) != "" {
+				ui.Error("    %s", line)
+			}
+		}
+	case "WARN":
+		ui.Warn("%s", message)
+		for _, line := range strings.Split(errorStr, "\n") {
+			if strings.TrimSpace(line) != "" {
+				ui.Warn("    %s", line)
+			}
+		}
+	default:
+		ui.Info("%s", message)
+		for _, line := range strings.Split(errorStr, "\n") {
+			if strings.TrimSpace(line) != "" {
+				fmt.Printf("    %s\n", line)
 			}
 		}
 	}
-	switch strings.ToUpper(entry.Level) {
+}
+
+// displayMessage displays a log message with appropriate formatting based on level
+func (c *APIClient) displayMessage(level, message string, isSuccess bool, domains []string) {
+	switch strings.ToUpper(level) {
 	case "ERROR":
 		ui.Error("%s", message)
 	case "WARN":
 		ui.Warn("%s", message)
 	case "INFO":
-		if entry.IsSuccess {
-			if len(entry.Domains) > 0 {
-				urls := make([]string, len(entry.Domains))
-				for i, domain := range entry.Domains {
+		if isSuccess {
+			if len(domains) > 0 {
+				urls := make([]string, len(domains))
+				for i, domain := range domains {
 					urls[i] = fmt.Sprintf("https://%s", domain)
 				}
 				message = fmt.Sprintf("%s → %s", message, strings.Join(urls, ", "))
@@ -407,6 +466,6 @@ func (s *LogStreamer) displayLogEntry(entry logging.LogEntry) {
 	case "DEBUG":
 		ui.Debug("%s", message)
 	default:
-		fmt.Printf("%s", message)
+		fmt.Printf("%s\n", message)
 	}
 }

@@ -3,6 +3,7 @@ package haloy
 import (
 	"context"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -49,8 +50,8 @@ If no path is provided, the current directory is used.`,
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			response, err := apiClient.StopApp(ctx, appConfig.Name, removeContainersFlag)
+			api := apiclient.New(targetServer)
+			response, err := api.StopApp(ctx, appConfig.Name, removeContainersFlag)
 			if err != nil {
 				ui.Error("Failed to stop app: %v", err)
 				return

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
@@ -40,8 +41,8 @@ func SecretsSetCommand() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			err = apiClient.SetSecret(ctx, name, value)
+			api := apiclient.New(targetServer)
+			err = api.SetSecret(ctx, name, value)
 			if err != nil {
 				ui.Error("Failed to set secret: %v", err)
 				return
@@ -72,8 +73,8 @@ func SecretsListCommand() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
-			apiClient := NewAPIClient(targetServer)
-			response, err := apiClient.SecretsList(ctx)
+			api := apiclient.New(targetServer)
+			response, err := api.SecretsList(ctx)
 			if err != nil {
 				ui.Error("Failed to list secrets: %v", err)
 				return
@@ -122,8 +123,8 @@ func SecretsDeleteCommand() *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			err = apiClient.DeleteSecret(ctx, name)
+			api := apiclient.New(targetServer)
+			err = api.DeleteSecret(ctx, name)
 			if err != nil {
 				ui.Error("Failed to delete secret: %v", err)
 				return

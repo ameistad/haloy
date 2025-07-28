@@ -35,7 +35,9 @@ func InitCmd() *cobra.Command {
 	var overrideExisting bool
 	var managerDomain string
 	var acmeEmail string
+	var devMode bool
 	var debug bool
+	var noLogs bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -132,26 +134,35 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				ui.Warn("docker network create --driver bridge %s", constants.DockerNetwork)
 			}
 
-			// Start the haloy-manager container and haproxy container.
-			if !skipServices {
-				if err := startServices(ctx, dataDir, configDir, false, overrideExisting, debug); err != nil {
-					ui.Error("%s", err)
-					return
-				}
-			}
-
 			successMsg := "Haloy initialized successfully!\n\n"
 			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
 			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
 			if managerDomain != "" {
 				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", managerDomain)
 			}
-			if !skipServices {
-				successMsg += "\n✅ HAProxy and haloy-manager started successfully.\n"
-				successMsg += "   Use 'haloy status' to check service health.\n"
-			}
-			cleanupOnFailure = false
 			ui.Success("%s", successMsg)
+
+			cleanupOnFailure = false
+
+			// Start the haloy-manager container and haproxy container, stream logs if requested.
+			if !skipServices {
+				ui.Info("Starting Haloy services...")
+				if err := startServices(ctx, dataDir, configDir, devMode, overrideExisting, debug); err != nil {
+					ui.Error("%s", err)
+					return
+				}
+
+				if !noLogs {
+					ui.Info("Waiting for manager API to become available...")
+
+					// Wait for API to become available and stream init logs
+					if err := streamManagerInitLogs(ctx); err != nil {
+						ui.Warn("Failed to stream manager initialization logs: %v", err)
+						ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
+					}
+				}
+			}
+
 		},
 	}
 
@@ -159,7 +170,9 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
 	cmd.Flags().StringVar(&managerDomain, "domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
 	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
+	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
+	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream manager initialization logs")
 	return cmd
 }
 

@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/ui"
@@ -264,4 +266,51 @@ func ensureNetwork(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// streamManagerInitLogs waits for the API to become available and streams initialization logs
+func streamManagerInitLogs(ctx context.Context) error {
+	// Create API client for localhost
+	apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
+	api := apiclient.New(apiURL)
+
+	// Wait for API to become available
+	ui.Info("Connecting to manager API...")
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, apiWaitTimeout)
+	defer waitCancel()
+
+	if err := waitForAPI(waitCtx, api); err != nil {
+		return fmt.Errorf("manager API not available: %w", err)
+	}
+
+	ui.Info("Streaming manager initialization logs...")
+
+	streamCtx, streamCancel := context.WithCancel(ctx)
+	defer streamCancel()
+	return api.StreamManagerInitLogs(streamCtx)
+}
+
+// waitForAPI polls the API health endpoint until it's available
+func waitForAPI(ctx context.Context, api *apiclient.APIClient) error {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			// Try to check API health (without auth since health endpoint is public)
+			healthCtx, healthCancel := context.WithTimeout(ctx, 2*time.Second)
+			err := api.HealthCheck(healthCtx)
+			healthCancel()
+
+			if err == nil {
+				return nil // API is available
+			}
+
+			// Continue polling if API is not ready yet
+		}
+	}
 }

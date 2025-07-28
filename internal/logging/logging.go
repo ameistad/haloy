@@ -5,6 +5,26 @@ import (
 	"os"
 )
 
+// Log attribute keys used for structured logging and streaming
+const (
+	// Deployment attributes
+	AttrDeploymentID       = "deploymentID"
+	AttrDeploymentComplete = "deploymentComplete"
+	AttrDeploymentFailed   = "deploymentFailed"
+	AttrDeploymentSuccess  = "deploymentSuccess"
+
+	// Manager attributes
+	AttrManagerInitComplete = "managerInitComplete"
+
+	// App attributes
+	AttrAppName = "appName"
+	AttrApp     = "app"
+	AttrDomains = "domains"
+
+	// General attributes
+	AttrError = "error"
+)
+
 // NewLogger creates a new slog.Logger with optional streaming
 func NewLogger(level slog.Level, publisher StreamPublisher) *slog.Logger {
 	// Create base handler (console output)
@@ -38,11 +58,11 @@ func LogFatal(logger *slog.Logger, message string, args ...any) {
 // This sends the completion signal that tells CLI clients to stop streaming
 func LogDeploymentComplete(logger *slog.Logger, domains []string, deploymentID, appName, message string) {
 	logger.Info(message,
-		"app", appName,
-		"deploymentID", deploymentID,
-		"domains", domains,
-		"complete", true,
-		"success", true,
+		AttrApp, appName,
+		AttrDeploymentID, deploymentID,
+		AttrDomains, domains,
+		AttrDeploymentComplete, true,
+		AttrDeploymentSuccess, true,
 	)
 }
 
@@ -50,10 +70,10 @@ func LogDeploymentComplete(logger *slog.Logger, domains []string, deploymentID, 
 // This sends the failure signal that tells CLI clients to stop streaming with error
 func LogDeploymentFailed(logger *slog.Logger, deploymentID, appName, message string, err error) {
 	logger.Error(message,
-		"app", appName,
-		"deploymentID", deploymentID,
-		"error", err,
-		"complete", true, // Also end stream on failure
-		"failed", true,
+		AttrApp, appName,
+		AttrDeploymentID, deploymentID,
+		AttrError, err,
+		AttrDeploymentComplete, true, // Also end stream on failure
+		AttrDeploymentFailed, true,
 	)
 }

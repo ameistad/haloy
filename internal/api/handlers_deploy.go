@@ -73,8 +73,8 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 
 		// Subscribe to logs for this deployment ID
 		// Don't pass request context - use background context with manual cleanup
-		logChan := s.logBroker.Subscribe(deploymentID)
-		defer s.logBroker.Unsubscribe(deploymentID)
+		logChan := s.logBroker.SubscribeDeployment(deploymentID)
+		defer s.logBroker.UnsubscribeDeployment(deploymentID)
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -100,7 +100,7 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 				flusher.Flush()
 
 				// If deployment is complete or failed, end the stream
-				if logEntry.IsComplete || logEntry.IsFailed {
+				if logEntry.IsDeploymentComplete || logEntry.IsDeploymentFailed {
 					return
 				}
 			}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
@@ -48,8 +49,8 @@ If no path is provided, the current directory is used.`,
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			status, err := apiClient.AppStatus(ctx, appConfig.Name)
+			api := apiclient.New(targetServer)
+			status, err := api.AppStatus(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get app status: %v", err)
 				return

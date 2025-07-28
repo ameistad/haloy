@@ -3,6 +3,7 @@ package haloy
 import (
 	"context"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -48,8 +49,8 @@ If no path is provided, the current directory is used.`,
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			apiClient := NewAPIClient(targetServer)
-			resp, err := apiClient.Deploy(ctx, appConfig)
+			api := apiclient.New(targetServer)
+			resp, err := api.Deploy(ctx, appConfig)
 			if err != nil {
 				ui.Error("Deployment request failed: %v", err)
 				return
@@ -60,9 +61,13 @@ If no path is provided, the current directory is used.`,
 			}
 
 			if !noLogs {
-				logStreamer := NewLogStreamer(targetServer)
-				if err := logStreamer.StreamLogs(ctx, "deploy", resp.DeploymentID); err != nil {
-					ui.Warn("Failed to stream logs: %v", err)
+				// No timout for streaming logs
+				streamCtx, streamCancel := context.WithCancel(context.Background())
+				defer streamCancel()
+
+				// Stream deployment logs using the APIClient
+				if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID); err != nil {
+					ui.Warn("Failed to stream deployment logs: %v", err)
 				}
 			}
 		},
