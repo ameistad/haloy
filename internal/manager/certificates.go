@@ -248,22 +248,6 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		cm.checkMutex.Unlock()
 	}()
 
-	logger.Debug("=== CERTIFICATE MANAGER DEBUG ===")
-	logger.Debug("Certificate manager config check",
-		"cm.managerConfig_is_nil", cm.managerConfig == nil,
-		"api_domain", func() string {
-			if cm.managerConfig == nil {
-				return "CONFIG_IS_NIL"
-			}
-			return fmt.Sprintf("'%s'", cm.managerConfig.API.Domain)
-		}(),
-		"acme_email", func() string {
-			if cm.managerConfig == nil {
-				return "CONFIG_IS_NIL"
-			}
-			return fmt.Sprintf("'%s'", cm.managerConfig.Certificates.AcmeEmail)
-		}())
-
 	// We'll add the domain set in the manager config file if it exists.
 	if cm.managerConfig != nil && cm.managerConfig.API.Domain != "" && cm.managerConfig.Certificates.AcmeEmail != "" {
 		apiDomain := CertificatesDomain{
