@@ -16,6 +16,10 @@ import (
 	"github.com/ameistad/haloy/internal/ui"
 )
 
+const (
+	haproxyVersion = "3.2"
+)
+
 // startHaloyManager runs the docker command to start haloy-manager.
 func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
 	image := "ghcr.io/ameistad/haloy-manager:latest"
@@ -104,7 +108,7 @@ func startHaproxy(ctx context.Context, dataDir string) error {
 		"--user", "root",
 		"--restart", "unless-stopped",
 		"--network", constants.DockerNetwork,
-		"haproxy:3.1.5",
+		fmt.Sprintf("haproxy:%s", haproxyVersion),
 	)
 
 	var stderr bytes.Buffer
