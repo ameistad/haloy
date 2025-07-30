@@ -4,18 +4,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/ui"
-
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 )
 
-func EnsureImageUpToDate(ctx context.Context, cli *client.Client, imageConfig config.Image) (imageName string, err error) {
+func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.Logger, imageConfig config.Image) (imageName string, err error) {
 	imageName = imageConfig.Repository
 	imageRef := imageConfig.ImageRef()
 	registryAuth, err := imageConfig.RegistryAuthString()
@@ -38,7 +37,7 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, imageConfig co
 		}
 	}
 	// If we reach here, either the image doesn't exist locally or the remote digest doesn't match
-	ui.Info("Pulling image %s...", imageName)
+	logger.Info(fmt.Sprintf("Pulling image %s...", imageName))
 	r, err := cli.ImagePull(ctx, imageName, image.PullOptions{
 		RegistryAuth: registryAuth,
 	})
@@ -50,25 +49,25 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, imageConfig co
 	if _, err := io.Copy(io.Discard, r); err != nil {
 		return imageName, fmt.Errorf("error reading pull response: %w", err)
 	}
-	ui.Info("Successfully pulled %s", imageName)
+	logger.Info("Successfully pulled image", "image", imageName)
 	return imageName, nil
 }
 
 // PruneImages removes dangling (unused) Docker images and returns the amount of space reclaimed.
-func PruneImages(ctx context.Context, cli *client.Client) (uint64, error) {
+func PruneImages(ctx context.Context, cli *client.Client, logger *slog.Logger) (uint64, error) {
 	report, err := cli.ImagesPrune(ctx, filters.Args{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to prune images: %w", err)
 	}
 	if len(report.ImagesDeleted) > 0 {
-		ui.Info("Pruned %d images, reclaimed %d bytes", len(report.ImagesDeleted), report.SpaceReclaimed)
+		logger.Info("Pruned images", "count", len(report.ImagesDeleted), "bytes_reclaimed", report.SpaceReclaimed)
 	}
 	return report.SpaceReclaimed, nil
 }
 
 // RemoveImages removes extra (duplicate) image tags for a given app, keeping only the newest N tags based on the deploymentID.
 // Running containers reference the image by digest; if an image is in use we allow removal of duplicate tags as long as at least one tag is preserved.
-func RemoveImages(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string, deploymentsToKeep int) error {
+func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string, deploymentsToKeep int) error {
 	// List all images for the app that match the format appName:<deploymentID>.
 	images, err := cli.ImageList(ctx, image.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
@@ -151,9 +150,9 @@ func RemoveImages(ctx context.Context, cli *client.Client, appName, ignoreDeploy
 
 		// Remove the candidate tag.
 		if _, err := cli.ImageRemove(ctx, cand.Tag, image.RemoveOptions{Force: true, PruneChildren: false}); err != nil {
-			ui.Error("Failed to remove image tag %s: %v", cand.Tag, err)
+			logger.Error("Failed to remove image tag", "tag", cand.Tag, "error", err)
 		} else {
-			ui.Info("Removed image %s", cand.Tag)
+			logger.Info("Removed image tag", "tag", cand.Tag)
 		}
 	}
 

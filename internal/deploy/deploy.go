@@ -57,7 +57,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	}
 
 	// Remove all images except the DeploymentsToKeep newest, the ones tagged as latest and in use.
-	if err := docker.RemoveImages(ctx, cli, appConfig.Name, deploymentID, *appConfig.DeploymentsToKeep); err != nil {
+	if err := docker.RemoveImages(ctx, cli, logger, appConfig.Name, deploymentID, *appConfig.DeploymentsToKeep); err != nil {
 	} else {
 		logger.Info("Old images cleaned up")
 	}

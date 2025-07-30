@@ -274,7 +274,7 @@ func RunManager(debug bool) {
 			// }
 
 			// Prune dangling images and containers
-			_, err := docker.PruneImages(ctx, cli)
+			_, err := docker.PruneImages(ctx, cli, logger)
 			if err != nil {
 				logger.Warn("Failed to prune images", "error", err)
 			}
