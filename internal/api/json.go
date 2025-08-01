@@ -3,14 +3,15 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // writeJSON marshals a value to JSON, sets the Content-Type header,
 // writes the status code, and sends the response.
 func writeJSON(w http.ResponseWriter, status int, data interface{}) error {
-	// Set the Content-Type header to indicate a JSON response.
 	w.Header().Set("Content-Type", "application/json")
 
 	// Write the HTTP status code to the response. This must be done before writing the body.
@@ -24,15 +25,25 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) error {
 // decodeJSON reads a JSON-encoded value from an io.Reader and decodes it
 // into the provided destination value 'v'.
 func decodeJSON(r io.Reader, v interface{}) error {
-	// Create a new decoder that reads from the request body.
-	dec := json.NewDecoder(r)
+	// DEBUG: Read the body first so we can log it
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return errors.New("failed to read request body")
+	}
+
+	// Log the received JSON for debugging
+	fmt.Printf("Debug: Received JSON:\n%s\n", string(body))
+
+	// dec := json.NewDecoder(r)
+	// Create a new decoder from the body we just read
+	dec := json.NewDecoder(strings.NewReader(string(body)))
 
 	// Disallow unknown fields in the JSON. If the client sends a field
 	// that doesn't exist in our struct, this will cause an error.
 	dec.DisallowUnknownFields()
 
 	// Decode the JSON.
-	err := dec.Decode(v)
+	err = dec.Decode(v)
 	if err != nil {
 		// Return a more specific error for common cases.
 		var syntaxError *json.SyntaxError
