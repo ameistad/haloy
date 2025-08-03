@@ -107,7 +107,7 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 					"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID))
 			}
 
-			logger.Info("Attempting to stop container due to error - check if container is attached to correct network",
+			logger.Info("Stopping container due to error",
 				"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID),
 				"error", failedContainer.Error)
 

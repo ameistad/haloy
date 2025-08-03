@@ -153,7 +153,7 @@ func displayRollbackTargets(appName string, targets []deploytypes.RollbackTarget
 	ui.Info("📋 Available rollback targets for '%s':", appName)
 	ui.Info("")
 
-	headers := []string{"DEPLOYMENT ID", "IMAGE TAG", "DATE", "STATUS"}
+	headers := []string{"DEPLOYMENT ID", "IMAGE REFERENCE", "DATE", "STATUS"}
 	rows := make([][]string, 0, len(targets))
 
 	for _, target := range targets {
@@ -170,7 +170,7 @@ func displayRollbackTargets(appName string, targets []deploytypes.RollbackTarget
 
 		rows = append(rows, []string{
 			target.DeploymentID,
-			target.ImageTag,
+			target.ImageRef,
 			date,
 			status,
 		})

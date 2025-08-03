@@ -82,7 +82,6 @@ func NewCertificatesClientManager(certDir string, tlsStaging bool, httpProviderP
 }
 
 func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.Client, error) {
-	// Return client early if it exists
 	cm.clientsMutex.RLock()
 	client, ok := cm.clients[email]
 	cm.clientsMutex.RUnlock()
@@ -128,7 +127,6 @@ func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.C
 		return nil, fmt.Errorf("failed to set HTTP challenge provider: %w", err)
 	}
 
-	// Register the user with the ACME server
 	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
 	if err != nil {
 		return nil, fmt.Errorf("failed to register user: %w", err)
@@ -165,7 +163,6 @@ type CertificatesManager struct {
 }
 
 func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<- string) (*CertificatesManager, error) {
-	// Create directories if they don't exist
 	if err := os.MkdirAll(config.CertDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create certificate directory: %w", err)
 	}
@@ -215,7 +212,6 @@ func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []Certif
 func (cm *CertificatesManager) Refresh(logger *slog.Logger, domains []CertificatesDomain) {
 	logger.Debug("Refresh requested for certificate manager, using debouncer.")
 
-	// Define the action to perform after the debounce delay
 	refreshAction := func() {
 		renewedDomains, err := cm.checkRenewals(logger, domains)
 		if err != nil {
@@ -256,7 +252,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 			Email:     cm.managerConfig.Certificates.AcmeEmail,
 		}
 		domains = append(domains, apiDomain)
-		logger.Debug("Added manager API domain to certificate processing",
+		logger.Info("Fetching certificate for API domain",
 			"domain", apiDomain.Canonical, "email", apiDomain.Email)
 	}
 
@@ -323,7 +319,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 			}
 			renewedDomains = append(renewedDomains, obtainedDomain)
 		} else {
-			logger.Info("Skipping renewal: certificate is valid and configuration unchanged",
+			logger.Info("Certificate is valid and configuration unchanged",
 				"domain", canonical,
 				"aliases", domain.Aliases)
 		}
@@ -375,7 +371,7 @@ func (cm *CertificatesManager) needsRenewalDueToExpiry(logger *slog.Logger, doma
 		if os.IsNotExist(err) {
 			return true, nil // File doesn't exist, need to obtain
 		}
-		return false, err // Other error
+		return false, err
 	}
 
 	parsedCert, err := parseCertificate(certData)
@@ -521,9 +517,7 @@ func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain
 		Bundle:  true,       // Bundle intermediate certs
 	}
 
-	logger.Debug("Requesting certificate from ACME provider", "domain", canonicalDomain)
-
-	logger.Info("Requesting new certificate", "canonical", canonicalDomain, "aliases", strings.Join(aliases, ", "))
+	logger.Info("Requesting new certificate from ACME provider", "domain", canonicalDomain, "aliases", strings.Join(aliases, ", "))
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
 		return obtainedDomain, fmt.Errorf("failed to obtain certificate for %s: %w", canonicalDomain, err)

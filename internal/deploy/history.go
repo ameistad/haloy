@@ -9,7 +9,7 @@ import (
 )
 
 // WriteAppConfigHistory writes the given appConfig to the history folder, naming the file <deploymentID>.yml.
-func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageTag string, deploymentsToKeep int) error {
+func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageRef string, deploymentsToKeep int) error {
 	database, err := db.New()
 	if err != nil {
 		return err
@@ -23,7 +23,7 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageTag st
 		ID:        deploymentID,
 		AppName:   appConfig.Name,
 		AppConfig: appConfigJSON,
-		ImageTag:  imageTag,
+		ImageRef:  imageRef,
 	}
 
 	if err := database.SaveDeployment(deployment); err != nil {

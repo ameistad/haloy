@@ -14,15 +14,14 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.Logger, imageConfig config.Image) (imageName string, err error) {
-	imageName = imageConfig.Repository
+func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.Logger, imageConfig config.Image) error {
 	imageRef := imageConfig.ImageRef()
 	registryAuth, err := imageConfig.RegistryAuthString()
 	if err != nil {
-		return imageName, fmt.Errorf("failed to resolve registry auth for image %s: %w", imageName, err)
+		return fmt.Errorf("failed to resolve registry auth for image %s: %w", imageRef, err)
 	}
 	// Try inspecting local image
-	local, err := cli.ImageInspect(ctx, imageName)
+	local, err := cli.ImageInspect(ctx, imageRef)
 	if err == nil {
 		// Inspect remote manifest (HEAD)
 		remote, err := cli.DistributionInspect(ctx, imageRef, registryAuth)
@@ -31,26 +30,27 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 			for _, rd := range local.RepoDigests {
 				// rd is "repo@sha256:..."
 				if strings.HasSuffix(rd, "@"+remoteDigest) {
-					return imageName, nil
+					return nil
 				}
 			}
 		}
 	}
+
 	// If we reach here, either the image doesn't exist locally or the remote digest doesn't match
-	logger.Info(fmt.Sprintf("Pulling image %s...", imageName))
-	r, err := cli.ImagePull(ctx, imageName, image.PullOptions{
+	logger.Info(fmt.Sprintf("Pulling image %s...", imageRef))
+	r, err := cli.ImagePull(ctx, imageRef, image.PullOptions{
 		RegistryAuth: registryAuth,
 	})
 	if err != nil {
-		return imageName, fmt.Errorf("failed to pull %s: %w", imageName, err)
+		return fmt.Errorf("failed to pull %s: %w", imageRef, err)
 	}
 	defer r.Close()
 	// drain stream
 	if _, err := io.Copy(io.Discard, r); err != nil {
-		return imageName, fmt.Errorf("error reading pull response: %w", err)
+		return fmt.Errorf("error reading pull response: %w", err)
 	}
-	logger.Info("Successfully pulled image", "image", imageName)
-	return imageName, nil
+	logger.Info("Successfully pulled image", "image", imageRef)
+	return nil
 }
 
 // PruneImages removes dangling (unused) Docker images and returns the amount of space reclaimed.

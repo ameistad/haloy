@@ -7,22 +7,32 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/spf13/viper"
+	"github.com/knadh/koanf/parsers/json"
+	"github.com/knadh/koanf/parsers/toml"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
 type AppConfig struct {
-	Name              string   `yaml:"name" json:"name"`
-	Image             Image    `yaml:"image" json:"image"`
-	Server            string   `yaml:"server,omitempty" json:"server,omitempty"`
-	Domains           []Domain `yaml:"domains,omitempty" json:"domains,omitempty"`
-	ACMEEmail         string   `yaml:"acme_email,omitempty" json:"acme_email,omitempty"`
-	Env               []EnvVar `yaml:"env,omitempty" json:"env,omitempty"`
-	DeploymentsToKeep *int     `yaml:"deployments_to_keep,omitempty" json:"deploymentsToKeep,omitempty"`
-	HealthCheckPath   string   `yaml:"health_check_path,omitempty" json:"healthCheckPath,omitempty"`
-	Port              string   `yaml:"port,omitempty" json:"port,omitempty"`
-	Replicas          *int     `yaml:"replicas,omitempty" json:"replicas,omitempty"`
-	Volumes           []string `yaml:"volumes,omitempty" json:"volumes,omitempty"`
-	NetworkMode       string   `yaml:"network_mode,omitempty" json:"networkMode,omitempty"`
+	Name              string    `json:"name" yaml:"name" toml:"name" koanf:"name"`
+	Image             Image     `json:"image" yaml:"image" toml:"image" koanf:"image"`
+	Server            string    `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty" koanf:"server"`
+	Domains           []Domain  `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty" koanf:"domains"`
+	ACMEEmail         string    `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty" koanf:"acmeEmail"`
+	Env               []EnvVar  `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty" koanf:"env"`
+	DeploymentsToKeep *int      `json:"deploymentsToKeep,omitempty" yaml:"deployments_to_keep,omitempty" toml:"deployments_to_keep,omitempty" koanf:"deploymentsToKeep"`
+	HealthCheckPath   string    `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty" koanf:"healthCheckPath"`
+	Port              string    `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty" koanf:"port"`
+	Replicas          *int      `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty" koanf:"replicas"`
+	Volumes           []string  `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty" koanf:"volumes"`
+	NetworkMode       string    `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty" koanf:"networkMode"`
+	Hooks             *AppHooks `json:"hooks,omitempty" yaml:"hooks,omitempty" toml:"hooks,omitempty" koanf:"hooks"`
+}
+
+type AppHooks struct {
+	PreDeploy  []string `yaml:"pre_deploy,omitempty" json:"preDeploy,omitempty" toml:"pre_deploy,omitempty" koanf:"preDeploy"`
+	PostDeploy []string `yaml:"post_deploy,omitempty" json:"postDeploy,omitempty" toml:"post_deploy,omitempty" koanf:"postDeploy"`
 }
 
 func (ac *AppConfig) Normalize() *AppConfig {
@@ -58,14 +68,30 @@ func LoadAppConfig(path string) (*AppConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := viper.New()
-	v.SetConfigFile(configFile)
 
-	if err := v.ReadInConfig(); err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	k := koanf.New(".")
+
+	// Determine parser based on file extension
+	var parser koanf.Parser
+	ext := filepath.Ext(configFile)
+	switch ext {
+	case ".json":
+		parser = json.Parser()
+	case ".yaml", ".yml":
+		parser = yaml.Parser()
+	case ".toml":
+		parser = toml.Parser()
+	default:
+		return nil, fmt.Errorf("unsupported config file type: %s", ext)
 	}
+
+	// Load the config file
+	if err := k.Load(file.Provider(configFile), parser); err != nil {
+		return nil, fmt.Errorf("failed to load config file: %w", err)
+	}
+
 	var appConfig AppConfig
-	if err := v.Unmarshal(&appConfig); err != nil {
+	if err := k.Unmarshal("", &appConfig); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -73,19 +99,19 @@ func LoadAppConfig(path string) (*AppConfig, error) {
 }
 
 // LoadAndValidateAppConfig loads the configuration from a file path, normalizes it, and validates it.
-func LoadAndValidateAppConfig(path string) (AppConfig, error) {
+func LoadAndValidateAppConfig(path string) (*AppConfig, error) {
 	appConfig, err := LoadAppConfig(path)
 	if err != nil {
-		return AppConfig{}, err
+		return nil, err
 	}
 
 	appConfig = appConfig.Normalize()
 
 	if err := appConfig.Validate(); err != nil {
-		return *appConfig, fmt.Errorf("config validation failed: %w", err)
+		return appConfig, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	return *appConfig, nil
+	return appConfig, nil
 }
 
 var supportedExtensions = []string{".json", ".yaml", ".yml", ".toml"}

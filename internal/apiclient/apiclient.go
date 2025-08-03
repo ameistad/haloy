@@ -374,7 +374,7 @@ func (c *APIClient) displayDeploymentLogEntry(entry logging.LogEntry) {
 			c.displayMultiLineError(entry.Level, message, errorStr)
 			return
 		} else {
-			message = fmt.Sprintf("%s (error=%s)", message, errorStr)
+			message = fmt.Sprintf("%s (error message: %s)", message, errorStr)
 		}
 	}
 

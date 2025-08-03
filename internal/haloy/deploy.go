@@ -2,6 +2,11 @@ package haloy
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
@@ -40,6 +45,15 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
+			if appConfig.Hooks != nil && len(appConfig.Hooks.PreDeploy) > 0 {
+				for _, hookCmd := range appConfig.Hooks.PreDeploy {
+					if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+						ui.Error("Pre-deploy hook failed: %v", err)
+						return
+					}
+				}
+			}
+
 			targetServer := appConfig.Server
 			if serverURL != "" {
 				targetServer = serverURL
@@ -50,7 +64,7 @@ If no path is provided, the current directory is used.`,
 			defer cancel()
 
 			api := apiclient.New(targetServer)
-			resp, err := api.Deploy(ctx, appConfig)
+			resp, err := api.Deploy(ctx, *appConfig)
 			if err != nil {
 				ui.Error("Deployment request failed: %v", err)
 				return
@@ -70,6 +84,14 @@ If no path is provided, the current directory is used.`,
 					ui.Warn("Failed to stream deployment logs: %v", err)
 				}
 			}
+
+			if appConfig.Hooks != nil && len(appConfig.Hooks.PostDeploy) > 0 {
+				for _, hookCmd := range appConfig.Hooks.PostDeploy {
+					if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+						ui.Warn("Post-deploy hook failed: %v", err)
+					}
+				}
+			}
 		},
 	}
 
@@ -78,4 +100,39 @@ If no path is provided, the current directory is used.`,
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
 
 	return cmd
+}
+
+// executeHook runs a single hook command in the specified working directory.
+func executeHook(command string, workDir string) error {
+	ui.Info("Running: %s", command)
+
+	// Split the command into the program and its arguments
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return fmt.Errorf("empty hook command")
+	}
+	prog := parts[0]
+	args := parts[1:]
+
+	cmd := exec.Command(prog, args...)
+	cmd.Dir = workDir      // Set the working directory for the command
+	cmd.Stdout = os.Stdout // Stream stdout to the user's terminal
+	cmd.Stderr = os.Stderr // Stream stderr to the user's terminal
+
+	return cmd.Run()
+}
+
+func getHooksWorkDir(configPath string) string {
+	workDir := "."
+	if configPath != "." {
+		// If a specific config path was provided, use its directory
+		if stat, err := os.Stat(configPath); err == nil {
+			if stat.IsDir() {
+				workDir = configPath
+			} else {
+				workDir = filepath.Dir(configPath)
+			}
+		}
+	}
+	return workDir
 }

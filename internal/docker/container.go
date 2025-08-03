@@ -24,9 +24,14 @@ type ContainerRunResult struct {
 	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTag string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
+func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRef string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
 
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
+
+	// Check image platform compatibility before creating containers
+	if err := checkImagePlatformCompatibility(ctx, cli, imageRef); err != nil {
+		return result, err
+	}
 
 	// Convert AppConfig to ContainerLabels
 	cl := config.ContainerLabels{
@@ -83,7 +88,7 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageTa
 	for i := range make([]struct{}, *appConfig.Replicas) {
 		envVars := append(envVars, fmt.Sprintf("HALOY_REPLICA_ID=%d", i+1))
 		containerConfig := &container.Config{
-			Image:  imageTag,
+			Image:  imageRef,
 			Labels: labels,
 			Env:    envVars,
 		}
@@ -361,17 +366,77 @@ func GetAppContainers(ctx context.Context, cli *client.Client, listAll bool, app
 }
 
 // ContainerNetworkInfo extracts the container's IP address
-func ContainerNetworkIP(container container.InspectResponse, networkName string) (string, error) {
-	if _, exists := container.NetworkSettings.Networks[networkName]; !exists {
-		return "", fmt.Errorf("specified network not found: %s", networkName)
+func ContainerNetworkIP(containerInfo container.InspectResponse, networkName string) (string, error) {
+	// Add more detailed logging to help debug
+	if containerInfo.State == nil {
+		return "", fmt.Errorf("container state is nil")
 	}
-	if container.State == nil || !container.State.Running {
-		return "", fmt.Errorf("container is not running")
+
+	if !containerInfo.State.Running {
+		// Include more details about why the container isn't running
+		exitCode := 0
+		if containerInfo.State.ExitCode != 0 {
+			exitCode = containerInfo.State.ExitCode
+		}
+		return "", fmt.Errorf("container is not running (status: %s, exit code: %d)", containerInfo.State.Status, exitCode)
 	}
-	ipAddress := container.NetworkSettings.Networks[networkName].IPAddress
+
+	if _, exists := containerInfo.NetworkSettings.Networks[networkName]; !exists {
+		// List available networks for debugging
+		var availableNetworks []string
+		for netName := range containerInfo.NetworkSettings.Networks {
+			availableNetworks = append(availableNetworks, netName)
+		}
+		return "", fmt.Errorf("network '%s' not found, available networks: %v", networkName, availableNetworks)
+	}
+
+	ipAddress := containerInfo.NetworkSettings.Networks[networkName].IPAddress
 	if ipAddress == "" {
-		return "", fmt.Errorf("container has no IP address on the specified network: %s", networkName)
+		return "", fmt.Errorf("container has no IP address on network '%s'", networkName)
 	}
 
 	return ipAddress, nil
+}
+
+// checkImagePlatformCompatibility verifies the image platform matches the host
+func checkImagePlatformCompatibility(ctx context.Context, cli *client.Client, imageRef string) error {
+	// Get image details
+	imageInspect, err := cli.ImageInspect(ctx, imageRef)
+	if err != nil {
+		return fmt.Errorf("failed to inspect image %s: %w", imageRef, err)
+	}
+
+	// Get host platform info
+	hostInfo, err := cli.Info(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get host info: %w", err)
+	}
+
+	imagePlatform := imageInspect.Architecture
+	hostPlatform := hostInfo.Architecture
+
+	// Common platform mappings
+	platformMap := map[string]string{
+		"x86_64":  "amd64",
+		"aarch64": "arm64",
+		"armv7l":  "arm",
+	}
+
+	// Normalize platform names
+	if normalized, exists := platformMap[imagePlatform]; exists {
+		imagePlatform = normalized
+	}
+	if normalized, exists := platformMap[hostPlatform]; exists {
+		hostPlatform = normalized
+	}
+
+	if imagePlatform != hostPlatform {
+		return fmt.Errorf(
+			"image built for %s but host is %s. "+
+				"Rebuild the image for the correct platform or use docker buildx with --platform flag",
+			imagePlatform, hostPlatform,
+		)
+	}
+
+	return nil
 }

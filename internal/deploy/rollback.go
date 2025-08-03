@@ -61,12 +61,12 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 	runningDeploymentID, _ := getRunningDeploymentID(ctx, cli, appName)
 
 	for _, img := range images {
-		for _, tag := range img.RepoTags {
-			if strings.HasSuffix(tag, ":latest") {
+		for _, imageRef := range img.RepoTags {
+			if strings.HasSuffix(imageRef, ":latest") {
 				continue
 			}
 			// Expected tag format: "appName:deploymentID", e.g. "test-app:20250615214304"
-			parts := strings.SplitN(tag, ":", 2)
+			parts := strings.SplitN(imageRef, ":", 2)
 			if len(parts) != 2 {
 				// Unexpected tag format, skip this tag.
 				continue
@@ -76,7 +76,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 			target := deploytypes.RollbackTarget{
 				DeploymentID: deploymentID,
 				ImageID:      img.ID,
-				ImageTag:     tag,
+				ImageRef:     imageRef,
 				IsRunning:    deploymentID == runningDeploymentID,
 				AppConfig:    appConfig,
 			}

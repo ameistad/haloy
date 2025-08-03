@@ -22,10 +22,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 		deploymentLogger := logging.NewDeploymentLogger(deploymentID, s.logLevel, s.logBroker)
 		var req apitypes.DeployRequest
 
-		// Decode and validate the JSON request from the user
 		if err := decodeJSON(r.Body, &req); err != nil {
-			// If decoding fails, send a 400 Bad Request response.
-			// http.Error is a simple way to send a plain text error.
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -44,7 +41,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			defer cli.Close()
 
 			if err := deploy.DeployApp(ctx, cli, deploymentID, req.AppConfig, deploymentLogger); err != nil {
-				deploymentLogger.Error("Deployment failed", "app", req.AppConfig.Name, "error", err)
+				logging.LogDeploymentFailed(deploymentLogger, deploymentID, req.AppConfig.Name, "Deployment failed", err)
 				return
 			}
 		}()

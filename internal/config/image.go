@@ -11,21 +11,21 @@ import (
 
 type Image struct {
 	// Repository should include registry if not Docker Hub, e.g. "ghcr.io/myorg/myapp"
-	Repository   string        `json:"repository"`
-	Tag          string        `json:"tag,omitempty"`
-	RegistryAuth *RegistryAuth `json:"registry,omitempty"`
+	Repository   string        `yaml:"repository" json:"repository" toml:"repository" mapstructure:"repository"`
+	Tag          string        `yaml:"tag,omitempty" json:"tag,omitempty" toml:"tag,omitempty" mapstructure:"tag,omitempty"`
+	RegistryAuth *RegistryAuth `yaml:"registry,omitempty" json:"registry,omitempty" toml:"registry,omitempty" mapstructure:"registry,omitempty"`
 }
 
 type RegistryAuth struct {
 	// Server is optional. If not set, it will be parsed from the Repository field.
-	Server   string             `json:"server,omitempty"`
-	Username RegistryAuthSource `json:"username"`
-	Password RegistryAuthSource `json:"password"`
+	Server   string             `yaml:"server,omitempty" json:"server,omitempty" toml:"server,omitempty" mapstructure:"server,omitempty"`
+	Username RegistryAuthSource `yaml:"username" json:"username" toml:"username" mapstructure:"username"`
+	Password RegistryAuthSource `yaml:"password" json:"password" toml:"password" mapstructure:"password"`
 }
 
 type RegistryAuthSource struct {
-	Type  string `json:"type"`  // "env", "secret", or "plain"
-	Value string `json:"value"` // env var name, secret name, or plain value
+	Type  string `yaml:"type" json:"type" toml:"type" mapstructure:"type"`     // "env", "secret", or "plain"
+	Value string `yaml:"value" json:"value" toml:"value" mapstructure:"value"` // env var name, secret name, or plain value
 }
 
 func (is *Image) ImageRef() string {

@@ -23,34 +23,36 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	if err := normalizedAppConfig.Validate(); err != nil {
 		return fmt.Errorf("app config validation failed: %w", err)
 	}
-
 	imageRef := appConfig.Image.ImageRef()
-	newImageTag, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
+
+	// Ensure the image is up to date before tagging
+	logger.Info("Pulling image if needed", "image", imageRef)
+	err := docker.EnsureImageUpToDate(ctx, cli, logger, appConfig.Image)
+	if err != nil {
+		return fmt.Errorf("failed to ensure image is up to date: %w", err)
+	}
+	newImageRef, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to tag image: %w", err)
 	}
 
-	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageTag, appConfig)
+	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageRef, appConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return fmt.Errorf("failed to run new container: operation timed out (%w)", err)
+			return fmt.Errorf("container startup timed out: %w", err)
 		} else if errors.Is(err, context.Canceled) {
 			logger.Warn("Deployment canceled", "error", err)
 			if ctx.Err() != nil {
-				return fmt.Errorf("failed to run new container: deployment canceled (%w)", ctx.Err())
+				return fmt.Errorf("deployment canceled: %w", ctx.Err())
 			}
-			return fmt.Errorf("failed to run new container: docker operation canceled (%w)", err)
+			return fmt.Errorf("container creation canceled: %w", err)
 		}
-		return fmt.Errorf("failed to run new container: %w", err)
-	}
-	if len(runResult) == 0 {
-		return fmt.Errorf("failed to run new container: no containers started")
+		return err
 	}
 
 	logger.Info("Container(s) started successfully", "count", len(runResult), "deploymentID", deploymentID)
 
-	// Write the app configuration to the history folder.
-	if err := writeAppConfigHistory(appConfig, deploymentID, newImageTag, *appConfig.DeploymentsToKeep); err != nil {
+	if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef, *appConfig.DeploymentsToKeep); err != nil {
 		logger.Warn("Failed to write app config history", "error", err)
 	} else {
 		logger.Info("App configuration saved to history")
@@ -67,7 +69,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 func tagImage(ctx context.Context, cli *client.Client, srcRef, appName, deploymentID string) (string, error) {
 	dstRef := fmt.Sprintf("%s:%s", appName, deploymentID)
 
-	if srcRef == dstRef { // already tagged
+	if srcRef == dstRef {
 		return dstRef, nil
 	}
 
