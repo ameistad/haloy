@@ -104,9 +104,6 @@ If no path is provided, the current directory is used.`,
 
 // executeHook runs a single hook command in the specified working directory.
 func executeHook(command string, workDir string) error {
-	ui.Info("Running: %s", command)
-
-	// Split the command into the program and its arguments
 	parts := strings.Fields(command)
 	if len(parts) == 0 {
 		return fmt.Errorf("empty hook command")

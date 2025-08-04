@@ -7,9 +7,9 @@ import (
 
 // EnvVar represents an environment variable that can either have a plaintext value or be backed by a secret.
 type EnvVar struct {
-	Name       string `yaml:"name" json:"name" toml:"name" mapstructure:"name"`
-	Value      string `yaml:"value,omitempty" json:"value,omitempty" toml:"value,omitempty" mapstructure:"value,omitempty"`
-	SecretName string `yaml:"secret_name,omitempty" json:"secret_name,omitempty" toml:"secret_name,omitempty" mapstructure:"secret_name,omitempty"`
+	Name       string `yaml:"name" json:"name" toml:"name"`
+	Value      string `yaml:"value,omitempty" json:"value,omitempty" toml:"value,omitempty"`
+	SecretName string `yaml:"secret_name,omitempty" json:"secret_name,omitempty" toml:"secret_name,omitempty"`
 }
 
 // Validate ensures the EnvVar is correctly configured.

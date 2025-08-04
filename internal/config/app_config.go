@@ -7,9 +7,6 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/knadh/koanf/parsers/json"
-	"github.com/knadh/koanf/parsers/toml"
-	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -61,31 +58,18 @@ func (ac *AppConfig) Normalize() *AppConfig {
 	return ac
 }
 
-// Temp function to load the configuration using Viper.
+// LoadAppConfig loads the application configuration from a file path.
 func LoadAppConfig(path string) (*AppConfig, error) {
-	// Find the actual config file
 	configFile, err := FindConfigFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	k := koanf.New(".")
-
-	// Determine parser based on file extension
-	var parser koanf.Parser
-	ext := filepath.Ext(configFile)
-	switch ext {
-	case ".json":
-		parser = json.Parser()
-	case ".yaml", ".yml":
-		parser = yaml.Parser()
-	case ".toml":
-		parser = toml.Parser()
-	default:
-		return nil, fmt.Errorf("unsupported config file type: %s", ext)
+	parser, err := getConfigParser(configFile)
+	if err != nil {
+		return nil, err
 	}
-
-	// Load the config file
 	if err := k.Load(file.Provider(configFile), parser); err != nil {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
@@ -94,7 +78,6 @@ func LoadAppConfig(path string) (*AppConfig, error) {
 	if err := k.Unmarshal("", &appConfig); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-
 	return &appConfig, nil
 }
 

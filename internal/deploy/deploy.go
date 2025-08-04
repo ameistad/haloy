@@ -25,8 +25,6 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	}
 	imageRef := appConfig.Image.ImageRef()
 
-	// Ensure the image is up to date before tagging
-	logger.Info("Pulling image if needed", "image", imageRef)
 	err := docker.EnsureImageUpToDate(ctx, cli, logger, appConfig.Image)
 	if err != nil {
 		return fmt.Errorf("failed to ensure image is up to date: %w", err)
@@ -55,13 +53,13 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef, *appConfig.DeploymentsToKeep); err != nil {
 		logger.Warn("Failed to write app config history", "error", err)
 	} else {
-		logger.Info("App configuration saved to history")
+		logger.Debug("App configuration saved to history")
 	}
 
 	// Remove all images except the DeploymentsToKeep newest, the ones tagged as latest and in use.
 	if err := docker.RemoveImages(ctx, cli, logger, appConfig.Name, deploymentID, *appConfig.DeploymentsToKeep); err != nil {
 	} else {
-		logger.Info("Old images cleaned up")
+		logger.Debug("Old images cleaned up")
 	}
 	return nil
 }

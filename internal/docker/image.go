@@ -37,7 +37,7 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 	}
 
 	// If we reach here, either the image doesn't exist locally or the remote digest doesn't match
-	logger.Info(fmt.Sprintf("Pulling image %s...", imageRef))
+	logger.Debug(fmt.Sprintf("Pulling image %s...", imageRef), "image", imageRef)
 	r, err := cli.ImagePull(ctx, imageRef, image.PullOptions{
 		RegistryAuth: registryAuth,
 	})
@@ -49,7 +49,7 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 	if _, err := io.Copy(io.Discard, r); err != nil {
 		return fmt.Errorf("error reading pull response: %w", err)
 	}
-	logger.Info("Successfully pulled image", "image", imageRef)
+	logger.Debug("Successfully pulled image", "image", imageRef)
 	return nil
 }
 
@@ -152,7 +152,7 @@ func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, 
 		if _, err := cli.ImageRemove(ctx, cand.Tag, image.RemoveOptions{Force: true, PruneChildren: false}); err != nil {
 			logger.Error("Failed to remove image tag", "tag", cand.Tag, "error", err)
 		} else {
-			logger.Info("Removed image tag", "tag", cand.Tag)
+			logger.Debug("Removed image tag", "tag", cand.Tag)
 		}
 	}
 
