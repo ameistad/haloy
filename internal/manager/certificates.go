@@ -22,6 +22,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/lego"
@@ -29,9 +30,7 @@ import (
 )
 
 const (
-	// Define a key for the certificate refresh debounce action
-	refreshDebounceKey = "certificate_refresh"
-	// Define the debounce delay for certificate refreshes
+	refreshDebounceKey   = "certificate_refresh"
 	refreshDebounceDelay = 5 * time.Second
 	accountsDirName      = "accounts"
 )
@@ -62,7 +61,7 @@ type CertificatesClientManager struct {
 
 func NewCertificatesClientManager(certDir string, tlsStaging bool, httpProviderPort string) (*CertificatesClientManager, error) {
 	keyDir := filepath.Join(certDir, accountsDirName)
-	// Ensure the key directory exists
+
 	if err := os.MkdirAll(keyDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create key directory '%s': %w", keyDir, err)
 	}
@@ -93,7 +92,7 @@ func (cm *CertificatesClientManager) LoadOrRegisterClient(email string) (*lego.C
 	cm.clientsMutex.Lock()
 	defer cm.clientsMutex.Unlock()
 
-	// Just to be safe, we check again in case another goroutine created it while we were waiting
+	// Check again in case another goroutine created it while we were waiting. Just to be safe.
 	if client, ok := cm.clients[email]; ok {
 		return client, nil
 	}
@@ -194,21 +193,14 @@ func (m *CertificatesManager) Stop() {
 }
 
 func (cm *CertificatesManager) RefreshSync(logger *slog.Logger, domains []CertificatesDomain) error {
-	renewedDomains, err := cm.checkRenewals(logger, domains)
+	_, err := cm.checkRenewals(logger, domains)
 	if err != nil {
 		return err
-	}
-	if len(renewedDomains) > 0 {
-		for _, domain := range renewedDomains {
-			logger.Info("CertificatesManager: Renewed certificate",
-				"domain", domain.Canonical,
-				"aliases", strings.Join(domain.Aliases, ", "))
-		}
 	}
 	return nil
 }
 
-// Refresh is used for periodoc refreshes of certificates.
+// Refresh is used for periodic refreshes of certificates.
 func (cm *CertificatesManager) Refresh(logger *slog.Logger, domains []CertificatesDomain) {
 	logger.Debug("Refresh requested for certificate manager, using debouncer.")
 
@@ -218,23 +210,14 @@ func (cm *CertificatesManager) Refresh(logger *slog.Logger, domains []Certificat
 			logger.Error("Certificate refresh failed", "error", err)
 			return
 		}
-		// Signal the update channel to update HAProxy on async Refresh
-		// Only signal if we actually renewed something
+		// Signal the update channel to update HAProxy if certificates were renewed.
 		if len(renewedDomains) > 0 {
-			for _, domain := range renewedDomains {
-				logger.Info("CertificatesManager: Renewed certificate",
-					"domain", domain.Canonical,
-					"aliases", strings.Join(domain.Aliases, ", "))
-			}
 			if cm.updateSignal != nil {
 				cm.updateSignal <- "certificates_renewed"
 			}
-		} else {
-			logger.Debug("CertificatesManager: No certificates needed renewal at this time.")
 		}
 	}
 
-	// Use the generic debouncer with a specific key for certificate refreshes
 	cm.debouncer.Debounce(refreshDebounceKey, refreshAction)
 }
 
@@ -272,7 +255,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		if existing, exists := currentState[domain.Canonical]; exists {
 			// Prefer the configuration with more aliases
 			if len(domain.Aliases) > len(existing.Aliases) {
-				logger.Info("Using domain configuration with more aliases",
+				logger.Debug("Using domain configuration with more aliases",
 					"domain", domain.Canonical,
 					"newAliases", domain.Aliases,
 					"oldAliases", existing.Aliases)
@@ -304,7 +287,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 
 		// If configuration changed, clean up all related certificates first
 		if configChanged {
-			logger.Info("Configuration changed, cleaning up existing certificates", "domain", canonical)
+			logger.Debug("Configuration changed, cleaning up existing certificates", "domain", canonical)
 			if err := cm.cleanupDomainCertificates(logger, canonical); err != nil {
 				logger.Warn("Failed to cleanup certificates", "domain", canonical, "error", err)
 				// Continue anyway, might still work
@@ -312,14 +295,21 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		}
 
 		// Obtain certificate if needed
+		all := []string{domain.Canonical}
+		all = append(all, domain.Aliases...)
 		if configChanged || needsRenewal {
 			obtainedDomain, err := cm.obtainCertificate(domain, logger)
 			if err != nil {
 				return renewedDomains, err
 			}
 			renewedDomains = append(renewedDomains, obtainedDomain)
+			logger.Info("Obtained new certificate",
+				logging.AttrDomains, all,
+				"domain", canonical,
+				"aliases", domain.Aliases)
 		} else {
-			logger.Info("Certificate is valid and configuration unchanged",
+			logger.Info("Certificate is valid",
+				logging.AttrDomains, all,
 				"domain", canonical,
 				"aliases", domain.Aliases)
 		}

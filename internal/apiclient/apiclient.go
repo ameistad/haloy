@@ -151,7 +151,6 @@ func (c *APIClient) post(ctx context.Context, path string, request, response int
 
 // Generic streaming method that handles any SSE endpoint
 func (c *APIClient) stream(ctx context.Context, path string, handler func(data string) (bool, error)) error {
-	// Create streaming client with no timeout
 	streamingClient := &http.Client{Timeout: 0}
 
 	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
@@ -378,7 +377,7 @@ func (c *APIClient) displayDeploymentLogEntry(entry logging.LogEntry) {
 		}
 	}
 
-	c.displayMessage(entry.Level, message, entry.IsDeploymentSuccess, entry.Domains)
+	c.displayMessage(message, entry)
 }
 
 // displayGeneralLogEntry formats and displays a general manager log entry
@@ -403,7 +402,7 @@ func (c *APIClient) displayGeneralLogEntry(entry logging.LogEntry) {
 		}
 	}
 
-	c.displayMessage(entry.Level, message, entry.IsDeploymentSuccess, entry.Domains)
+	c.displayMessage(message, entry)
 }
 
 // extractErrorField extracts the error field from log entry if present
@@ -444,8 +443,11 @@ func (c *APIClient) displayMultiLineError(level, message, errorStr string) {
 }
 
 // displayMessage displays a log message with appropriate formatting based on level
-func (c *APIClient) displayMessage(level, message string, isSuccess bool, domains []string) {
-	switch strings.ToUpper(level) {
+func (c *APIClient) displayMessage(message string, entry logging.LogEntry) {
+	isSuccess := entry.IsDeploymentSuccess
+	domains := entry.Domains
+
+	switch strings.ToUpper(entry.Level) {
 	case "ERROR":
 		ui.Error("%s", message)
 	case "WARN":
@@ -461,6 +463,9 @@ func (c *APIClient) displayMessage(level, message string, isSuccess bool, domain
 			}
 			ui.Success("%s", message)
 		} else {
+			if len(domains) > 0 {
+				message = fmt.Sprintf("%s (domains: %s)", message, strings.Join(domains, ", "))
+			}
 			ui.Info("%s", message)
 		}
 	case "DEBUG":

@@ -176,6 +176,8 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 	// Apply the HAProxy configuration
 	if err := u.haproxyManager.ApplyConfig(ctx, logger, deployments); err != nil {
 		return fmt.Errorf("failed to apply HAProxy config for app: %w", err)
+	} else {
+		logger.Info("HAProxy configuration applied successfully")
 	}
 
 	// If an app is provided:
