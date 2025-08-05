@@ -45,8 +45,8 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			if appConfig.Hooks != nil && len(appConfig.Hooks.PreDeploy) > 0 {
-				for _, hookCmd := range appConfig.Hooks.PreDeploy {
+			if len(appConfig.PreDeploy) > 0 {
+				for _, hookCmd := range appConfig.PreDeploy {
 					if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
 						ui.Error("Pre-deploy hook failed: %v", err)
 						return
@@ -85,8 +85,8 @@ If no path is provided, the current directory is used.`,
 				}
 			}
 
-			if appConfig.Hooks != nil && len(appConfig.Hooks.PostDeploy) > 0 {
-				for _, hookCmd := range appConfig.Hooks.PostDeploy {
+			if len(appConfig.PostDeploy) > 0 {
+				for _, hookCmd := range appConfig.PostDeploy {
 					if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
 						ui.Warn("Post-deploy hook failed: %v", err)
 					}

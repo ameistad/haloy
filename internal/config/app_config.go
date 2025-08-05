@@ -12,24 +12,20 @@ import (
 )
 
 type AppConfig struct {
-	Name              string    `json:"name" yaml:"name" toml:"name" koanf:"name"`
-	Image             Image     `json:"image" yaml:"image" toml:"image" koanf:"image"`
-	Server            string    `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty" koanf:"server"`
-	Domains           []Domain  `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty" koanf:"domains"`
-	ACMEEmail         string    `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty" koanf:"acmeEmail"`
-	Env               []EnvVar  `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty" koanf:"env"`
-	DeploymentsToKeep *int      `json:"deploymentsToKeep,omitempty" yaml:"deployments_to_keep,omitempty" toml:"deployments_to_keep,omitempty" koanf:"deploymentsToKeep"`
-	HealthCheckPath   string    `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty" koanf:"healthCheckPath"`
-	Port              string    `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty" koanf:"port"`
-	Replicas          *int      `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty" koanf:"replicas"`
-	Volumes           []string  `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty" koanf:"volumes"`
-	NetworkMode       string    `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty" koanf:"networkMode"`
-	Hooks             *AppHooks `json:"hooks,omitempty" yaml:"hooks,omitempty" toml:"hooks,omitempty" koanf:"hooks"`
-}
-
-type AppHooks struct {
-	PreDeploy  []string `yaml:"pre_deploy,omitempty" json:"preDeploy,omitempty" toml:"pre_deploy,omitempty" koanf:"preDeploy"`
-	PostDeploy []string `yaml:"post_deploy,omitempty" json:"postDeploy,omitempty" toml:"post_deploy,omitempty" koanf:"postDeploy"`
+	Name              string   `json:"name" yaml:"name" toml:"name" koanf:"name"`
+	Image             Image    `json:"image" yaml:"image" toml:"image" koanf:"image"`
+	Server            string   `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty" koanf:"server"`
+	Domains           []Domain `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty" koanf:"domains"`
+	ACMEEmail         string   `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty" koanf:"acmeEmail"`
+	Env               []EnvVar `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty" koanf:"env"`
+	DeploymentsToKeep *int     `json:"deploymentsToKeep,omitempty" yaml:"deployments_to_keep,omitempty" toml:"deployments_to_keep,omitempty" koanf:"deploymentsToKeep"`
+	HealthCheckPath   string   `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty" koanf:"healthCheckPath"`
+	Port              string   `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty" koanf:"port"`
+	Replicas          *int     `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty" koanf:"replicas"`
+	Volumes           []string `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty" koanf:"volumes"`
+	NetworkMode       string   `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty" koanf:"networkMode"`
+	PreDeploy         []string `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty" koanf:"preDeploy"`
+	PostDeploy        []string `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty" koanf:"postDeploy"`
 }
 
 func (ac *AppConfig) Normalize() *AppConfig {
