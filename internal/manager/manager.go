@@ -20,7 +20,6 @@ import (
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
-	"github.com/ameistad/haloy/internal/version"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
@@ -55,7 +54,7 @@ func RunManager(debug bool) {
 	logger := logging.NewLogger(logLevel, logBroker)
 
 	logger.Info("Haloy manager started",
-		"version", version.Version,
+		"version", constants.Version,
 		"network", constants.DockerNetwork,
 		"debug", debug)
 

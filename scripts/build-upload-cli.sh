@@ -25,8 +25,8 @@ HOSTNAME=$1
 # Use the current username from the shell
 USERNAME=$(whoami)
 
-# Extract the version from version.go (assumes format: var Version = "v0.1.9")
-version=$(grep 'var Version' ../internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+version=$("$SCRIPT_DIR/get-version.sh")
 echo "Building version: $version"
 
 # Detect target platform

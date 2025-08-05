@@ -1,6 +1,8 @@
 package constants
 
 const (
+	Version                  = "0.1.7"
+	HAProxyVersion           = "3.2"
 	ManagerContainerName     = "haloy-manager"
 	HAProxyContainerName     = "haloy-haproxy"
 	DockerNetwork            = "haloy-public"

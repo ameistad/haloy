@@ -21,7 +21,8 @@ CLI_ADM_BINARY_NAME=haloyadm
 HOSTNAME=$1
 USERNAME=$(whoami)
 
-version=$(grep 'var Version' ../internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+version=$("$SCRIPT_DIR/get-version.sh")
 echo "Building version: $version"
 
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/ameistad/haloy/cmd.version=$version'" -o $CLI_BINARY_NAME ../cmd/haloy

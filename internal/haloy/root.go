@@ -20,7 +20,6 @@ func NewRootCmd() *cobra.Command {
 		StopAppCmd(),
 		StatusAppCmd(),
 		ValidateAppConfigCmd(),
-		VersionCmd(),
 		SecretsCommand(),
 		LogsCmd(),
 	)
