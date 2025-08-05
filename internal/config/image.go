@@ -2,11 +2,7 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
-
-	"github.com/ameistad/haloy/internal/db"
-	"github.com/docker/docker/api/types/registry"
 )
 
 type Image struct {
@@ -35,65 +31,6 @@ func (is *Image) ImageRef() string {
 		tag = "latest"
 	}
 	return fmt.Sprintf("%s:%s", repo, tag)
-}
-
-func (is *Image) RegistryAuthString() (string, error) {
-	if is.RegistryAuth == nil {
-		return "", nil
-	}
-	username, err := resolveRegistryAuthSource(is.RegistryAuth.Username)
-	if err != nil {
-		return "", err
-	}
-	password, err := resolveRegistryAuthSource(is.RegistryAuth.Password)
-	if err != nil {
-		return "", err
-	}
-	server := "index.docker.io" // Default to Docker Hub if no server specified
-	if is.RegistryAuth.Server != "" {
-		server = is.RegistryAuth.Server
-	} else {
-		// If no server is set, parse it from the Repository field
-		parts := strings.SplitN(is.Repository, "/", 2)
-		if len(parts) > 1 && strings.Contains(parts[0], ".") {
-			server = parts[0]
-		}
-	}
-	authConfig := registry.AuthConfig{
-		Username:      username,
-		Password:      password,
-		ServerAddress: server,
-	}
-	authStr, err := registry.EncodeAuthConfig(authConfig)
-	if err != nil {
-		return "", err
-	}
-	return authStr, nil
-}
-
-func resolveRegistryAuthSource(ras RegistryAuthSource) (string, error) {
-	switch ras.Type {
-	case "env":
-		return os.Getenv(ras.Value), nil
-	case "secret":
-		database, err := db.New()
-		if err != nil {
-			return "", fmt.Errorf("failed to create secrets manager: %w", err)
-		}
-		defer database.Close()
-		decrypted, err := database.GetSecretDecryptedValue(ras.Value)
-		if err != nil {
-			return "", fmt.Errorf("failed to get secret '%s': %w", ras.Value, err)
-		}
-		if decrypted == "" {
-			return "", fmt.Errorf("secret '%s' is empty", ras.Value)
-		}
-		return decrypted, nil
-	case "plain":
-		return ras.Value, nil
-	default:
-		return "", fmt.Errorf("unsupported registry auth type: %s", ras.Type)
-	}
 }
 
 func (i *Image) Validate() error {

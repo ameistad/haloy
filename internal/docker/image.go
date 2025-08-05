@@ -5,18 +5,80 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/db"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 )
 
+func resolveRegistryAuthSource(ras config.RegistryAuthSource) (string, error) {
+	switch ras.Type {
+	case "env":
+		return os.Getenv(ras.Value), nil
+	case "secret":
+		database, err := db.New()
+		if err != nil {
+			return "", fmt.Errorf("failed to create secrets manager: %w", err)
+		}
+		defer database.Close()
+		decrypted, err := database.GetSecretDecryptedValue(ras.Value)
+		if err != nil {
+			return "", fmt.Errorf("failed to get secret '%s': %w", ras.Value, err)
+		}
+		if decrypted == "" {
+			return "", fmt.Errorf("secret '%s' is empty", ras.Value)
+		}
+		return decrypted, nil
+	case "plain":
+		return ras.Value, nil
+	default:
+		return "", fmt.Errorf("unsupported registry auth type: %s", ras.Type)
+	}
+}
+
+func getRegistryAuthString(imageConfig config.Image) (string, error) {
+	if imageConfig.RegistryAuth == nil {
+		return "", nil
+	}
+	username, err := resolveRegistryAuthSource(imageConfig.RegistryAuth.Username)
+	if err != nil {
+		return "", err
+	}
+	password, err := resolveRegistryAuthSource(imageConfig.RegistryAuth.Password)
+	if err != nil {
+		return "", err
+	}
+	server := "index.docker.io" // Default to Docker Hub if no server specified
+	if imageConfig.RegistryAuth.Server != "" {
+		server = imageConfig.RegistryAuth.Server
+	} else {
+		// If no server is set, parse it from the Repository field
+		parts := strings.SplitN(imageConfig.Repository, "/", 2)
+		if len(parts) > 1 && strings.Contains(parts[0], ".") {
+			server = parts[0]
+		}
+	}
+	authConfig := registry.AuthConfig{
+		Username:      username,
+		Password:      password,
+		ServerAddress: server,
+	}
+	authStr, err := registry.EncodeAuthConfig(authConfig)
+	if err != nil {
+		return "", err
+	}
+	return authStr, nil
+}
+
 func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.Logger, imageConfig config.Image) error {
 	imageRef := imageConfig.ImageRef()
-	registryAuth, err := imageConfig.RegistryAuthString()
+	registryAuth, err := getRegistryAuthString(imageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to resolve registry auth for image %s: %w", imageRef, err)
 	}
