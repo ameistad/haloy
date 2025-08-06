@@ -24,6 +24,7 @@ const (
 
 	// Environment variables
 	EnvVarAgeIdentity = "HALOY_ENCRYPTION_KEY"
+	EnvVarAPIToken    = "HALOY_API_TOKEN"
 
 	// File names
 	ManagerConfigFileName = "manager.yaml"

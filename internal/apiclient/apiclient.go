@@ -12,6 +12,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 )
@@ -27,7 +28,7 @@ func New(serverURL string) *APIClient {
 	token, err := config.LoadAPIToken()
 	if err != nil {
 		ui.Error("Failed to load API token: %v", err)
-		ui.Info("Set HALOY_API_TOKEN environment variable or create a .env file")
+		ui.Info("Set %s environment variable or create a .env file", constants.EnvVarAPIToken)
 		// Continue without token - let API calls fail with proper auth errors
 	}
 	return &APIClient{
@@ -85,7 +86,7 @@ func (c *APIClient) get(ctx context.Context, path string, v any) error {
 
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
+			return fmt.Errorf("authentication failed - check your %s", constants.EnvVarAPIToken)
 		}
 		return fmt.Errorf("GET request failed with status %d", resp.StatusCode)
 	}
@@ -135,7 +136,7 @@ func (c *APIClient) post(ctx context.Context, path string, request, response int
 
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
+			return fmt.Errorf("authentication failed - check your %s", constants.EnvVarAPIToken)
 		}
 		return fmt.Errorf("POST request failed with status %d", resp.StatusCode)
 	}
@@ -171,7 +172,7 @@ func (c *APIClient) stream(ctx context.Context, path string, handler func(data s
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("authentication failed for stream - check your HALOY_API_TOKEN")
+			return fmt.Errorf("authentication failed for stream - check your %s", constants.EnvVarAPIToken)
 		}
 		return fmt.Errorf("stream returned status %d", resp.StatusCode)
 	}
@@ -280,7 +281,7 @@ func (c *APIClient) DeleteSecret(ctx context.Context, name string) error {
 
 	if resp.StatusCode >= 400 {
 		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("authentication failed - check your HALOY_API_TOKEN")
+			return fmt.Errorf("authentication failed - check your %s", constants.EnvVarAPIToken)
 		}
 		return fmt.Errorf("DELETE request failed with status %d", resp.StatusCode)
 	}

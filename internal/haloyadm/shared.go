@@ -14,6 +14,7 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/joho/godotenv"
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
@@ -30,7 +31,6 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	args := []string{
 		"run",
 		"--detach",
-		"--env-file", filepath.Join(configDir, ".env"),
 		"--name", constants.ManagerContainerName,
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.CertificatesHTTPProviderPort, constants.CertificatesHTTPProviderPort),
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.APIServerPort, constants.APIServerPort),
@@ -44,6 +44,16 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
 		"--restart", "unless-stopped",
 		"--network", constants.DockerNetwork,
+	}
+
+	// using godotenv to add env variables because --env-file does not support quotes
+	envFile := filepath.Join(configDir, ".env")
+	env, err := godotenv.Read(envFile)
+	if err != nil {
+		return fmt.Errorf("failed to read env file: %w", err)
+	}
+	for key, value := range env {
+		args = append(args[:2], append([]string{"--env", fmt.Sprintf("%s=%s", key, value)}, args[2:]...)...)
 	}
 
 	if debug {

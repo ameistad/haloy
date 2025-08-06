@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 )
@@ -50,8 +51,19 @@ func (db *DB) GetDeployment(deploymentID string) (Deployment, error) {
 	var deployment Deployment
 	query := `SELECT id, app_name, app_config, image_ref, rolled_back_from
               FROM deployments WHERE id = ?`
-	err := db.Get(&deployment, query, deploymentID)
-	return deployment, err
+
+	row := db.QueryRow(query, deploymentID)
+	err := row.Scan(&deployment.ID, &deployment.AppName, &deployment.AppConfig,
+		&deployment.ImageRef, &deployment.RolledBackFrom)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return deployment, fmt.Errorf("deployment '%s' not found", deploymentID)
+		}
+		return deployment, fmt.Errorf("failed to get deployment: %w", err)
+	}
+
+	return deployment, nil
 }
 
 func (db *DB) GetDeploymentHistory(appName string, limit int) ([]Deployment, error) {
@@ -61,8 +73,28 @@ func (db *DB) GetDeploymentHistory(appName string, limit int) ([]Deployment, err
               WHERE app_name = ?
               ORDER BY id DESC
               LIMIT ?`
-	err := db.Select(&deployments, query, appName, limit)
-	return deployments, err
+
+	rows, err := db.Query(query, appName, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query deployment history: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var deployment Deployment
+		err := rows.Scan(&deployment.ID, &deployment.AppName, &deployment.AppConfig,
+			&deployment.ImageRef, &deployment.RolledBackFrom)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan deployment: %w", err)
+		}
+		deployments = append(deployments, deployment)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating deployment rows: %w", err)
+	}
+
+	return deployments, nil
 }
 
 func (db *DB) PruneOldDeployments(appName string, deploymentsToKeep int) error {

@@ -19,6 +19,7 @@ import (
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +33,7 @@ const (
 
 func InitCmd() *cobra.Command {
 	var skipServices bool
-	var overrideExisting bool
+	var override bool
 	var managerDomain string
 	var acmeEmail string
 	var devMode bool
@@ -87,13 +88,13 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 				return
 			}
 
-			if err := validateAndPrepareDirectory(configDir, "Config", overrideExisting); err != nil {
+			if err := validateAndPrepareDirectory(configDir, "Config", override); err != nil {
 				ui.Error("%v\n", err)
 				return
 			}
 			createdDirs = append(createdDirs, configDir)
 
-			if err := validateAndPrepareDirectory(dataDir, "Data", overrideExisting); err != nil {
+			if err := validateAndPrepareDirectory(dataDir, "Data", override); err != nil {
 				ui.Error("%v\n", err)
 				return
 			}
@@ -147,7 +148,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 			// Start the haloy-manager container and haproxy container, stream logs if requested.
 			if !skipServices {
 				ui.Info("Starting Haloy services...")
-				if err := startServices(ctx, dataDir, configDir, devMode, overrideExisting, debug); err != nil {
+				if err := startServices(ctx, dataDir, configDir, devMode, override, debug); err != nil {
 					ui.Error("%s", err)
 					return
 				}
@@ -167,7 +168,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 	}
 
 	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloy-manager containers")
-	cmd.Flags().BoolVar(&overrideExisting, "override-existing", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
+	cmd.Flags().BoolVar(&override, "override", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
 	cmd.Flags().StringVar(&managerDomain, "domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
 	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
 	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
@@ -308,22 +309,16 @@ func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir str
 		return fmt.Errorf("configDir cannot be empty")
 	}
 	envPath := filepath.Join(configDir, ".env")
-	envFile, err := os.OpenFile(envPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, envFileMode)
-	if err != nil {
-		return fmt.Errorf("failed to create .env file: %w", err)
+	env := map[string]string{
+		constants.EnvVarAPIToken:    apiToken,
+		constants.EnvVarAgeIdentity: encryptionKey,
 	}
-	defer envFile.Close()
-
-	envContent := fmt.Sprintf(`# Haloy Configuration
-# API token for haloy-manager authentication
-HALOY_API_TOKEN=%s
-
-# Encryption key for secrets (age X25519 private key)
-HALOY_ENCRYPTION_KEY=%s
-`, apiToken, encryptionKey)
-
-	if _, err := envFile.WriteString(envContent); err != nil {
+	if err := godotenv.Write(env, envPath); err != nil {
 		return fmt.Errorf("failed to write .env content: %w", err)
+	}
+
+	if err := os.Chmod(envPath, envFileMode); err != nil {
+		return fmt.Errorf("failed to set .env file permissions: %w", err)
 	}
 
 	if domain != "" {

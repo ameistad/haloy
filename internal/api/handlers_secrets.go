@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/apitypes"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/secrets"
 )
 
 func (s *APIServer) handleSecretsList() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		database, err := db.New()
+		database, err := db.New(constants.DBPath)
 		if err != nil {
 			log.Printf("Error initializing database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -45,7 +46,7 @@ func (s *APIServer) handleDeleteSecret() http.HandlerFunc {
 			http.Error(w, "Secret name is required", http.StatusBadRequest)
 			return
 		}
-		database, err := db.New()
+		database, err := db.New(constants.DBPath)
 		if err != nil {
 			log.Printf("Error initializing database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -76,7 +77,7 @@ func (s *APIServer) handleSetSecret() http.HandlerFunc {
 			return
 		}
 
-		database, err := db.New()
+		database, err := db.New(constants.DBPath)
 		if err != nil {
 			log.Printf("Error initializing database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)

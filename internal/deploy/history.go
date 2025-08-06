@@ -5,12 +5,13 @@ import (
 	"fmt"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/db"
 )
 
 // WriteAppConfigHistory writes the given appConfig to the history folder, naming the file <deploymentID>.yml.
 func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageRef string, deploymentsToKeep int) error {
-	database, err := db.New()
+	database, err := db.New(constants.DBPath)
 	if err != nil {
 		return err
 	}
@@ -40,7 +41,7 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageRef st
 
 // GetAppConfigHistory loads the AppConfig from the history file with the given deploymentID.
 func GetAppConfigHistory(deploymentID string) (*config.AppConfig, error) {
-	database, err := db.New()
+	database, err := db.New(constants.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}

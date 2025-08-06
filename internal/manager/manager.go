@@ -64,7 +64,7 @@ func RunManager(debug bool) {
 
 	// Initialize database
 	logger.Info("Initializing database.")
-	database, err := db.New()
+	database, err := db.New(constants.DBPath)
 	if err != nil {
 		logger.Error("Failed to initialize database", "error", err)
 		return
@@ -92,9 +92,9 @@ func RunManager(debug bool) {
 	defer cli.Close()
 
 	// Get the API token from an environment variable for security
-	apiToken := os.Getenv("HALOY_API_TOKEN")
+	apiToken := os.Getenv(constants.EnvVarAPIToken)
 	if apiToken == "" {
-		logging.LogFatal(logger, "HALOY_API_TOKEN environment variable not set")
+		logging.LogFatal(logger, "%s environment variable not set", constants.EnvVarAPIToken)
 	}
 
 	// Create and start the API server in a separate goroutine

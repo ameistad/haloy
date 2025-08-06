@@ -76,7 +76,8 @@ func SecretsRollCmd() *cobra.Command {
 				return
 			}
 
-			database, err := db.New()
+			dbPath := filepath.Join(dataDir, constants.DBPath)
+			database, err := db.New(dbPath)
 			if err != nil {
 				ui.Error("Failed to connect to database: %v", err)
 				return
@@ -88,28 +89,30 @@ func SecretsRollCmd() *cobra.Command {
 				return
 			}
 
-			var batchSecrets []db.SecretBatch
-			for _, secret := range secretsList {
-				decryptedValue, err := secrets.Decrypt(secret.Name, oldIdentity)
-				if err != nil {
-					ui.Error("Failed to decrypt secret %s: %v", secret.Name, err)
-					return
+			if len(secretsList) > 0 {
+				var batchSecrets []db.SecretBatch
+				for _, secret := range secretsList {
+					decryptedValue, err := secrets.Decrypt(secret.Name, oldIdentity)
+					if err != nil {
+						ui.Error("Failed to decrypt secret %s: %v", secret.Name, err)
+						return
+					}
+					newEncryptedValue, err := secrets.Encrypt(decryptedValue, newIdentity.Recipient())
+					if err != nil {
+						ui.Error("Failed to re-encrypt secret %s: %v", secret.Name, err)
+						return
+					}
+					batchSecrets = append(batchSecrets, db.SecretBatch{
+						Name:           secret.Name,
+						EncryptedValue: newEncryptedValue,
+						// CreatedAt and UpdatedAt will be set in SetSecretsBatch
+					})
 				}
-				newEncryptedValue, err := secrets.Encrypt(decryptedValue, newIdentity.Recipient())
-				if err != nil {
-					ui.Error("Failed to re-encrypt secret %s: %v", secret.Name, err)
-					return
-				}
-				batchSecrets = append(batchSecrets, db.SecretBatch{
-					Name:           secret.Name,
-					EncryptedValue: newEncryptedValue,
-					// CreatedAt and UpdatedAt will be set in SetSecretsBatch
-				})
-			}
 
-			if err := database.SetSecretsBatch(batchSecrets); err != nil {
-				ui.Error("Failed to update secrets: %v", err)
-				return
+				if err := database.SetSecretsBatch(batchSecrets); err != nil {
+					ui.Error("Failed to update secrets: %v", err)
+					return
+				}
 			}
 
 			env[constants.EnvVarAgeIdentity] = newIdentity.String()

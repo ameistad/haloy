@@ -5,13 +5,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/joho/godotenv"
 )
 
 const (
-	// Environment variable name for the API token
-	APITokenEnvVar = "HALOY_API_TOKEN"
-
 	// Default .env file locations to check
 	DefaultEnvFile = ".env"
 )
@@ -24,9 +22,9 @@ func LoadAPIToken() (string, error) {
 	}
 
 	// Get the token from environment
-	token := os.Getenv(APITokenEnvVar)
+	token := os.Getenv(constants.EnvVarAPIToken)
 	if token == "" {
-		return "", fmt.Errorf("API token not found. Please set %s environment variable or create a .env file", APITokenEnvVar)
+		return "", fmt.Errorf("API token not found. Please set %s environment variable or create a .env file", constants.EnvVarAPIToken)
 	}
 
 	return token, nil

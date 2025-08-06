@@ -18,7 +18,7 @@ COPY . .
 
 # Build with optimizations and version info
 ARG VERSION=dev
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" \
     -a \
     -o /haloy-manager ./cmd/manager

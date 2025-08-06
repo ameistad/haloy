@@ -9,10 +9,10 @@ import (
 )
 
 type Secret struct {
-	Name           string    `db:"name" json:"name"`
-	EncryptedValue string    `db:"encrypted_value" json:"encrypted_value"`
-	CreatedAt      time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt      time.Time `db:"updated_at" json:"updated_at"`
+	Name           string    `json:"name"`
+	EncryptedValue string    `json:"encrypted_value"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type SecretAPIResponse struct {
@@ -38,7 +38,7 @@ func createSecretsTable(db *DB) error {
 CREATE TABLE IF NOT EXISTS secrets (
     name TEXT PRIMARY KEY,                  -- User-defined secret name
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     encrypted_value TEXT NOT NULL
 );
 
@@ -107,15 +107,24 @@ func (db *DB) SetSecretsBatch(secrets []SecretBatch) error {
 		}
 	}
 
-	tx := db.MustBegin()
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	now := time.Now()
 
 	for _, secret := range secrets {
 		if err := secret.Validate(); err != nil {
 			return fmt.Errorf("invalid secret %s: %w", secret.Name, err)
 		}
-		tx.MustExec(upsertQuery, secret.Name, now, now, secret.EncryptedValue)
+		_, err := tx.Exec(upsertQuery, secret.Name, now, now, secret.EncryptedValue)
+		if err != nil {
+			return fmt.Errorf("failed to execute upsert for secret %s: %w", secret.Name, err)
+		}
 	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -131,7 +140,9 @@ func (db *DB) GetSecretEncryptedValue(name string) (string, error) {
 	var dbSecret Secret
 	query := `SELECT name, created_at, updated_at, encrypted_value FROM secrets WHERE name = ?`
 
-	err := db.Get(&dbSecret, query, name)
+	row := db.QueryRow(query, name)
+	err := row.Scan(&dbSecret.Name, &dbSecret.CreatedAt, &dbSecret.UpdatedAt, &dbSecret.EncryptedValue)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("secret '%s' not found", name)
@@ -146,9 +157,23 @@ func (db *DB) GetSecretsList() ([]Secret, error) {
 	var secrets []Secret
 	query := `SELECT name, created_at, updated_at, encrypted_value FROM secrets ORDER BY updated_at DESC`
 
-	err := db.Select(&secrets, query)
+	rows, err := db.Query(query)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list secrets: %w", err)
+		return nil, fmt.Errorf("failed to query secrets: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var secret Secret
+		err := rows.Scan(&secret.Name, &secret.CreatedAt, &secret.UpdatedAt, &secret.EncryptedValue)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan secret: %w", err)
+		}
+		secrets = append(secrets, secret)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating secret rows: %w", err)
 	}
 
 	return secrets, nil
@@ -179,13 +204,14 @@ func (db *DB) SecretExists(name string) (bool, error) {
 		return false, fmt.Errorf("secret name cannot be empty")
 	}
 
-	var exists bool
-	query := `SELECT EXISTS(SELECT 1 FROM secrets WHERE name = ?)`
+	var count int
+	query := `SELECT COUNT(*) FROM secrets WHERE name = ?`
 
-	err := db.Get(&exists, query, name)
+	row := db.QueryRow(query, name)
+	err := row.Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if secret exists: %w", err)
 	}
 
-	return exists, nil
+	return count > 0, nil
 }
