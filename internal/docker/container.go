@@ -12,6 +12,7 @@ import (
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -64,12 +65,20 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 			return result, fmt.Errorf("failed to create database: %w", err)
 		}
 		defer database.Close()
+		identity, err := secrets.GetAgeIdentity()
+		if err != nil {
+			return result, fmt.Errorf("failed to get age identity: %w", err)
+		}
 		for _, secretEnvVar := range secretEnvVars {
-			decrypted, err := database.GetSecretDecryptedValue(secretEnvVar.SecretName)
+			encryptedValue, err := database.GetSecretEncryptedValue(secretEnvVar.SecretName)
 			if err != nil {
-				return result, fmt.Errorf("failed to decrypt secret: %w", err)
+				return result, fmt.Errorf("failed to get encrypted secret value: %w", err)
 			}
-			envVars = append(envVars, fmt.Sprintf("%s=%s", secretEnvVar.Name, decrypted))
+			decryptedValue, err := secrets.Decrypt(encryptedValue, identity)
+			if err != nil {
+				return result, fmt.Errorf("failed to decrypt secret value: %w", err)
+			}
+			envVars = append(envVars, fmt.Sprintf("%s=%s", secretEnvVar.Name, decryptedValue))
 		}
 	}
 

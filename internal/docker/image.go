@@ -11,6 +11,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/db"
+	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
@@ -27,14 +28,22 @@ func resolveRegistryAuthSource(ras config.RegistryAuthSource) (string, error) {
 			return "", fmt.Errorf("failed to create secrets manager: %w", err)
 		}
 		defer database.Close()
-		decrypted, err := database.GetSecretDecryptedValue(ras.Value)
+		identity, err := secrets.GetAgeIdentity()
+		if err != nil {
+			return "", fmt.Errorf("failed to get age identity: %w", err)
+		}
+		encryptedValue, err := database.GetSecretEncryptedValue(ras.Value)
 		if err != nil {
 			return "", fmt.Errorf("failed to get secret '%s': %w", ras.Value, err)
 		}
-		if decrypted == "" {
+		decryptedValue, err := secrets.Decrypt(encryptedValue, identity)
+		if err != nil {
+			return "", fmt.Errorf("failed to decrypt secret '%s': %w", ras.Value, err)
+		}
+		if decryptedValue == "" {
 			return "", fmt.Errorf("secret '%s' is empty", ras.Value)
 		}
-		return decrypted, nil
+		return decryptedValue, nil
 	case "plain":
 		return ras.Value, nil
 	default:

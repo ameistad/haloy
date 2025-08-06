@@ -8,6 +8,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/db"
+	"github.com/ameistad/haloy/internal/secrets"
 )
 
 func (s *APIServer) handleSecretsList() http.HandlerFunc {
@@ -83,7 +84,19 @@ func (s *APIServer) handleSetSecret() http.HandlerFunc {
 		}
 		defer database.Close()
 
-		if err := database.SetSecret(req.Name, req.Value); err != nil {
+		identity, err := secrets.GetAgeIdentity()
+		if err != nil {
+			log.Printf("Error getting age identity: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		encryptedValue, err := secrets.Encrypt(req.Value, identity.Recipient())
+		if err != nil {
+			log.Printf("Error encrypting secret: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if err := database.SetSecret(req.Name, encryptedValue); err != nil {
 			log.Printf("Error setting secret: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
