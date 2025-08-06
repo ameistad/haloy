@@ -124,8 +124,9 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 		}
 	}
 
-	// If no changes were detected, we skip further processing.
-	if !deploymentsHasChanged {
+	// Skip further processing if no changes were detected and the reason is not an initial update.
+	// We'll still want to continue on the initial update to ensure the API domain is set up correctly.
+	if !deploymentsHasChanged && reason != TriggerReasonInitial {
 		logger.Debug("Updater: No changes detected in deployments, skipping further processing")
 		return nil
 	}
@@ -161,16 +162,16 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 		if err := u.certManager.RefreshSync(logger, appCertDomains); err != nil {
 			return fmt.Errorf("failed to refresh certificates for app %s: %w", app.appName, err)
 		}
+	} else if reason == TriggerReasonInitial { // Refresh syncronously on initial update so we can log api domain setup.
+		u.certManager.RefreshSync(logger, certDomains)
 	} else {
 		u.certManager.Refresh(logger, certDomains)
 	}
 
-	// Periodically clean up expired certificates
 	if reason == TriggerPeriodicRefresh {
 		u.certManager.CleanupExpiredCertificates(logger, certDomains)
 	}
 
-	// Get deployments AFTER checking HasChanged
 	deployments := u.deploymentManager.Deployments()
 
 	// Apply the HAProxy configuration

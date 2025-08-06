@@ -25,3 +25,17 @@ func getConfigParser(configFile string) (koanf.Parser, error) {
 	}
 	return parser, nil
 }
+
+func getConfigTag(configFile string) (string, error) {
+	ext := filepath.Ext(configFile)
+	switch ext {
+	case ".json":
+		return "json", nil
+	case ".yaml", ".yml":
+		return "yaml", nil
+	case ".toml":
+		return "toml", nil
+	default:
+		return "", fmt.Errorf("unsupported config file type: %s", ext)
+	}
+}

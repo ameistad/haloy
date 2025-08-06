@@ -14,11 +14,11 @@ import (
 
 type ManagerConfig struct {
 	API struct {
-		Domain string `yaml:"domain" json:"domain" koanf:"domain"`
-	} `yaml:"api" json:"api" koanf:"api"`
+		Domain string `json:"domain" yaml:"domain" toml:"domain"`
+	} `json:"api" yaml:"api" toml:"api"`
 	Certificates struct {
-		AcmeEmail string `yaml:"acme_email" json:"acmeEmail" koanf:"acmeEmail"`
-	} `yaml:"certificates" json:"certificates" koanf:"certificates"`
+		AcmeEmail string `json:"acmeEmail" yaml:"acme_email" toml:"acme_email"`
+	} `json:"certificates" yaml:"certificates" toml:"certificates"`
 }
 
 // Normalize sets default values for ManagerConfig
@@ -59,8 +59,12 @@ func LoadManagerConfig(configPath string) (*ManagerConfig, error) {
 	}
 
 	var managerConfig ManagerConfig
+	tag, err := getConfigTag(configPath)
+	if err != nil {
+		return nil, err
+	}
 
-	if err := k.Unmarshal("", &managerConfig); err != nil {
+	if err := k.UnmarshalWithConf("", &managerConfig, koanf.UnmarshalConf{Tag: tag}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal manager config: %w", err)
 	}
 	return &managerConfig, nil

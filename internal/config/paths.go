@@ -37,9 +37,7 @@ func DataDir() (string, error) {
 }
 
 // ConfigDir returns the Haloy configuration directory
-// Used for CLI settings, API tokens, and potentially haloy-manager config
 func ConfigDir() (string, error) {
-	// Allow overriding via env
 	if envPath, ok := os.LookupEnv("HALOY_CONFIG_DIR"); ok && envPath != "" {
 		if strings.HasPrefix(envPath, "~/") {
 			home, err := os.UserHomeDir()
