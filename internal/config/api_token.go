@@ -9,11 +9,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-const (
-	// Default .env file locations to check
-	DefaultEnvFile = ".env"
-)
-
 // LoadAPIToken loads the API token from environment variables or .env files
 func LoadAPIToken() (string, error) {
 	// First, try to load from .env files
@@ -24,7 +19,7 @@ func LoadAPIToken() (string, error) {
 	// Get the token from environment
 	token := os.Getenv(constants.EnvVarAPIToken)
 	if token == "" {
-		return "", fmt.Errorf("API token not found. Please set %s environment variable or create a .env file", constants.EnvVarAPIToken)
+		return "", fmt.Errorf("API token not found. Please set %s environment variable or create a %s file", constants.EnvVarAPIToken, constants.ConfigEnvFileName)
 	}
 
 	return token, nil
@@ -33,19 +28,19 @@ func LoadAPIToken() (string, error) {
 // loadEnvFiles attempts to load .env files from various locations
 func loadEnvFiles() error {
 	// Try current directory first
-	if err := loadEnvFile(DefaultEnvFile); err == nil {
+	if err := loadEnvFile(constants.ConfigEnvFileName); err == nil {
 		return nil
 	}
 
 	// Try haloy config directory
 	if configDir, err := ConfigDir(); err == nil {
-		configEnvPath := filepath.Join(configDir, DefaultEnvFile)
+		configEnvPath := filepath.Join(configDir, constants.ConfigEnvFileName)
 		if err := loadEnvFile(configEnvPath); err == nil {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("no .env file found")
+	return fmt.Errorf("no %s file found", constants.ConfigEnvFileName)
 }
 
 // loadEnvFile loads a specific .env file if it exists
@@ -62,5 +57,5 @@ func GetConfigEnvFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(configDir, DefaultEnvFile), nil
+	return filepath.Join(configDir, constants.ConfigEnvFileName), nil
 }

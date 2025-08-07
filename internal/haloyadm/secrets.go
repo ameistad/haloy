@@ -2,6 +2,7 @@ package haloyadm
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -25,7 +26,47 @@ func SecretsCmd() *cobra.Command {
 		Short: "Manage secrets",
 	}
 
+	cmd.AddCommand(SecretsKeyCmd())
 	cmd.AddCommand(SecretsRollCmd())
+	return cmd
+}
+
+func SecretsKeyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "key",
+		Short: "Show the secret encryption key",
+		Long:  "Display the current secret encryption key used for encrypting/decrypting secrets.",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to determine config directory: %v", err)
+				return
+			}
+
+			envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
+			env, err := godotenv.Read(envFile)
+			if err != nil {
+				ui.Error("Failed to read environment variables from %s: %v", envFile, err)
+				return
+			}
+
+			encryptionKey, ok := env[constants.EnvVarAgeIdentity]
+			if !ok || encryptionKey == "" {
+				ui.Error("%s is not set in %s", constants.EnvVarAgeIdentity, envFile)
+				return
+			}
+
+			// Validate the key is valid
+			if _, err := age.ParseX25519Identity(encryptionKey); err != nil {
+				ui.Error("Invalid encryption key format: %v", err)
+				return
+			}
+
+			ui.Info("Secret encryption key:")
+			fmt.Println(encryptionKey)
+		},
+	}
 	return cmd
 }
 
@@ -35,9 +76,8 @@ func SecretsRollCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "roll",
-		Short: "Roll all secrets",
-		Long:  "Roll all secrets by generating a new encryption key and re-encrypting all secrets.",
-		Args:  cobra.NoArgs,
+		Short: "Generate a new encryption key and re-encrypt all secrets.",
+		Long:  "Generate a new encryption key, re-encrypt all secrets with it, and restart haloy-manager.",
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), secretsRollTimeout)
 			defer cancel()
@@ -53,7 +93,7 @@ func SecretsRollCmd() *cobra.Command {
 				ui.Error("Failed to determine data directory: %v\n", err)
 				return
 			}
-			envFile := filepath.Join(configDir, ".env")
+			envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 			env, err := godotenv.Read(envFile)
 			if err != nil {
 				ui.Error("Failed to read environment variables from %s: %v", envFile, err)

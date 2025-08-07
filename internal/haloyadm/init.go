@@ -308,17 +308,17 @@ func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir str
 	if configDir == "" {
 		return fmt.Errorf("configDir cannot be empty")
 	}
-	envPath := filepath.Join(configDir, ".env")
+	envPath := filepath.Join(configDir, constants.ConfigEnvFileName)
 	env := map[string]string{
 		constants.EnvVarAPIToken:    apiToken,
 		constants.EnvVarAgeIdentity: encryptionKey,
 	}
 	if err := godotenv.Write(env, envPath); err != nil {
-		return fmt.Errorf("failed to write .env content: %w", err)
+		return fmt.Errorf("failed to write %s content: %w", constants.ConfigEnvFileName, err)
 	}
 
 	if err := os.Chmod(envPath, envFileMode); err != nil {
-		return fmt.Errorf("failed to set .env file permissions: %w", err)
+		return fmt.Errorf("failed to set %s file permissions: %w", constants.ConfigEnvFileName, err)
 	}
 
 	if domain != "" {

@@ -47,7 +47,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	}
 
 	// using godotenv to add env variables because --env-file does not support quotes
-	envFile := filepath.Join(configDir, ".env")
+	envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 	env, err := godotenv.Read(envFile)
 	if err != nil {
 		return fmt.Errorf("failed to read env file: %w", err)

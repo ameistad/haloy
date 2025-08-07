@@ -28,7 +28,7 @@ func New(serverURL string) *APIClient {
 	token, err := config.LoadAPIToken()
 	if err != nil {
 		ui.Error("Failed to load API token: %v", err)
-		ui.Info("Set %s environment variable or create a .env file", constants.EnvVarAPIToken)
+		ui.Info("Set %s environment variable or create a %s file", constants.EnvVarAPIToken, constants.ConfigEnvFileName)
 		// Continue without token - let API calls fail with proper auth errors
 	}
 	return &APIClient{

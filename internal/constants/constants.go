@@ -28,4 +28,5 @@ const (
 
 	// File names
 	ManagerConfigFileName = "manager.yaml"
+	ConfigEnvFileName     = ".env"
 )
