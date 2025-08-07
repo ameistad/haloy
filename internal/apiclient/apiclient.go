@@ -335,6 +335,15 @@ func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID strin
 	})
 }
 
+// Version retrieves the version information of the manager and HAProxy
+func (c *APIClient) Version(ctx context.Context) (*apitypes.VersionResponse, error) {
+	var response apitypes.VersionResponse
+	if err := c.get(ctx, "version", &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
 // StreamLogs streams all manager logs
 func (c *APIClient) StreamLogs(ctx context.Context) error {
 	return c.stream(ctx, "logs", func(data string) (bool, error) {

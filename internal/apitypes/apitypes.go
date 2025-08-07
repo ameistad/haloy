@@ -48,3 +48,8 @@ type StopAppResponse struct {
 	StoppedIDs []string `json:"stoppedIds"`
 	RemovedIDs []string `json:"removed_ids,omitempty"`
 }
+
+type VersionResponse struct {
+	Version        string `json:"manager"`
+	HAProxyVersion string `json:"haproxy"`
+}

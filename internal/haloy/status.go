@@ -71,6 +71,8 @@ If no path is provided, the current directory is used.`,
 			ui.Section(fmt.Sprintf("Status for %s", appConfig.Name), formattedOutput)
 		},
 	}
+	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to haloy config file or directory")
+	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
