@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/go-acme/lego/v4/certificate"
@@ -141,7 +140,6 @@ type CertificatesManagerConfig struct {
 	CertDir          string
 	HTTPProviderPort string
 	TlsStaging       bool
-	ManagerConfig    *config.ManagerConfig
 }
 
 type CertificatesDomain struct {
@@ -185,7 +183,6 @@ type CertificatesManager struct {
 	clientManager *CertificatesClientManager
 	updateSignal  chan<- string // Channel to signal successful updates
 	debouncer     *helpers.Debouncer
-	managerConfig *config.ManagerConfig
 }
 
 func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<- string) (*CertificatesManager, error) {
@@ -208,7 +205,6 @@ func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<
 		clientManager: clientManager,
 		updateSignal:  updateSignal,
 		debouncer:     helpers.NewDebouncer(refreshDebounceDelay),
-		managerConfig: config.ManagerConfig,
 	}
 
 	return m, nil
@@ -253,18 +249,6 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 	defer func() {
 		cm.checkMutex.Unlock()
 	}()
-
-	// We'll add the domain set in the manager config file if it exists.
-	if cm.managerConfig != nil && cm.managerConfig.API.Domain != "" && cm.managerConfig.Certificates.AcmeEmail != "" {
-		apiDomain := CertificatesDomain{
-			Canonical: cm.managerConfig.API.Domain,
-			Aliases:   []string{},
-			Email:     cm.managerConfig.Certificates.AcmeEmail,
-		}
-		domains = append(domains, apiDomain)
-		logger.Info("Fetching certificate for API domain",
-			"domain", apiDomain.Canonical, "email", apiDomain.Email)
-	}
 
 	if len(domains) == 0 {
 		return renewedDomains, nil

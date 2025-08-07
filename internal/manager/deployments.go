@@ -37,14 +37,14 @@ type DeploymentManager struct {
 	deployments      map[string]Deployment
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
-	ManagerConfig    *config.ManagerConfig
+	managerConfig    *config.ManagerConfig
 }
 
 func NewDeploymentManager(cli *client.Client, managerConfig *config.ManagerConfig) *DeploymentManager {
 	return &DeploymentManager{
 		cli:           cli,
 		deployments:   make(map[string]Deployment),
-		ManagerConfig: managerConfig,
+		managerConfig: managerConfig,
 	}
 }
 
@@ -184,7 +184,7 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 			if domain.Canonical != "" {
 				email := deployment.Labels.ACMEEmail
 				if email == "" {
-					email = dm.ManagerConfig.Certificates.AcmeEmail // Use default email if not set
+					email = dm.managerConfig.Certificates.AcmeEmail // Use default email if not set
 				}
 
 				if email == "" {
@@ -204,6 +204,16 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 				certDomains = append(certDomains, newDomain)
 			}
 		}
+	}
+
+	// We'll add the domain set in the manager config file if it exists.
+	if dm.managerConfig != nil && dm.managerConfig.API.Domain != "" && dm.managerConfig.Certificates.AcmeEmail != "" {
+		apiDomain := CertificatesDomain{
+			Canonical: dm.managerConfig.API.Domain,
+			Aliases:   []string{},
+			Email:     dm.managerConfig.Certificates.AcmeEmail,
+		}
+		certDomains = append(certDomains, apiDomain)
 	}
 	return certDomains, nil
 }

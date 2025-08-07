@@ -126,7 +126,6 @@ func RunManager(debug bool) {
 		CertDir:          constants.CertificatesStoragePath,
 		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
 		TlsStaging:       debug,
-		ManagerConfig:    managerConfig,
 	}
 	certManager, err := NewCertificatesManager(certManagerConfig, certUpdateSignal)
 	if err != nil {
