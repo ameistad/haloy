@@ -5,7 +5,7 @@ import (
 )
 
 type Domain struct {
-	Canonical string   `yaml:"domain" json:"domain" toml:"domain""`
+	Canonical string   `yaml:"domain" json:"domain" toml:"domain"`
 	Aliases   []string `yaml:"aliases,omitempty" json:"aliases,omitempty" toml:"aliases,omitempty"`
 }
 

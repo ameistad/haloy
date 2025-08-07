@@ -142,7 +142,11 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 		logger.Info("Health check completed", "apps", strings.Join(apps, ", "))
 	}
 
-	certDomains := u.deploymentManager.GetCertificateDomains()
+	// Certificates refresh logic based on trigger reason.
+	certDomains, err := u.deploymentManager.GetCertificateDomains()
+	if err != nil {
+		return fmt.Errorf("failed to get certificate domains: %w", err)
+	}
 
 	// If an app is provided we refresh the certs synchronously so we can log the result.
 	// Otherwise, we refresh them asynchronously to avoid blocking the main update process.
@@ -184,7 +188,6 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 	// If an app is provided:
 	// - stop old containers, remove and log the result.
 	// - log successful deployment for app.
-
 	if app != nil {
 		_, err := docker.StopContainers(ctx, u.cli, app.appName, app.deploymentID)
 		if err != nil {

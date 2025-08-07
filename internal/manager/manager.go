@@ -119,7 +119,7 @@ func RunManager(debug bool) {
 	certUpdateSignal := make(chan string, 5)
 
 	// Create deployment manager
-	deploymentManager := NewDeploymentManager(cli)
+	deploymentManager := NewDeploymentManager(cli, managerConfig)
 
 	// Create and start the certifications manager
 	certManagerConfig := CertificatesManagerConfig{

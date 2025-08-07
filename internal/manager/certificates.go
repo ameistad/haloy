@@ -150,6 +150,33 @@ type CertificatesDomain struct {
 	Email     string
 }
 
+func (cm *CertificatesDomain) Validate() error {
+	if cm.Canonical == "" {
+		return fmt.Errorf("canonical domain cannot be empty")
+	}
+
+	if err := helpers.IsValidDomain(cm.Canonical); err != nil {
+		return fmt.Errorf("invalid canonical domain '%s': %w", cm.Canonical, err)
+	}
+
+	if cm.Email == "" {
+		return fmt.Errorf("email cannot be empty")
+	}
+	if !helpers.IsValidEmail(cm.Email) {
+		return fmt.Errorf("invalid email format: %s", cm.Email)
+	}
+
+	for _, alias := range cm.Aliases {
+		if alias == "" {
+			return fmt.Errorf("alias cannot be empty")
+		}
+		if err := helpers.IsValidDomain(alias); err != nil {
+			return fmt.Errorf("invalid alias '%s': %w", alias, err)
+		}
+	}
+	return nil
+}
+
 type CertificatesManager struct {
 	config        CertificatesManagerConfig
 	checkMutex    sync.Mutex

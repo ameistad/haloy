@@ -58,20 +58,15 @@ func (ac *AppConfig) Validate() error {
 	}
 
 	if len(ac.Domains) > 0 {
-
 		for _, domain := range ac.Domains {
 			if err := domain.Validate(); err != nil {
 				return err
 			}
 		}
+	}
 
-		// If domains are set we also need to set a valid ACME email.
-		if ac.ACMEEmail == "" {
-			return fmt.Errorf("missing ACME email used to get TLS certificates")
-		}
-		if !helpers.IsValidEmail(ac.ACMEEmail) {
-			return fmt.Errorf("invalid ACME email '%s'", ac.ACMEEmail)
-		}
+	if ac.ACMEEmail != "" && !helpers.IsValidEmail(ac.ACMEEmail) {
+		return fmt.Errorf("invalid ACME email '%s'; must be a valid email address", ac.ACMEEmail)
 	}
 
 	// Validate environment variables.

@@ -37,12 +37,14 @@ type DeploymentManager struct {
 	deployments      map[string]Deployment
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
+	ManagerConfig    *config.ManagerConfig
 }
 
-func NewDeploymentManager(cli *client.Client) *DeploymentManager {
+func NewDeploymentManager(cli *client.Client, managerConfig *config.ManagerConfig) *DeploymentManager {
 	return &DeploymentManager{
-		cli:         cli,
-		deployments: make(map[string]Deployment),
+		cli:           cli,
+		deployments:   make(map[string]Deployment),
+		ManagerConfig: managerConfig,
 	}
 }
 
@@ -168,33 +170,42 @@ func (dm *DeploymentManager) Deployments() map[string]Deployment {
 }
 
 // GetCertificateDomains collects all canonical domains and their aliases for certificate management.
-func (dm *DeploymentManager) GetCertificateDomains() []CertificatesDomain {
+func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, error) {
 	dm.deploymentsMutex.RLock()
 	defer dm.deploymentsMutex.RUnlock()
 
-	managedDomains := make([]CertificatesDomain, 0, len(dm.deployments)) // Pre-allocate roughly
+	certDomains := make([]CertificatesDomain, 0, len(dm.deployments))
 
 	for _, deployment := range dm.deployments {
 		if deployment.Labels == nil {
-			continue // Skip if labels somehow nil
+			continue
 		}
 		for _, domain := range deployment.Labels.Domains {
-			// Only process if canonical domain is set and not empty
 			if domain.Canonical != "" {
-				// Ensure Aliases slice is not nil before passing
-				aliases := domain.Aliases
-				if aliases == nil {
-					aliases = []string{}
+				email := deployment.Labels.ACMEEmail
+				if email == "" {
+					email = dm.ManagerConfig.Certificates.AcmeEmail // Use default email if not set
 				}
-				managedDomains = append(managedDomains, CertificatesDomain{
+
+				if email == "" {
+					return nil, fmt.Errorf("ACME email for domain %s not found in manager config or labels", domain.Canonical)
+				}
+
+				newDomain := CertificatesDomain{
 					Canonical: domain.Canonical,
-					Aliases:   aliases, // Include aliases
-					Email:     deployment.Labels.ACMEEmail,
-				})
+					Aliases:   domain.Aliases,
+					Email:     email,
+				}
+
+				if err := newDomain.Validate(); err != nil {
+					return nil, fmt.Errorf("domain not valid '%s': %w", domain.Canonical, err)
+				}
+
+				certDomains = append(certDomains, newDomain)
 			}
 		}
 	}
-	return managedDomains
+	return certDomains, nil
 }
 
 type compareResult struct {

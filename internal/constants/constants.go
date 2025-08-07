@@ -1,7 +1,7 @@
 package constants
 
 const (
-	Version                  = "0.1.7"
+	Version                  = "0.1.0"
 	HAProxyVersion           = "3.2"
 	ManagerContainerName     = "haloy-manager"
 	HAProxyContainerName     = "haloy-haproxy"
@@ -10,13 +10,6 @@ const (
 	DefaultHealthCheckPath   = "/"
 	DefaultContainerPort     = "80"
 	DefaultReplicas          = 1
-	HAProxyConfigFileName    = "haproxy.cfg"
-
-	// Paths specific to the haloy manager which runs in a docker container. Important that they use consistent naming.
-	HaloyConfigPath         = "/haloy-config"
-	HAProxyConfigPath       = "/haproxy-config"
-	CertificatesStoragePath = "/cert-storage"
-	DBPath                  = "/db"
 
 	CertificatesHTTPProviderPort = "8080"
 	APIServerPort                = "9999"
@@ -26,7 +19,14 @@ const (
 	EnvVarAgeIdentity = "HALOY_ENCRYPTION_KEY"
 	EnvVarAPIToken    = "HALOY_API_TOKEN"
 
+	// Paths specific to the haloy manager which runs in a docker container. Important that they use consistent naming.
+	HaloyConfigPath         = "/haloy-config"
+	HAProxyConfigPath       = "/haproxy-config"
+	CertificatesStoragePath = "/cert-storage"
+	DBPath                  = "/db"
+
 	// File names
 	ManagerConfigFileName = "manager.yaml"
 	ConfigEnvFileName     = ".env"
+	HAProxyConfigFileName = "haproxy.cfg"
 )
