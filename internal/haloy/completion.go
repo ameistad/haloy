@@ -16,20 +16,27 @@ func CompletionCmd() *cobra.Command {
 		Long: `To load completions:
 
 Bash:
+  # Temporarily (current session only):
   $ source <(haloy completion bash)
   # Permanently:
-  $ haloy completion bash > /etc/bash_completion.d/haloy  # Linux
-  $ haloy completion bash > /usr/local/etc/bash_completion.d/haloy  # macOS
+  $ haloy completion bash | sudo tee /etc/bash_completion.d/haloy > /dev/null  # Linux
+  $ haloy completion bash | sudo tee /usr/local/etc/bash_completion.d/haloy > /dev/null  # macOS
 
 Zsh:
-  $ echo "autoload -U compinit; compinit" >> ~/.zshrc
-  $ source <(haloy completion zsh)
+  # Create completions directory
+  $ mkdir -p ~/.local/share/zsh/site-functions
+  $ haloy completion zsh > ~/.local/share/zsh/site-functions/_haloy
+  # Add to ~/.zshrc (only needed once):
+  $ echo 'fpath=(~/.local/share/zsh/site-functions $fpath)' >> ~/.zshrc
+  $ echo 'autoload -U compinit && compinit' >> ~/.zshrc
 
 Fish:
-  $ haloy completion fish | source
+  $ mkdir -p ~/.config/fish/completions
+  $ haloy completion fish > ~/.config/fish/completions/haloy.fish
 
-Powershell:
-  PS> haloy completion powershell | Out-String | Invoke-Expression
+PowerShell:
+  PS> haloy completion powershell > haloy.ps1
+  # Then source the file from your PowerShell profile
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch args[0] {
