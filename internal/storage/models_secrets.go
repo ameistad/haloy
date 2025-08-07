@@ -1,4 +1,4 @@
-package db
+package storage
 
 import (
 	"crypto/md5"

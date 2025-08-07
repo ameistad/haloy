@@ -8,27 +8,27 @@ import (
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/secrets"
+	"github.com/ameistad/haloy/internal/storage"
 )
 
 func (s *APIServer) handleSecretsList() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		database, err := db.New(constants.DBPath)
+		db, err := storage.New(constants.DBPath)
 		if err != nil {
 			log.Printf("Error initializing database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		defer database.Close()
-		secrets, err := database.GetSecretsList()
+		defer db.Close()
+		secrets, err := db.GetSecretsList()
 		if err != nil {
 			log.Printf("Error fetching secrets: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
-		apiSecrets := make([]db.SecretAPIResponse, len(secrets))
+		apiSecrets := make([]storage.SecretAPIResponse, len(secrets))
 		for i, secret := range secrets {
 			apiSecrets[i] = secret.ToAPIResponse()
 		}
@@ -46,15 +46,15 @@ func (s *APIServer) handleDeleteSecret() http.HandlerFunc {
 			http.Error(w, "Secret name is required", http.StatusBadRequest)
 			return
 		}
-		database, err := db.New(constants.DBPath)
+		db, err := storage.New(constants.DBPath)
 		if err != nil {
 			log.Printf("Error initializing database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		defer database.Close()
+		defer db.Close()
 
-		if err := database.DeleteSecret(name); err != nil {
+		if err := db.DeleteSecret(name); err != nil {
 			log.Printf("Error deleting secret: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
@@ -77,13 +77,13 @@ func (s *APIServer) handleSetSecret() http.HandlerFunc {
 			return
 		}
 
-		database, err := db.New(constants.DBPath)
+		db, err := storage.New(constants.DBPath)
 		if err != nil {
 			log.Printf("Error initializing database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		defer database.Close()
+		defer db.Close()
 
 		identity, err := secrets.GetAgeIdentity()
 		if err != nil {
@@ -97,7 +97,7 @@ func (s *APIServer) handleSetSecret() http.HandlerFunc {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		if err := database.SetSecret(req.Name, encryptedValue); err != nil {
+		if err := db.SetSecret(req.Name, encryptedValue); err != nil {
 			log.Printf("Error setting secret: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return

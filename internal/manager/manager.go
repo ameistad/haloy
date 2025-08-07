@@ -16,10 +16,10 @@ import (
 	"github.com/ameistad/haloy/internal/api"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
+	"github.com/ameistad/haloy/internal/storage"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
@@ -64,14 +64,14 @@ func RunManager(debug bool) {
 
 	// Initialize database
 	logger.Info("Initializing database.")
-	database, err := db.New(constants.DBPath)
+	db, err := storage.New(constants.DBPath)
 	if err != nil {
 		logger.Error("Failed to initialize database", "error", err)
 		return
 	}
-	defer database.Close()
+	defer db.Close()
 
-	if err := database.Migrate(); err != nil {
+	if err := db.Migrate(); err != nil {
 		logger.Error("Failed to run database migrations", "error", err)
 		return
 	}

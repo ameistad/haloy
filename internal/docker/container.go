@@ -10,9 +10,9 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/secrets"
+	"github.com/ameistad/haloy/internal/storage"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -60,17 +60,17 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 
 	// Process secret environment variables
 	if len(secretEnvVars) > 0 {
-		database, err := db.New(constants.DBPath)
+		db, err := storage.New(constants.DBPath)
 		if err != nil {
 			return result, fmt.Errorf("failed to create database: %w", err)
 		}
-		defer database.Close()
+		defer db.Close()
 		identity, err := secrets.GetAgeIdentity()
 		if err != nil {
 			return result, fmt.Errorf("failed to get age identity: %w", err)
 		}
 		for _, secretEnvVar := range secretEnvVars {
-			encryptedValue, err := database.GetSecretEncryptedValue(secretEnvVar.SecretName)
+			encryptedValue, err := db.GetSecretEncryptedValue(secretEnvVar.SecretName)
 			if err != nil {
 				return result, fmt.Errorf("failed to get encrypted secret value: %w", err)
 			}

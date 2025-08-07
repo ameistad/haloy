@@ -8,8 +8,8 @@ import (
 	"filippo.io/age"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/ameistad/haloy/internal/db"
 	"github.com/ameistad/haloy/internal/secrets"
+	"github.com/ameistad/haloy/internal/storage"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
@@ -77,20 +77,20 @@ func SecretsRollCmd() *cobra.Command {
 			}
 
 			dbPath := filepath.Join(dataDir, constants.DBPath)
-			database, err := db.New(dbPath)
+			db, err := storage.New(dbPath)
 			if err != nil {
 				ui.Error("Failed to connect to database: %v", err)
 				return
 			}
 
-			secretsList, err := database.GetSecretsList()
+			secretsList, err := db.GetSecretsList()
 			if err != nil {
 				ui.Error("Failed to retrieve secrets: %v", err)
 				return
 			}
 
 			if len(secretsList) > 0 {
-				var batchSecrets []db.SecretBatch
+				var batchSecrets []storage.SecretBatch
 				for _, secret := range secretsList {
 					decryptedValue, err := secrets.Decrypt(secret.Name, oldIdentity)
 					if err != nil {
@@ -102,14 +102,14 @@ func SecretsRollCmd() *cobra.Command {
 						ui.Error("Failed to re-encrypt secret %s: %v", secret.Name, err)
 						return
 					}
-					batchSecrets = append(batchSecrets, db.SecretBatch{
+					batchSecrets = append(batchSecrets, storage.SecretBatch{
 						Name:           secret.Name,
 						EncryptedValue: newEncryptedValue,
 						// CreatedAt and UpdatedAt will be set in SetSecretsBatch
 					})
 				}
 
-				if err := database.SetSecretsBatch(batchSecrets); err != nil {
+				if err := db.SetSecretsBatch(batchSecrets); err != nil {
 					ui.Error("Failed to update secrets: %v", err)
 					return
 				}
