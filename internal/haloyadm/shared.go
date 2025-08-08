@@ -3,6 +3,8 @@ package haloyadm
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -323,4 +325,21 @@ func waitForAPI(ctx context.Context, api *apiclient.APIClient) error {
 			// Continue polling if API is not ready yet
 		}
 	}
+}
+
+// generateAPIToken creates a secure random API token
+func generateAPIToken() (string, error) {
+	tokenBytes := make([]byte, apiTokenLength)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return "", fmt.Errorf("failed to generate random token: %w", err)
+	}
+	token := hex.EncodeToString(tokenBytes)
+
+	// Validate generated token
+	if len(token) != apiTokenLength*2 {
+		return "", fmt.Errorf("generated token has unexpected length: got %d, expected %d",
+			len(token), apiTokenLength*2)
+	}
+
+	return token, nil
 }

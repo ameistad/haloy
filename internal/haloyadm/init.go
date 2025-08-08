@@ -3,8 +3,6 @@ package haloyadm
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"os"
@@ -278,23 +276,6 @@ func renderTemplate(templateFilePath string, templateData any) (bytes.Buffer, er
 		return buf, fmt.Errorf("failed to execute template: %w", err)
 	}
 	return buf, nil
-}
-
-// generateAPIToken creates a secure random API token
-func generateAPIToken() (string, error) {
-	tokenBytes := make([]byte, apiTokenLength)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return "", fmt.Errorf("failed to generate random token: %w", err)
-	}
-	token := hex.EncodeToString(tokenBytes)
-
-	// Validate generated token
-	if len(token) != apiTokenLength*2 {
-		return "", fmt.Errorf("generated token has unexpected length: got %d, expected %d",
-			len(token), apiTokenLength*2)
-	}
-
-	return token, nil
 }
 
 // createConfigFiles creates a .env file with the API token in the data directory

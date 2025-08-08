@@ -19,6 +19,15 @@ const (
 	secretsRollTimeout = 1 * time.Minute
 )
 
+func SecretsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "secrets",
+		Short: "Manage secrets",
+	}
+	cmd.AddCommand(SecretsRollCmd())
+	return cmd
+}
+
 func SecretsRollCmd() *cobra.Command {
 	var devMode bool
 	var debug bool
@@ -115,7 +124,7 @@ func SecretsRollCmd() *cobra.Command {
 				ui.Error("Failed to stop haloy-manager container: %v", err)
 				return
 			}
-			if err := startHaloyManager(ctx, dataDir, configDir, false, false); err != nil {
+			if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
 				ui.Error("Failed to restart haloy-manager: %v", err)
 				return
 			}

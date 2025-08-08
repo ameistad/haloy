@@ -18,6 +18,8 @@ func NewRootCmd() *cobra.Command {
 		InitCmd(),
 		StartCmd(),
 		StopCmd(),
+		APICmd(),
+		SecretsCmd(),
 	)
 
 	return cmd
