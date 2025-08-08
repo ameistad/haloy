@@ -2,10 +2,9 @@ package api
 
 func (s *APIServer) setupRoutes() {
 	authMiddleware := s.bearerTokenAuthMiddleware
-	logMiddleware := s.loggingMiddleware
 
 	s.router.Handle("GET /health", s.handleHealth())
-	s.router.Handle("POST /v1/deploy", logMiddleware(authMiddleware(s.handleDeploy())))
+	s.router.Handle("POST /v1/deploy", authMiddleware(s.handleDeploy()))
 	s.router.Handle("GET /v1/deploy/{deploymentID}/logs", authMiddleware(s.handleDeploymentLogs()))
 
 	// Logs stream
