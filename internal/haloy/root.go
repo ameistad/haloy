@@ -21,6 +21,7 @@ func NewRootCmd() *cobra.Command {
 		StatusAppCmd(),
 		ValidateAppConfigCmd(),
 		SecretsCommand(),
+		SetupCmd(),
 		LogsCmd(),
 		VersionCmd(),
 	)
