@@ -1,5 +1,7 @@
 package constants
 
+import "io/fs"
+
 const (
 	Version                  = "0.1.0"
 	HAProxyVersion           = "3.2"
@@ -29,4 +31,12 @@ const (
 	ManagerConfigFileName = "manager.yaml"
 	ConfigEnvFileName     = ".env"
 	HAProxyConfigFileName = "haproxy.cfg"
+)
+
+// File and directory permissions
+const (
+	ModeFileSecret fs.FileMode = 0o600 // secrets: .env, keys
+	ModeFileConfig fs.FileMode = 0o644 // non-secret configs
+	ModeFileExec   fs.FileMode = 0o755 // scripts/binaries
+	ModeDirPrivate fs.FileMode = 0o700 // private dirs
 )

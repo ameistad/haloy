@@ -23,10 +23,7 @@ import (
 
 const (
 	initTimeout    = 5 * time.Minute
-	apiTokenLength = 32                // bytes, results in 64 character hex string
-	envFileMode    = os.FileMode(0600) // owner read/write only
-	configFileMode = os.FileMode(0644) // owner read/write, group/others read
-	executableMode = os.FileMode(0755) // owner read/write/execute, group/others read/execute
+	apiTokenLength = 32 // bytes, results in 64 character hex string
 )
 
 func InitCmd() *cobra.Command {
@@ -179,7 +176,7 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 	// First create empty directories
 	for _, dir := range emptyDirs {
 		dirPath := filepath.Join(dst, dir)
-		if err := os.MkdirAll(dirPath, executableMode); err != nil {
+		if err := os.MkdirAll(dirPath, constants.ModeDirPrivate); err != nil {
 			return fmt.Errorf("failed to create empty directory %s: %w", dirPath, err)
 		}
 	}
@@ -198,7 +195,13 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 
 		targetPath := filepath.Join(dst, relPath)
 		if d.IsDir() {
-			return os.MkdirAll(targetPath, executableMode)
+			if err := os.MkdirAll(targetPath, constants.ModeDirPrivate); err != nil {
+				return err
+			}
+			if err := os.Chmod(targetPath, constants.ModeDirPrivate); err != nil {
+				ui.Warn("failed to chmod %s: %v", targetPath, err)
+			}
+			return nil // continue walking; children will be visited next
 		}
 
 		// Skip template files - they'll be handled by copyConfigTemplateFiles
@@ -212,9 +215,9 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 		}
 
 		// Determine the file mode - make shell scripts executable
-		fileMode := configFileMode
+		fileMode := constants.ModeFileConfig
 		if filepath.Ext(targetPath) == ".sh" {
-			fileMode = executableMode
+			fileMode = constants.ModeFileExec
 		}
 
 		if err := os.WriteFile(targetPath, data, fileMode); err != nil {
@@ -253,7 +256,7 @@ func copyConfigTemplateFiles() error {
 		return fmt.Errorf("failed to determine HAProxy config file path: %w", err)
 	}
 
-	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), configFileMode); err != nil {
+	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), constants.ModeFileConfig); err != nil {
 		return fmt.Errorf("failed to write updated haproxy config file: %w", err)
 	}
 
@@ -298,7 +301,7 @@ func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir str
 		return fmt.Errorf("failed to write %s content: %w", constants.ConfigEnvFileName, err)
 	}
 
-	if err := os.Chmod(envPath, envFileMode); err != nil {
+	if err := os.Chmod(envPath, constants.ModeFileSecret); err != nil {
 		return fmt.Errorf("failed to set %s file permissions: %w", constants.ConfigEnvFileName, err)
 	}
 
@@ -340,7 +343,7 @@ func validateAndPrepareDirectory(dirPath, dirType string, overrideExisting bool)
 			strings.ToLower(dirType), dirPath, statErr)
 	}
 
-	if err := os.MkdirAll(dirPath, executableMode); err != nil {
+	if err := os.MkdirAll(dirPath, constants.ModeDirPrivate); err != nil {
 		return fmt.Errorf("failed to create %s directory %s: %w",
 			strings.ToLower(dirType), dirPath, err)
 	}
