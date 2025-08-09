@@ -80,7 +80,7 @@ func fetchTokenViaSSH(host string, port int, keyFile string) (string, error) {
 	if keyFile != "" {
 		args = append(args, "-i", keyFile)
 	}
-	args = append(args, host, "haloyadm api token --raw")
+	args = append(args, host, "bash -lc 'haloyadm api token --raw'")
 
 	cmd := exec.Command("ssh", args...)
 	out, err := cmd.Output()
