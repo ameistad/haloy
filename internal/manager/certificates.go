@@ -538,13 +538,11 @@ func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain
 }
 
 func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.Resource) error {
-	// Save certificate (.crt)
 	certPath := filepath.Join(m.config.CertDir, domain+".crt")
 	if err := os.WriteFile(certPath, cert.Certificate, 0644); err != nil {
 		return fmt.Errorf("failed to save certificate: %w", err)
 	}
 
-	// Save private key (.key)
 	keyPath := filepath.Join(m.config.CertDir, domain+".key")
 	if err := os.WriteFile(keyPath, cert.PrivateKey, 0600); err != nil {
 		// Attempt cleanup of .crt file if key saving fails
