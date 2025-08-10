@@ -12,7 +12,7 @@ func getServer(appConfig *config.AppConfig, serverURL string) (string, error) {
 	if serverURL != "" {
 		return serverURL, nil
 	}
-	if appConfig.Server != "" {
+	if appConfig != nil && appConfig.Server != "" {
 		return appConfig.Server, nil
 	}
 
