@@ -25,17 +25,16 @@ func VersionCmd() *cobra.Command {
 				configPath = "."
 			}
 
-			appConfig, err := config.LoadAndValidateAppConfig(configPath)
+			appConfig, _ := config.LoadAndValidateAppConfig(configPath) // we don't strictly need an app config for this to work.
+
+			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
-				ui.Error("Failed to load config: %v", err)
+				ui.Error("%v", err)
 				return
-			}
-			targetServer := appConfig.Server
-			if serverURL != "" {
-				targetServer = serverURL
 			}
 
 			ui.Info("Getting version using server %s", targetServer)
+
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 			cliVersion := constants.Version
