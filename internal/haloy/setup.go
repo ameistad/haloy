@@ -95,20 +95,24 @@ func SetupCmd() *cobra.Command {
 }
 
 func saveAPIURL(configDir, url string) error {
-	configFilePath := filepath.Join(configDir, constants.ManagerConfigFileName)
-	managerConfig, err := config.LoadManagerConfig(configFilePath)
+	configFilePath := filepath.Join(configDir, constants.ClientConfigFileName)
+	clientConfig, err := config.LoadClientConfig(configFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to load manager config: %w", err)
+		return fmt.Errorf("failed to load client config: %w", err)
 	}
 
-	if managerConfig == nil {
-		managerConfig = &config.ManagerConfig{}
+	if clientConfig == nil {
+		clientConfig = &config.ClientConfig{}
 	}
 
-	managerConfig.API.Domain = url
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		url = "https://" + url
+	}
 
-	if err := managerConfig.Save(configFilePath); err != nil {
-		return fmt.Errorf("failed to save manager config: %w", err)
+	clientConfig.DefaultServer = url
+
+	if err := clientConfig.Save(configFilePath); err != nil {
+		return fmt.Errorf("failed to save client config: %w", err)
 	}
 
 	return nil
