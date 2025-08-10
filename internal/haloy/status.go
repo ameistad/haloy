@@ -40,9 +40,11 @@ If no path is provided, the current directory is used.`,
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
-			targetServer := appConfig.Server
-			if serverURL != "" {
-				targetServer = serverURL
+
+			targetServer, err := getServer(appConfig, serverURL)
+			if err != nil {
+				ui.Error("%v", err)
+				return
 			}
 
 			ui.Info("Getting status for application: %s using server %s", appConfig.Name, targetServer)

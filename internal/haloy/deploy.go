@@ -54,9 +54,10 @@ If no path is provided, the current directory is used.`,
 				}
 			}
 
-			targetServer := appConfig.Server
-			if serverURL != "" {
-				targetServer = serverURL
+			targetServer, err := getServer(appConfig, serverURL)
+			if err != nil {
+				ui.Error("%v", err)
+				return
 			}
 
 			ui.Info("Starting deployment for application: %s using server %s", appConfig.Name, targetServer)
