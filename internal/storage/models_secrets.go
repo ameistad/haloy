@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"crypto/md5"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"time"
 )
@@ -13,24 +11,6 @@ type Secret struct {
 	EncryptedValue string    `json:"encrypted_value"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
-}
-
-type SecretAPIResponse struct {
-	Name        string `json:"name"`
-	DigestValue string `json:"digest_value"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-}
-
-func (s Secret) ToAPIResponse() SecretAPIResponse {
-	digest := md5.Sum([]byte(s.EncryptedValue))
-	digestStr := hex.EncodeToString(digest[:])
-	return SecretAPIResponse{
-		Name:        s.Name,
-		DigestValue: digestStr,
-		CreatedAt:   s.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   s.UpdatedAt.Format(time.RFC3339),
-	}
 }
 
 func createSecretsTable(db *DB) error {

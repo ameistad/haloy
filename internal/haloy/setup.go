@@ -16,7 +16,7 @@ import (
 )
 
 func SetupSSHCmd() *cobra.Command {
-	var sshKey string
+	var keyFile string
 	var port int
 
 	cmd := &cobra.Command{
@@ -35,7 +35,7 @@ Examples:
 
 			ui.Info("Connecting to %s...", host)
 
-			token, err := fetchTokenViaSSH(host, port, sshKey)
+			token, err := executeRemoteSSH(host, port, keyFile, "haloyadm api token --raw")
 			if err != nil {
 				ui.Error("Failed to fetch token: %v", err)
 				return
@@ -46,17 +46,39 @@ Examples:
 				return
 			}
 
-			if err := saveTokenLocally(token); err != nil {
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to get user config directory: %v", err)
+				return
+			}
+
+			if err := os.MkdirAll(configDir, constants.ModeDirPrivate); err != nil {
+				ui.Error("Failed to create config directory: %v", err)
+				return
+			}
+
+			if err := saveTokenLocally(configDir, token); err != nil {
 				ui.Error("Failed to save token locally: %v", err)
 				return
 			}
 
-			ui.Success("✅ Successfully configured haloy client!")
+			url, err := executeRemoteSSH(host, port, keyFile, "haloyadm api url --raw")
+			if err != nil {
+				ui.Warn("Failed to fetch API URL: %v", err)
+			}
+			if url != "" {
+				if err := saveAPIURL(configDir, url); err != nil {
+					ui.Error("Failed to save API URL: %v", err)
+					return
+				}
+			}
+
+			ui.Success("Successfully configured haloy client!")
 			ui.Info("You can now deploy to this server using: haloy deploy")
 		},
 	}
 
-	cmd.Flags().StringVarP(&sshKey, "identity", "i", "", "SSH private key file")
+	cmd.Flags().StringVarP(&keyFile, "identity", "i", "", "SSH private key file")
 	cmd.Flags().IntVarP(&port, "port", "p", 22, "SSH port")
 
 	return cmd
@@ -72,35 +94,28 @@ func SetupCmd() *cobra.Command {
 	return cmd
 }
 
-func fetchTokenViaSSH(host string, port int, keyFile string) (string, error) {
-	args := []string{}
-	if port != 22 {
-		args = append(args, "-p", fmt.Sprint(port))
-	}
-	if keyFile != "" {
-		args = append(args, "-i", keyFile)
-	}
-	args = append(args, host, "bash -lc 'haloyadm api token --raw'")
-
-	cmd := exec.Command("ssh", args...)
-	out, err := cmd.Output()
+func saveAPIURL(configDir, url string) error {
+	configFilePath := filepath.Join(configDir, constants.ManagerConfigFileName)
+	managerConfig, err := config.LoadManagerConfig(configFilePath)
 	if err != nil {
-		return "", fmt.Errorf("ssh command failed: %w", err)
+		return fmt.Errorf("failed to load manager config: %w", err)
 	}
-	return strings.TrimSpace(string(out)), nil
+
+	if managerConfig == nil {
+		managerConfig = &config.ManagerConfig{}
+	}
+
+	managerConfig.API.Domain = url
+
+	if err := managerConfig.Save(configFilePath); err != nil {
+		return fmt.Errorf("failed to save manager config: %w", err)
+	}
+
+	return nil
+
 }
 
-func saveTokenLocally(token string) error {
-	configDir, err := config.ConfigDir()
-	if err != nil {
-		return fmt.Errorf("failed to get user config dir: %w", err)
-	}
-
-	// Ensure config directory exists with private permissions
-	if err := os.MkdirAll(configDir, constants.ModeDirPrivate); err != nil {
-		return fmt.Errorf("failed to create config dir: %w", err)
-	}
-	_ = os.Chmod(configDir, constants.ModeDirPrivate)
+func saveTokenLocally(configDir, token string) error {
 
 	envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 
@@ -121,4 +136,22 @@ func saveTokenLocally(token string) error {
 	_ = os.Chmod(envFile, constants.ModeFileSecret)
 
 	return nil
+}
+
+func executeRemoteSSH(host string, port int, keyFile string, remoteCmd string) (string, error) {
+	args := []string{}
+	if port != 22 {
+		args = append(args, "-p", fmt.Sprint(port))
+	}
+	if keyFile != "" {
+		args = append(args, "-i", keyFile)
+	}
+	args = append(args, host, fmt.Sprintf("bash -lc '%s'", remoteCmd))
+
+	cmd := exec.Command("ssh", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("ssh command failed: %w; output: %s", err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
 }

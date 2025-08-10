@@ -29,6 +29,7 @@ const (
 
 	// File names
 	ManagerConfigFileName = "manager.yaml"
+	ClientConfigFileName  = "client.yaml"
 	ConfigEnvFileName     = ".env"
 	HAProxyConfigFileName = "haproxy.cfg"
 )

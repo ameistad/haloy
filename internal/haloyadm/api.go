@@ -3,6 +3,7 @@ package haloyadm
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -18,24 +19,37 @@ func APITokenCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "token",
 		Short: "Reveal API token",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			configDir, err := config.ConfigDir()
 			if err != nil {
-				ui.Error("Failed to determine config directory: %v\n", err)
-				return
+				if raw {
+					fmt.Fprintln(os.Stderr, err)
+				} else {
+					ui.Error("Failed to determine config directory: %v\n", err)
+				}
+				return err
 			}
 
 			envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 			env, err := godotenv.Read(envFile)
 			if err != nil {
-				ui.Error("Failed to read environment variables from %s: %v", envFile, err)
-				return
+				if raw {
+					fmt.Fprintln(os.Stderr, err)
+				} else {
+					ui.Error("Failed to read environment variables from %s: %v", envFile, err)
+				}
+				return err
 			}
 
 			token, exists := env[constants.EnvVarAPIToken]
 			if !exists || token == "" {
-				ui.Error("API token not found in %s", envFile)
-				return
+				err := fmt.Errorf("API token not found in %s", envFile)
+				if raw {
+					fmt.Fprintln(os.Stderr, err)
+				} else {
+					ui.Error("API token not found in %s", envFile)
+				}
+				return err
 			}
 
 			if raw {
@@ -43,9 +57,59 @@ func APITokenCmd() *cobra.Command {
 			} else {
 				ui.Info("API token: %s\n", token)
 			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&raw, "raw", false, "Output only the token value")
+	return cmd
+}
+
+func APIURLCmd() *cobra.Command {
+	var raw bool
+	cmd := &cobra.Command{
+		Use:   "url",
+		Short: "Show API URL",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				if raw {
+					fmt.Fprintln(os.Stderr, err)
+				} else {
+					ui.Error("Failed to determine config directory: %v\n", err)
+				}
+				return err
+			}
+
+			configFilePath := filepath.Join(configDir, constants.ManagerConfigFileName)
+			managerConfig, err := config.LoadManagerConfig(configFilePath)
+			if err != nil {
+				if raw {
+					fmt.Fprintln(os.Stderr, err)
+				} else {
+					ui.Error("Failed to load configuration file: %v", err)
+				}
+				return err
+			}
+
+			if managerConfig == nil || managerConfig.API.Domain == "" {
+				err := fmt.Errorf("API URL not found")
+				if raw {
+					fmt.Fprintln(os.Stderr, err)
+				} else {
+					ui.Error("API URL not found in %s", configFilePath)
+				}
+				return err
+			}
+
+			if raw {
+				fmt.Print(managerConfig.API.Domain)
+			} else {
+				ui.Info("API URL: %s\n", managerConfig.API.Domain)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&raw, "raw", false, "Output only the URL value")
 	return cmd
 }
 
@@ -118,6 +182,7 @@ func APICmd() *cobra.Command {
 
 	cmd.AddCommand(APITokenCmd())
 	cmd.AddCommand(APINewTokenCmd())
+	cmd.AddCommand(APIURLCmd())
 
 	return cmd
 }

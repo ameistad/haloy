@@ -1,10 +1,13 @@
 package api
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/constants"
@@ -28,9 +31,16 @@ func (s *APIServer) handleSecretsList() http.HandlerFunc {
 			return
 		}
 
-		apiSecrets := make([]storage.SecretAPIResponse, len(secrets))
+		apiSecrets := make([]apitypes.SecretListItemResponse, len(secrets))
 		for i, secret := range secrets {
-			apiSecrets[i] = secret.ToAPIResponse()
+			digest := md5.Sum([]byte(secret.EncryptedValue))
+			digestStr := hex.EncodeToString(digest[:])
+			apiSecrets[i] = apitypes.SecretListItemResponse{
+				Name:        secret.Name,
+				DigestValue: digestStr,
+				CreatedAt:   secret.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:   secret.UpdatedAt.Format(time.RFC3339),
+			}
 		}
 		response := apitypes.SecretsListResponse{Secrets: apiSecrets}
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {

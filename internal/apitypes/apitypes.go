@@ -3,7 +3,6 @@ package apitypes
 import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploytypes"
-	"github.com/ameistad/haloy/internal/storage"
 )
 
 type HealthResponse struct {
@@ -28,8 +27,15 @@ type RollbackTargetsResponse struct {
 	Targets []deploytypes.RollbackTarget `json:"targets"`
 }
 
+type SecretListItemResponse struct {
+	Name        string `json:"name"`
+	DigestValue string `json:"digest_value"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
 type SecretsListResponse struct {
-	Secrets []storage.SecretAPIResponse `json:"secrets"`
+	Secrets []SecretListItemResponse `json:"secrets"`
 }
 
 type SetSecretRequest struct {

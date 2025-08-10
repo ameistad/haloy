@@ -46,21 +46,21 @@ func (mc *ManagerConfig) Validate() error {
 	return nil
 }
 
-func LoadManagerConfig(configPath string) (*ManagerConfig, error) {
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+func LoadManagerConfig(path string) (*ManagerConfig, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, nil
 	}
 	k := koanf.New(".")
-	parser, err := getConfigParser(configPath)
+	parser, err := getConfigParser(path)
 	if err != nil {
 		return nil, err
 	}
-	if err := k.Load(file.Provider(configPath), parser); err != nil {
+	if err := k.Load(file.Provider(path), parser); err != nil {
 		return nil, fmt.Errorf("failed to load manager config file: %w", err)
 	}
 
 	var managerConfig ManagerConfig
-	tag, err := getConfigTag(configPath)
+	tag, err := getConfigTag(path)
 	if err != nil {
 		return nil, err
 	}
@@ -71,21 +71,21 @@ func LoadManagerConfig(configPath string) (*ManagerConfig, error) {
 	return &managerConfig, nil
 }
 
-func Save(config *ManagerConfig, configPath string) error {
-	ext := filepath.Ext(configPath)
+func (mc *ManagerConfig) Save(path string) error {
+	ext := filepath.Ext(path)
 	var data []byte
 	var err error
 
 	switch ext {
 	case ".json":
-		data, err = json.MarshalIndent(config, "", "  ")
+		data, err = json.MarshalIndent(mc, "", "  ")
 	default: // yaml
-		data, err = yaml.Marshal(config)
+		data, err = yaml.Marshal(mc)
 	}
 
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(configPath, data, constants.ModeFileDefault)
+	return os.WriteFile(path, data, constants.ModeFileDefault)
 }

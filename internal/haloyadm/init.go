@@ -315,7 +315,7 @@ func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir str
 		}
 
 		managerConfigPath := filepath.Join(configDir, constants.ManagerConfigFileName)
-		if err := config.Save(managerConfig, managerConfigPath); err != nil {
+		if err := managerConfig.Save(managerConfigPath); err != nil {
 			return fmt.Errorf("failed to save manager config: %w", err)
 		}
 	}
