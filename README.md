@@ -1,60 +1,19 @@
 # Haloy
-Haloy makes deploying your Dockerized apps simple, quick, and painless on your own server, without unnecessary complexity.
+Haloy is a free tool for zero‑downtime Docker app deploys with automatic HAProxy routing and TLS certificates.
 
 ## ✨ Features
 * 🐳 Deploy and rollback any application using Docker.
-* 🔄 High-performance reverse proxy leveraging [HAProxy](https://www.haproxy.org/). ([nginx vs haproxy vs traefik](https://www.youtube.com/watch?v=h-ygQbBROXY))
+* 🔄 High-performance reverse proxy leveraging [HAProxy](https://www.haproxy.org/). 
 * 🔒 Automatic obtain and renew SSL/TLS certificates
-* 💻 Straightforward command-line interface managed through simple YAML configuration.
+* 💻 Straightforward command-line interface.
+* 🌐 HTTP API for automation, integration, and remote management.
 
-## Installation
+## Get Started
+These are the steps to install Haloy on the server where you are hosting your dockerized applications. 
 
-Haloy has two command-line tools: `haloy` to deploy and manage apps, and `haloyadm` to initialize and manage the Haloy services on the server.
-
-### Server Setup
-Run this on the server where you will be hosting your applications. It installs both `haloy` and `haloyadm`.
-
-```bash
-curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
-```
-
-```bash
-haloyadm init
-```
-
-This will also create the config files: 
-`manager.yml`: Contains non-secret, operational settings. This file could potentially be checked into a private infrastructure repository.
-
-`.env`: Is now reserved exclusively for secrets: HALOY_API_TOKEN and HALOY_ENCRYPTION_KEY. This file should never be checked into version control.
-
-## Client-Only Setup (optional for remote deploys)
-Run this on your local development machine or any machine that only needs to deploy applications to the server. It installs only the `haloy` client.
-
-```bash
-curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
-```
-
-
-After installation, ensure `~/.local/bin` is in your `PATH`:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Alternatively, you can manually download the latest release from [GitHub Releases](https://github.com/ameistad/haloy/releases)
-
-## Getting Started
-
-### Step 1: Initialize the Server 🚀
-
-On your server, run the `haloyadm init` command. Make sure Docker is installed and the current user is in the docker group.
-
-```bash
-haloyadm init
-```
-
-#### Make sure you have:
+### Requirements
 - __Docker installed and running__
-- Your user is part of the docker group. This lets you run Docker commands without sudo.
+- Your user is part of the docker group. This lets you run Haloy and Docker commands without sudo.
     - Add your user: `sudo usermod -aG docker $(whoami)`
     - Verify (you should see "docker"): `id -nG $(whoami)` or `groups $(whoami)`
     - Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
@@ -62,20 +21,42 @@ haloyadm init
 
 > ⚠️ **Note:** Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
 
-### Step 2: Configure the Client
-On your local machine, create a .env file in the default haloy config directory (~/config/haloy/.env) or your project directory and add the API token you copied from the server in the same location:
-
+### Install
 ```bash
-# ~/config/haloy/.env
-HALOY_API_TOKEN=your_super_secret_api_token_from_the_server
+curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
 ```
 
-### DNS Setup 🗺️
-For TLS (HTTPS) to work, you need to set up DNS records pointing to your server's public IP address for each domain you plan to use. You can typically do this in your domain registrar's control panel by creating A (for IPv4) or AAAA (for IPv6) records.
+Then run:
+```bash
+haloyadm init
+```
+
+If you want to use the API for remote deployments and you have added DNS records to the server.
+```bash
+haloyadm init --api-domain api.yourserver.com --acme-email you@youremail.com
+```
+This will create the necessary config files and setup the directories in ~/.local/share/haloy. 
+
+
+### Remote deploys
+Run this on your local development machine or any machine that only needs to deploy applications to the server. It installs only the `haloy` client.
+
+```bash
+curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
+```
+
+After installation, ensure `~/.local/bin` is in your `PATH`:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
 
 ### Configure Your Apps
 
 TODO
+
+#### DNS Setup 🗺️
+For TLS (HTTPS) to work, you need to set up DNS records pointing to your server's public IP address for each domain you plan to use. You can typically do this in your domain registrar's control panel by creating A (for IPv4) or AAAA (for IPv6) records.
 
 ### Deploy
 
@@ -90,22 +71,7 @@ haloy status my-app.yaml
 haloy rollback my-app.yaml 20231026143000
 ```
 
-## Full List of Commands
-
-| Command | Description |
-| :--- | :--- |
-| `haloy init` | Initialize configuration files and prepare HAProxy for production. |
-| `haloy start` | Start the haloy services, including HAProxy and haloy-manager. |
-| `haloy stop <app-name>` | Stop an application's running containers. |
-| `haloy status [app-name]` | Show status for all apps or detailed status for a specific app. |
-| `haloy deploy <app-name>` | Deploy a single application by name. |
-| `haloy deploy-all` | Deploy all applications defined in the configuration file. |
-| `haloy rollback <app-name> [deployment-id]` | Rollback an application to a previous deployment. If no deployment ID is provided, available rollback targets will be listed. |
-| `haloy rollback-list <app-name>` | List available rollback targets for an application. |
-| `haloy validate-config` | Validate the configuration file. |
-| `haloy secrets` | Manage secrets using age encryption (`init`, `set`, `list`, `delete`). |
-| `haloy version` | Print the current version of Haloy. |
-| `haloy completion` | Generate shell completion scripts (bash, zsh, etc.). |
+For a full list of command run `haloy help`
 
 ## Configuration
 ### App Configuration

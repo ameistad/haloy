@@ -29,7 +29,7 @@ const (
 func InitCmd() *cobra.Command {
 	var skipServices bool
 	var override bool
-	var managerDomain string
+	var apiDomain string
 	var acmeEmail string
 	var devMode bool
 	var debug bool
@@ -109,7 +109,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 			}
 
 			// Use createdDirs for cleanup if later steps fail
-			if err := createConfigFiles(apiToken, identity.String(), managerDomain, acmeEmail, configDir); err != nil {
+			if err := createConfigFiles(apiToken, identity.String(), apiDomain, acmeEmail, configDir); err != nil {
 				ui.Error("Failed to create config files: %v\n", err)
 				return
 			}
@@ -133,8 +133,8 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 			successMsg := "Haloy initialized successfully!\n\n"
 			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
 			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
-			if managerDomain != "" {
-				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", managerDomain)
+			if apiDomain != "" {
+				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", apiDomain)
 			}
 			ui.Success("%s", successMsg)
 
@@ -164,7 +164,7 @@ The data directory can be customized by setting the HALOY_DATA_DIR environment v
 
 	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloy-manager containers")
 	cmd.Flags().BoolVar(&override, "override", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
-	cmd.Flags().StringVar(&managerDomain, "domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
+	cmd.Flags().StringVar(&apiDomain, "api-domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
 	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
 	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
