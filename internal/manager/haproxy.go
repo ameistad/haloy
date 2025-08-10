@@ -61,7 +61,7 @@ func (hpm *HAProxyManager) ApplyConfig(ctx context.Context, logger *slog.Logger,
 
 	configPath := filepath.Join(hpm.configDir, constants.HAProxyConfigFileName)
 	logger.Debug("HAProxyManager: Writing config")
-	if err := os.WriteFile(configPath, configBuf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(configPath, configBuf.Bytes(), constants.ModeFileDefault); err != nil {
 		return fmt.Errorf("HAProxyManager: failed to write config file %s: %w", configPath, err)
 	}
 

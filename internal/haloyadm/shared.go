@@ -48,7 +48,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--network", constants.DockerNetwork,
 	}
 
-	// using godotenv to add env variables because --env-file does not support quotes
+	// using godotenv to add env variables because --env-file does not support quotes in values.
 	envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 	env, err := godotenv.Read(envFile)
 	if err != nil {

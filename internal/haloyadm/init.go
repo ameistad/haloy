@@ -215,7 +215,7 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 		}
 
 		// Determine the file mode - make shell scripts executable
-		fileMode := constants.ModeFileConfig
+		fileMode := constants.ModeFileDefault
 		if filepath.Ext(targetPath) == ".sh" {
 			fileMode = constants.ModeFileExec
 		}
@@ -256,7 +256,7 @@ func copyConfigTemplateFiles() error {
 		return fmt.Errorf("failed to determine HAProxy config file path: %w", err)
 	}
 
-	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), constants.ModeFileConfig); err != nil {
+	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), constants.ModeFileDefault); err != nil {
 		return fmt.Errorf("failed to write updated haproxy config file: %w", err)
 	}
 

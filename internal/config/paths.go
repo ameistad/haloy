@@ -10,7 +10,7 @@ import (
 
 // EnsureDir creates the directory and any necessary parents, logging an error if it fails.
 func ensureDir(dirPath string) error {
-	return os.MkdirAll(dirPath, 0755)
+	return os.MkdirAll(dirPath, constants.ModeDirPrivate)
 }
 
 // If HALOY_DATA_DIR is set, it will use that instead.

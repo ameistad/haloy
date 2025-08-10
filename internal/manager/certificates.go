@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/go-acme/lego/v4/certificate"
@@ -32,6 +33,8 @@ const (
 	refreshDebounceKey   = "certificate_refresh"
 	refreshDebounceDelay = 5 * time.Second
 	accountsDirName      = "accounts"
+	combinedCertExt      = ".pem"
+	keyCertExt           = ".key"
 )
 
 type CertificatesUser struct {
@@ -61,7 +64,7 @@ type CertificatesClientManager struct {
 func NewCertificatesClientManager(certDir string, tlsStaging bool, httpProviderPort string) (*CertificatesClientManager, error) {
 	keyDir := filepath.Join(certDir, accountsDirName)
 
-	if err := os.MkdirAll(keyDir, 0755); err != nil {
+	if err := os.MkdirAll(keyDir, constants.ModeDirPrivate); err != nil {
 		return nil, fmt.Errorf("failed to create key directory '%s': %w", keyDir, err)
 	}
 	keyManager, err := NewCertificatesKeyManager(keyDir)
@@ -186,7 +189,7 @@ type CertificatesManager struct {
 }
 
 func NewCertificatesManager(config CertificatesManagerConfig, updateSignal chan<- string) (*CertificatesManager, error) {
-	if err := os.MkdirAll(config.CertDir, 0755); err != nil {
+	if err := os.MkdirAll(config.CertDir, constants.ModeDirPrivate); err != nil {
 		return nil, fmt.Errorf("failed to create certificate directory: %w", err)
 	}
 
@@ -299,7 +302,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		// If configuration changed, clean up all related certificates first
 		if configChanged {
 			logger.Debug("Configuration changed, cleaning up existing certificates", "domain", canonical)
-			if err := cm.cleanupDomainCertificates(logger, canonical); err != nil {
+			if err := cm.cleanupDomainCertificates(canonical); err != nil {
 				logger.Warn("Failed to cleanup certificates", "domain", canonical, "error", err)
 				// Continue anyway, might still work
 			}
@@ -331,8 +334,7 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 
 // hasConfigurationChanged checks if the domain configuration has changed compared to existing certificate
 func (cm *CertificatesManager) hasConfigurationChanged(logger *slog.Logger, domain CertificatesDomain) (bool, error) {
-	certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt")
-	combinedCertKeyPath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt.key")
+	combinedCertKeyPath := filepath.Join(cm.config.CertDir, domain.Canonical+combinedCertExt)
 
 	// If certificate files don't exist, configuration has "changed" (need to create)
 	if _, err := os.Stat(combinedCertKeyPath); os.IsNotExist(err) {
@@ -340,7 +342,7 @@ func (cm *CertificatesManager) hasConfigurationChanged(logger *slog.Logger, doma
 		return true, nil
 	}
 
-	certData, err := os.ReadFile(certFilePath)
+	certData, err := os.ReadFile(combinedCertKeyPath)
 	if err != nil {
 		logger.Debug("Cannot read certificate file, treating as changed", "domain", domain.Canonical)
 		return true, nil
@@ -364,7 +366,7 @@ func (cm *CertificatesManager) hasConfigurationChanged(logger *slog.Logger, doma
 
 // needsRenewalDueToExpiry checks if certificate needs renewal due to expiry
 func (cm *CertificatesManager) needsRenewalDueToExpiry(logger *slog.Logger, domain CertificatesDomain) (bool, error) {
-	certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+".crt")
+	certFilePath := filepath.Join(cm.config.CertDir, domain.Canonical+combinedCertExt)
 
 	// If certificate doesn't exist, we need to obtain one
 	certData, err := os.ReadFile(certFilePath)
@@ -377,7 +379,7 @@ func (cm *CertificatesManager) needsRenewalDueToExpiry(logger *slog.Logger, doma
 
 	parsedCert, err := parseCertificate(certData)
 	if err != nil {
-		return true, nil // Can't parse, need to obtain new one
+		return true, nil
 	}
 
 	// Check if certificate expires within 30 days
@@ -390,24 +392,10 @@ func (cm *CertificatesManager) needsRenewalDueToExpiry(logger *slog.Logger, doma
 }
 
 // cleanupDomainCertificates removes all certificate files for a domain
-func (cm *CertificatesManager) cleanupDomainCertificates(logger *slog.Logger, canonical string) error {
-	certPath := filepath.Join(cm.config.CertDir, canonical+".crt")
-	keyPath := filepath.Join(cm.config.CertDir, canonical+".key")
-	combinedPath := filepath.Join(cm.config.CertDir, canonical+".crt.key")
-
-	files := []string{certPath, keyPath, combinedPath}
-	var errors []error
-
-	for _, file := range files {
-		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
-			errors = append(errors, fmt.Errorf("failed to remove %s: %w", file, err))
-		} else if err == nil {
-			logger.Debug("Removed file", "file", file)
-		}
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("cleanup partially failed: %v", errors)
+func (cm *CertificatesManager) cleanupDomainCertificates(canonical string) error {
+	combinedPath := filepath.Join(cm.config.CertDir, canonical+combinedCertExt)
+	if err := os.Remove(combinedPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove combined certificate file %s: %w", combinedPath, err)
 	}
 
 	return nil
@@ -538,33 +526,25 @@ func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain
 }
 
 func (m *CertificatesManager) saveCertificate(domain string, cert *certificate.Resource) error {
-	certPath := filepath.Join(m.config.CertDir, domain+".crt")
-	if err := os.WriteFile(certPath, cert.Certificate, 0644); err != nil {
-		return fmt.Errorf("failed to save certificate: %w", err)
-	}
+	combinedPath := filepath.Join(m.config.CertDir, domain+combinedCertExt)
+	tmpPath := combinedPath + ".tmp"
 
-	keyPath := filepath.Join(m.config.CertDir, domain+".key")
-	if err := os.WriteFile(keyPath, cert.PrivateKey, 0600); err != nil {
-		// Attempt cleanup of .crt file if key saving fails
-		os.Remove(certPath)
-		return fmt.Errorf("failed to save private key: %w", err)
-	}
-
-	// Create combined file for HAProxy (.crt.key) - some CAs might include key in Certificate field, others separate
-	combinedPath := filepath.Join(m.config.CertDir, domain+".crt.key")
-	// Ensure correct order: Cert first, then Key
 	pemContent := bytes.Buffer{}
-	pemContent.Write(cert.Certificate)
-	// Add newline separator if cert doesn't end with one
-	if len(cert.Certificate) > 0 && cert.Certificate[len(cert.Certificate)-1] != '\n' {
+
+	pemContent.Write(cert.PrivateKey)
+	if len(cert.PrivateKey) > 0 && cert.PrivateKey[len(cert.PrivateKey)-1] != '\n' {
 		pemContent.WriteByte('\n')
 	}
-	pemContent.Write(cert.PrivateKey)
-	if err := os.WriteFile(combinedPath, pemContent.Bytes(), 0600); err != nil {
-		// Attempt cleanup of .crt and .key files if combined saving fails
-		os.Remove(certPath)
-		os.Remove(keyPath)
-		return fmt.Errorf("failed to save combined certificate/key: %w", err)
+
+	pemContent.Write(cert.Certificate)
+	if err := os.WriteFile(tmpPath, pemContent.Bytes(), constants.ModeFileSecret); err != nil {
+		return fmt.Errorf("failed to save temporary combined certificate/key: %w", err)
+	}
+
+	// Atomic replace
+	if err := os.Rename(tmpPath, combinedPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to atomically replace combined certificate/key: %w", err)
 	}
 
 	return nil
@@ -587,41 +567,32 @@ func (m *CertificatesManager) CleanupExpiredCertificates(logger *slog.Logger, do
 	}
 
 	for _, file := range files {
-		// Look for the combined file HAProxy uses
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".crt.key") {
-			domain := strings.TrimSuffix(file.Name(), ".crt.key")
+		if !file.IsDir() && strings.HasSuffix(file.Name(), combinedCertExt) {
+			domain := strings.TrimSuffix(file.Name(), combinedCertExt)
 			_, isManaged := managedDomainsMap[domain]
-			combinedPath := filepath.Join(m.config.CertDir, file.Name())
-			certPath := filepath.Join(m.config.CertDir, domain+".crt")
-			keyPath := filepath.Join(m.config.CertDir, domain+".key")
+			combinedCertPath := filepath.Join(m.config.CertDir, file.Name())
 
-			// Check expiry using the .crt file
-			certData, err := os.ReadFile(certPath)
+			certData, err := os.ReadFile(combinedCertPath)
 			if err != nil {
 				if os.IsNotExist(err) && !isManaged {
-					logger.Warn("Found orphaned combined file for unmanaged domain (.crt missing). Deleting", "domain", domain)
-					os.Remove(combinedPath)
-					os.Remove(keyPath)
+					logger.Warn("Found orphaned PEM file for unmanaged domain (.crt missing). Deleting", "domain", domain)
+					os.Remove(combinedCertPath)
 					deleted++
 				} else if !os.IsNotExist(err) {
-					logger.Warn("Failed to read certificate file during cleanup", "file", certPath, "error", err)
+					logger.Warn("Failed to read certificate file during cleanup", "file", combinedCertPath, "error", err)
 				}
 				continue
 			}
 
-			// Use the local parseCertificate helper
 			parsedCert, err := parseCertificate(certData)
 			if err != nil {
-				logger.Warn("Failed to parse certificate during cleanup", "file", certPath)
+				logger.Warn("Failed to parse certificate during cleanup", "file", combinedCertPath)
 				continue
 			}
 
-			// Delete if expired AND unmanaged
 			if time.Now().After(parsedCert.NotAfter) && !isManaged {
 				logger.Debug("Deleting expired certificate files for unmanaged domain", "domain", domain)
-				os.Remove(combinedPath)
-				os.Remove(certPath)
-				os.Remove(keyPath)
+				os.Remove(combinedCertPath)
 				deleted++
 			}
 		}
@@ -631,17 +602,23 @@ func (m *CertificatesManager) CleanupExpiredCertificates(logger *slog.Logger, do
 }
 
 // parseCertificate takes PEM encoded certificate data and returns the parsed x509.Certificate
-// Kept unexported as it's only used internally by checkRenewals and cleanup.
 func parseCertificate(certData []byte) (*x509.Certificate, error) {
-	block, _ := pem.Decode(certData)
-	if block == nil || block.Type != "CERTIFICATE" {
-		return nil, fmt.Errorf("failed to decode PEM block containing certificate")
+	var block *pem.Block
+	rest := certData
+	for {
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type == "CERTIFICATE" {
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse certificate: %w", err)
+			}
+			return cert, nil
+		}
 	}
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse certificate: %w", err)
-	}
-	return cert, nil
+	return nil, fmt.Errorf("no CERTIFICATE PEM block found")
 }
 
 // CertificatesKeyManager handles private key operations for the ACME client
@@ -670,7 +647,7 @@ func NewCertificatesKeyManager(keyDir string) (*CertificatesKeyManager, error) {
 // LoadOrCreateKey loads an existing account key or creates a new one
 func (km *CertificatesKeyManager) LoadOrCreateKey(email string) (crypto.PrivateKey, error) {
 	// Sanitize email for filename
-	filename := helpers.SanitizeFilename(email) + ".key"
+	filename := helpers.SanitizeFilename(email) + keyCertExt
 	keyPath := filepath.Join(km.keyDir, filename)
 
 	// Check if key already exists
@@ -714,20 +691,17 @@ func (km *CertificatesKeyManager) createKey(path string) (crypto.PrivateKey, err
 		return nil, fmt.Errorf("failed to generate private key: %w", err)
 	}
 
-	// Encode private key to PEM
 	keyBytes, err := x509.MarshalECPrivateKey(privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal private key: %w", err)
 	}
 
-	// Create PEM block
 	pemBlock := &pem.Block{
 		Type:  "EC PRIVATE KEY",
 		Bytes: keyBytes,
 	}
 
-	// Write key to file
-	keyFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, constants.ModeFileSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key file: %w", err)
 	}

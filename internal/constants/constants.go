@@ -1,6 +1,6 @@
 package constants
 
-import "io/fs"
+import "os"
 
 const (
 	Version                  = "0.1.0"
@@ -35,8 +35,8 @@ const (
 
 // File and directory permissions
 const (
-	ModeFileSecret fs.FileMode = 0o600 // secrets: .env, keys
-	ModeFileConfig fs.FileMode = 0o644 // non-secret configs
-	ModeFileExec   fs.FileMode = 0o755 // scripts/binaries
-	ModeDirPrivate fs.FileMode = 0o700 // private dirs
+	ModeFileSecret  os.FileMode = 0o600 // secrets: .env, keys
+	ModeFileDefault os.FileMode = 0o644 // non-secret configs
+	ModeFileExec    os.FileMode = 0o755 // scripts/binaries
+	ModeDirPrivate  os.FileMode = 0o700 // private dirs
 )
