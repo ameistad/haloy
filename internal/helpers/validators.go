@@ -12,7 +12,6 @@ func IsValidEmail(email string) bool {
 }
 
 func IsValidDomain(domain string) error {
-	// Check basic requirements
 	if len(domain) == 0 || len(domain) > 253 {
 		return fmt.Errorf("domain length must be between 1 and 253 characters")
 	}
@@ -32,9 +31,17 @@ func IsValidDomain(domain string) error {
 		return fmt.Errorf("domain must have at least two labels (e.g., example.com)")
 	}
 
-	for _, label := range labels {
-		if err := validateDomainLabel(label); err != nil {
-			return fmt.Errorf("invalid label '%s': %w", label, err)
+	for i, label := range labels {
+		if i == len(labels)-1 {
+			// Special validation for TLD (last label)
+			if err := validateTLD(label); err != nil {
+				return fmt.Errorf("invalid TLD '%s': %w", label, err)
+			}
+		} else {
+			// Regular label validation for non-TLD labels
+			if err := validateDomainLabel(label); err != nil {
+				return fmt.Errorf("invalid label '%s': %w", label, err)
+			}
 		}
 	}
 
@@ -55,6 +62,29 @@ func validateDomainLabel(label string) error {
 		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
 			(r >= '0' && r <= '9') || r == '-') {
 			return fmt.Errorf("label contains invalid character: %c", r)
+		}
+	}
+
+	return nil
+}
+
+func validateTLD(tld string) error {
+	// TLD must be at least 2 characters long (ICANN policy)
+	if len(tld) < 2 || len(tld) > 63 {
+		return fmt.Errorf("TLD length must be between 2 and 63 characters")
+	}
+
+	// TLD cannot start or end with hyphen
+	if strings.HasPrefix(tld, "-") || strings.HasSuffix(tld, "-") {
+		return fmt.Errorf("TLD cannot start or end with hyphen")
+	}
+
+	// TLD should only contain letters (no numbers or hyphens in practice)
+	// However, some newer TLDs do contain numbers, so we'll allow alphanumeric
+	for _, r := range tld {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9')) {
+			return fmt.Errorf("TLD contains invalid character: %c", r)
 		}
 	}
 

@@ -12,41 +12,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ValidateDomain checks that a domain string is not empty and has a basic valid structure.
-func ValidateDomain(domain string) error {
-	if domain == "" {
-		return errors.New("domain cannot be empty")
-	}
-	// This regex enforces that labels start/end with alphanumeric chars
-	// and contain only alphanumeric chars or hyphens internally.
-	pattern := `^([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
-	matched, err := regexp.MatchString(pattern, domain)
-	if err != nil {
-		// Consider logging the regex compilation error if it happens
-		return fmt.Errorf("domain regex error: %w", err)
-	}
-	if !matched {
-		// Add checks for other potential issues not covered by regex, if needed
-		if strings.HasPrefix(domain, "-") || strings.Contains(domain, ".-") {
-			return fmt.Errorf("invalid domain format: labels cannot start with a hyphen: %s", domain)
-		}
-		// Add more specific checks if the regex fails for unexpected reasons
-		return fmt.Errorf("invalid domain format: %s", domain)
-	}
-	return nil
-}
-
-// ValidateHealthCheckPath checks that a health check path is a valid URL path.
-func ValidateHealthCheckPath(path string) error {
-	if path == "" {
-		return errors.New("health check path cannot be empty")
-	}
-	if path[0] != '/' {
-		return errors.New("health check path must start with a slash")
-	}
-	return nil
-}
-
 func (ac *AppConfig) Validate() error {
 
 	if !isValidAppName(ac.Name) {
@@ -95,7 +60,7 @@ func (ac *AppConfig) Validate() error {
 
 	// Validate health check path.
 	if ac.HealthCheckPath != "" {
-		if err := ValidateHealthCheckPath(ac.HealthCheckPath); err != nil {
+		if err := isValidHealthCheckPath(ac.HealthCheckPath); err != nil {
 			return err
 		}
 	}
@@ -161,4 +126,15 @@ func isValidAppName(name string) bool {
 		return true
 	}
 	return matched
+}
+
+// isValidHealthCheckPath checks that a health check path is a valid URL path.
+func isValidHealthCheckPath(path string) error {
+	if path == "" {
+		return errors.New("health check path cannot be empty")
+	}
+	if path[0] != '/' {
+		return errors.New("health check path must start with a slash")
+	}
+	return nil
 }

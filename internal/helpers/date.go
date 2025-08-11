@@ -12,17 +12,25 @@ import (
 // the last 24 to 48 hours it shows relative time in days, and for events older than
 // two days, it shows an absolute date and time.
 func FormatDateString(dateString string) (string, error) {
-	// Candidate layouts for parsing.
-	layouts := []string{"20060102150405", time.RFC3339}
-
 	var t time.Time
 	var err error
-	for _, layout := range layouts {
-		t, err = time.Parse(layout, dateString)
-		if err == nil {
-			break
+
+	switch len(dateString) {
+	case 14:
+		t, err = time.Parse("20060102150405", dateString)
+	case 16: // with centiseconds
+		t, err = time.Parse("20060102150405", dateString[:14])
+	default:
+		// Try RFC3339 and other formats
+		layouts := []string{time.RFC3339, time.RFC3339Nano}
+		for _, layout := range layouts {
+			t, err = time.Parse(layout, dateString)
+			if err == nil {
+				break
+			}
 		}
 	}
+
 	if err != nil {
 		return "", fmt.Errorf("failed to parse date string %q: %w", dateString, err)
 	}

@@ -16,7 +16,6 @@ func LoadAPIToken() (string, error) {
 		// Don't fail if .env files don't exist, just continue
 	}
 
-	// Get the token from environment
 	token := os.Getenv(constants.EnvVarAPIToken)
 	if token == "" {
 		return "", fmt.Errorf("API token not found. Please set %s environment variable or create a %s file", constants.EnvVarAPIToken, constants.ConfigEnvFileName)
