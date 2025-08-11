@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	MaintenanceInterval = 12 * time.Hour  // Interval for periodic maintenance tasks
-	EventDebounceDelay  = 3 * time.Second // Delay for debouncing container events
-	UpdateTimeout       = 2 * time.Minute // Max time for a single update operation
+	maintenanceInterval = 12 * time.Hour  // Interval for periodic maintenance tasks
+	eventDebounceDelay  = 3 * time.Second // Delay for debouncing container events
+	updateTimeout       = 2 * time.Minute // Max time for a single update operation
 )
 
 type ContainerEvent struct {
@@ -42,13 +42,11 @@ func RunManager(debug bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Set up slog with streaming capability
 	logLevel := slog.LevelInfo
 	if debug {
 		logLevel = slog.LevelDebug
 	}
 
-	// Setup logging with streaming
 	// Use a log broker to allow streaming logs to the API server
 	logBroker := logging.NewLogBroker()
 	logger := logging.NewLogger(logLevel, logBroker)
@@ -62,21 +60,18 @@ func RunManager(debug bool) {
 		logger.Info("Debug mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains.")
 	}
 
-	// Initialize database
-	logger.Info("Initializing database.")
 	db, err := storage.New(constants.DBPath)
 	if err != nil {
 		logger.Error("Failed to initialize database", "error", err)
 		return
 	}
 	defer db.Close()
-
 	if err := db.Migrate(); err != nil {
 		logger.Error("Failed to run database migrations", "error", err)
 		return
 	}
+	logger.Info("Database initialized successfully")
 
-	// Read config file if it exists
 	configFilePath := filepath.Join(constants.HaloyConfigPath, constants.ManagerConfigFileName)
 	managerConfig, err := config.LoadManagerConfig(configFilePath)
 	if err != nil {
@@ -84,21 +79,17 @@ func RunManager(debug bool) {
 		return
 	}
 
-	// Initialize Docker client
 	cli, err := docker.NewClient(ctx)
 	if err != nil {
 		logging.LogFatal(logger, "Failed to create Docker client", "error", err)
 	}
 	defer cli.Close()
 
-	// Get the API token from an environment variable for security
 	apiToken := os.Getenv(constants.EnvVarAPIToken)
 	if apiToken == "" {
 		logging.LogFatal(logger, "%s environment variable not set", constants.EnvVarAPIToken)
 	}
 
-	// Create and start the API server in a separate goroutine
-	// Pass the log broker to the API server so they share the same streaming
 	apiServer := api.NewServer(apiToken, logBroker, logLevel)
 	go func() {
 		logger.Info(fmt.Sprintf("Starting API server on :%s...", constants.APIServerPort))
@@ -115,13 +106,9 @@ func RunManager(debug bool) {
 	errorsChan := make(chan error)
 
 	// Channel for signaling cert updates needing HAProxy reload
-	// Buffered channel to prevent blocking CertManager if RunManager is busy
 	certUpdateSignal := make(chan string, 5)
 
-	// Create deployment manager
 	deploymentManager := NewDeploymentManager(cli, managerConfig)
-
-	// Create and start the certifications manager
 	certManagerConfig := CertificatesManagerConfig{
 		CertDir:          constants.CertificatesStoragePath,
 		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
@@ -131,11 +118,7 @@ func RunManager(debug bool) {
 	if err != nil {
 		logging.LogFatal(logger, "Failed to create certificate manager", "error", err)
 	}
-
-	// Create the HAProxy manager
 	haproxyManager := NewHAProxyManager(cli, managerConfig, constants.HAProxyConfigPath, debug)
-
-	// Updater to glue deployment manager and certificate manager and handle HAProxy updates.
 	updaterConfig := UpdaterConfig{
 		Cli:               cli,
 		DeploymentManager: deploymentManager,
@@ -143,33 +126,29 @@ func RunManager(debug bool) {
 		HAProxyManager:    haproxyManager,
 	}
 
-	// Perform initial update
 	updater := NewUpdater(updaterConfig)
 	if err := updater.Update(ctx, logger, TriggerReasonInitial, nil); err != nil {
 		logger.Error("Background update failed", "error", err)
 	}
 
-	// Log the successful initialization of the manager for log streams
 	logger.Info("Haloy manager initialized",
-		logging.AttrManagerInitComplete, true,
+		logging.AttrManagerInitComplete, true, // signal that the initialization is complete
 	)
 
-	// Create a debouncer to prevent multiple updates in quick succession
-	debouncer := helpers.NewDebouncer(EventDebounceDelay)
+	// To prevent multiple updates in quick succession
+	debouncer := helpers.NewDebouncer(eventDebounceDelay)
 
-	// Start Docker event listener
+	// Docker event listener
 	go listenForDockerEvents(ctx, cli, eventsChan, errorsChan, logger)
 
-	// Start periodic maintenance ticker
-	maintenanceTicker := time.NewTicker(MaintenanceInterval)
+	maintenanceTicker := time.NewTicker(maintenanceInterval)
 	defer maintenanceTicker.Stop()
 
-	// Track the latest deployment ID and event action for each app so we use the latest event when we debounce.
+	// Use the latest event when we debounce.
 	latestDeploymentID := make(map[string]string)
 	latestEventAction := make(map[string]events.Action)
 	latestDomains := make(map[string][]config.Domain)
-	// Avoid processing the same deployment multiple times
-	lastProcessedDeployment := make(map[string]string)
+	lastProcessedDeployment := make(map[string]string) // Avoid processing the same deployment multiple times
 
 	// Main event loop
 	for {
@@ -206,9 +185,8 @@ func RunManager(debug bool) {
 				// Create a deployment-specific logger that will stream to SSE clients
 				deploymentLogger := logging.NewDeploymentLogger(currentDeploymentID, logLevel, logBroker)
 
-				// Create a context with a timeout for this specific update task.
-				// Use the main manager context `ctx` as the parent.
-				updateCtx, cancelUpdate := context.WithTimeout(ctx, UpdateTimeout)
+				// New context with timeout
+				updateCtx, cancelUpdate := context.WithTimeout(ctx, updateTimeout)
 				defer cancelUpdate()
 
 				app := &TriggeredByApp{
@@ -252,7 +230,6 @@ func RunManager(debug bool) {
 				u := updater
 				// Update only needs to apply config, not full build/check
 				// We assume the deployment state triggering the cert update is still valid.
-				// Get the current deployment state
 				currentDeployments := u.deploymentManager.Deployments()
 				if err := u.haproxyManager.ApplyConfig(updateCtx, logger, currentDeployments); err != nil {
 					logger.Error("Background HAProxy update failed",
@@ -266,12 +243,6 @@ func RunManager(debug bool) {
 			logger.Error("Error from docker events", "error", err)
 		case <-maintenanceTicker.C:
 			logger.Info("Performing periodic maintenance...")
-			// Clean up old logs (e.g., older than 30 days) - commented out until CleanOldLogs is implemented
-			// if err := logging.CleanOldLogs(30); err != nil {
-			// 	logger.Warn("Failed to clean old logs", "error", err)
-			// }
-
-			// Prune dangling images and containers
 			_, err := docker.PruneImages(ctx, cli, logger)
 			if err != nil {
 				logger.Warn("Failed to prune images", "error", err)
@@ -281,8 +252,7 @@ func RunManager(debug bool) {
 				defer cancelDeployment()
 
 				// Perform a background update to ensure the system is in sync
-				// This will check the running containers and update HAProxy and certificates if needed.
-				// It will also cleanup expired certificates.
+				// This will check the running containers and update HAProxy and renew and cleanup certificates if needed.
 				u := updater
 				if err := u.Update(deploymentCtx, logger, TriggerPeriodicRefresh, nil); err != nil {
 					logger.Error("Background update failed", "error", err)
@@ -294,7 +264,6 @@ func RunManager(debug bool) {
 
 // listenForDockerEvents sets up a listener for Docker events
 func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan chan ContainerEvent, errorsChan chan error, logger *slog.Logger) {
-	// Set up filter for container events
 	filterArgs := filters.NewArgs()
 	filterArgs.Add("type", "container")
 
@@ -307,14 +276,12 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 		"kill":    {},
 	}
 
-	// Start listening for events
 	eventOptions := events.ListOptions{
 		Filters: filterArgs,
 	}
 
 	events, errs := cli.Events(ctx, eventOptions)
 
-	// Forward events and errors to our channels
 	for {
 		select {
 		case <-ctx.Done():
@@ -373,7 +340,6 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 // IsAppContainer checks if a container should be handled by haloy.
 func IsAppContainer(container container.InspectResponse) bool {
 
-	// Check if the container has the correct labels.
 	if container.Config.Labels[config.LabelRole] != config.AppLabelRole {
 		return false
 	}

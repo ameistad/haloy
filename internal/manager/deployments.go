@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -72,7 +73,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.
 		}
 
 		if !IsAppContainer(container) {
-			logger.Info("Container not eligible for haloy management", "container_id", containerSummary.ID)
+			logger.Debug("Container not eligible for haloy management", "container_id", containerSummary.ID)
 			continue
 		}
 
@@ -163,9 +164,7 @@ func (dm *DeploymentManager) Deployments() map[string]Deployment {
 
 	// Return a copy to prevent external modification after unlock
 	deploymentsCopy := make(map[string]Deployment, len(dm.deployments))
-	for appName, deployment := range dm.deployments {
-		deploymentsCopy[appName] = deployment
-	}
+	maps.Copy(deploymentsCopy, dm.deployments)
 	return deploymentsCopy
 }
 

@@ -218,7 +218,7 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context, logger *slog.Logg
 		}
 
 		if retry == 0 || retry == maxRetries/2 {
-			logger.Info("HAProxyManager: Waiting for HAProxy container to be running", "attempt", retry+1, "max_retries", maxRetries)
+			logger.Info("Waiting for HAProxy container to be running", "attempt", retry+1, "max_retries", maxRetries)
 		}
 
 		select {

@@ -91,7 +91,7 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 	// Build Deployments and check if anything has changed (Thread-safe)
 	deploymentsHasChanged, failedContainers, err := u.deploymentManager.BuildDeployments(ctx, logger)
 	if err != nil {
-		return fmt.Errorf("updater: failed to build deployments: %w", err)
+		return fmt.Errorf("failed to build deployments: %w", err)
 	}
 
 	// If we have failed containers, we log them and stop them. We'll do that even if no changes were detected.
