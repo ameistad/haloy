@@ -54,7 +54,7 @@ func SecretsSetCommand() *cobra.Command {
 				return
 			}
 
-			ui.Success("Secret '%s' set successfully", name)
+			ui.Success("Secret '%s' set successfully on %s", name, targetServer)
 
 		},
 	}
@@ -150,7 +150,7 @@ func SecretsDeleteCommand() *cobra.Command {
 				return
 			}
 
-			ui.Success("Secret '%s' deleted successfully", name)
+			ui.Success("Secret '%s' deleted successfully on %s", name, targetServer)
 		},
 	}
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
