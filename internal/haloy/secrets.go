@@ -32,7 +32,13 @@ func SecretsSetCommand() *cobra.Command {
 			name := args[0]
 			value := strings.Join(args[1:], " ")
 
-			targetServer, err := getServerURL(serverURL, configPath)
+			if configPath == "" {
+				configPath = "."
+			}
+
+			appConfig, _ := config.LoadAndValidateAppConfig(configPath)
+
+			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -66,11 +72,18 @@ func SecretsListCommand() *cobra.Command {
 		Short: "List all stored secrets",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			targetServer, err := getServerURL(serverURL, configPath)
+			if configPath == "" {
+				configPath = "."
+			}
+
+			appConfig, _ := config.LoadAndValidateAppConfig(configPath)
+
+			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
 				ui.Error("%v", err)
 				return
 			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 			api := apiclient.New(targetServer)
@@ -114,7 +127,13 @@ func SecretsDeleteCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			name := args[0]
 
-			targetServer, err := getServerURL(serverURL, configPath)
+			if configPath == "" {
+				configPath = "."
+			}
+
+			appConfig, _ := config.LoadAndValidateAppConfig(configPath)
+
+			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -136,24 +155,6 @@ func SecretsDeleteCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
-}
-
-func getServerURL(serverURL, configPath string) (string, error) {
-	if serverURL != "" {
-		ui.Info("Using server URL from command line: %s", serverURL)
-		return serverURL, nil
-	}
-
-	if configPath == "" {
-		configPath = "."
-	}
-
-	appConfig, err := config.LoadAndValidateAppConfig(configPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to load config: %w", err)
-	}
-
-	return appConfig.Server, nil
 }
 
 func SecretsCommand() *cobra.Command {

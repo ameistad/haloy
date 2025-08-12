@@ -5,21 +5,24 @@ import (
 	"time"
 )
 
-// FormatDateString attempts to parse a date string using several known layouts
-// (e.g. "20060102150405" for deployment IDs or RFC3339 "2006-01-02T15:04:05Z")
-// and returns a human-readable string. For events that happened today it displays
-// "today at HH:MM", for yesterday it shows "yesterday at HH:MM", for events within
-// the last 24 to 48 hours it shows relative time in days, and for events older than
-// two days, it shows an absolute date and time.
+// FormatDateString formats a date string in a simple, CLI-friendly format
+// similar to Docker and Kubernetes tools (e.g., "2 minutes ago", "3 hours ago", "2 days ago")
 func FormatDateString(dateString string) (string, error) {
+	return FormatDateStringWithLocation(dateString, time.Local)
+}
+
+// FormatDateStringWithTime allows injecting the current time.
+// This is primarily useful for testing with predictable time values.
+// FormatDateStringWithLocation formats a date string for the specified timezone
+func FormatDateStringWithLocation(dateString string, loc *time.Location) (string, error) {
 	var t time.Time
 	var err error
 
 	switch len(dateString) {
 	case 14:
-		t, err = time.Parse("20060102150405", dateString)
+		t, err = time.ParseInLocation("20060102150405", dateString, loc)
 	case 16: // with centiseconds
-		t, err = time.Parse("20060102150405", dateString[:14])
+		t, err = time.ParseInLocation("20060102150405", dateString[:14], loc)
 	default:
 		// Try RFC3339 and other formats
 		layouts := []string{time.RFC3339, time.RFC3339Nano}
@@ -30,48 +33,69 @@ func FormatDateString(dateString string) (string, error) {
 			}
 		}
 	}
-
 	if err != nil {
 		return "", fmt.Errorf("failed to parse date string %q: %w", dateString, err)
 	}
 
-	// Convert to local time for display purposes.
-	tLocal := t.Local()
-	now := time.Now().Local()
-	formattedTime := tLocal.Format("15:04")
-	elapsed := now.Sub(tLocal)
+	// Convert to specified location
+	tInLoc := t.In(loc)
+	nowInLoc := time.Now().In(loc)
+	elapsed := nowInLoc.Sub(tInLoc)
 
-	// Use "today" and "yesterday" labels if the dates match.
-	if now.Year() == tLocal.Year() {
-		ydayNow := now.YearDay()
-		ydayT := tLocal.YearDay()
-		switch diff := ydayNow - ydayT; diff {
-		case 0:
-			return fmt.Sprintf("today at %s", formattedTime), nil
-		case 1:
-			return fmt.Sprintf("yesterday at %s", formattedTime), nil
+	// Handle future dates
+	if elapsed < 0 {
+		elapsed = -elapsed
+		return formatDuration(elapsed) + " from now", nil
+	}
+
+	// Format like Docker/Kubernetes
+	return formatDuration(elapsed) + " ago", nil
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		seconds := int(d.Seconds())
+		if seconds <= 1 {
+			return "1 second"
 		}
+		return fmt.Sprintf("%d seconds", seconds)
 	}
 
-	// For events older than 48 hours (2 days), show the absolute date/time.
-	if elapsed >= 48*time.Hour {
-		absolute := tLocal.Format("Jan 2, 2006 at 15:04")
-		return absolute, nil
+	if d < time.Hour {
+		minutes := int(d.Minutes())
+		if minutes == 1 {
+			return "1 minute"
+		}
+		return fmt.Sprintf("%d minutes", minutes)
 	}
 
-	// For events between 24 and 48 hours, display relative time in days.
-	if elapsed >= 24*time.Hour {
-		days := int(elapsed.Hours() / 24)
-		return fmt.Sprintf("%d day(s) ago at %s", days, formattedTime), nil
+	if d < 24*time.Hour {
+		hours := int(d.Hours())
+		if hours == 1 {
+			return "1 hour"
+		}
+		return fmt.Sprintf("%d hours", hours)
 	}
 
-	// For recent events (within 24 hours), display relative time.
-	switch {
-	case elapsed < time.Minute:
-		return fmt.Sprintf("%d seconds ago at %s", int(elapsed.Seconds()), formattedTime), nil
-	case elapsed < time.Hour:
-		return fmt.Sprintf("%d minutes ago at %s", int(elapsed.Minutes()), formattedTime), nil
-	default:
-		return fmt.Sprintf("%d hours ago at %s", int(elapsed.Hours()), formattedTime), nil
+	if d < 30*24*time.Hour { // Less than ~30 days
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day"
+		}
+		return fmt.Sprintf("%d days", days)
 	}
+
+	if d < 365*24*time.Hour { // Less than a year
+		months := int(d.Hours() / (24 * 30)) // Rough approximation
+		if months == 1 {
+			return "1 month"
+		}
+		return fmt.Sprintf("%d months", months)
+	}
+
+	years := int(d.Hours() / (24 * 365))
+	if years == 1 {
+		return "1 year"
+	}
+	return fmt.Sprintf("%d years", years)
 }
