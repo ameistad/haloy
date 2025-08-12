@@ -94,10 +94,11 @@ func SecretsListCommand() *cobra.Command {
 			}
 			secrets := response.Secrets
 			if len(secrets) == 0 {
-				ui.Info("No secrets found.")
+				ui.Info("No secrets found on %s.", targetServer)
 				return
 			}
 
+			ui.Info("Secrets stored on %s:", targetServer)
 			headers := []string{"NAME", "DIGEST", "DATE"}
 			rows := make([][]string, 0, len(secrets))
 			for _, secret := range secrets {
