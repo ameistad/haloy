@@ -109,13 +109,14 @@ func executeHook(command string, workDir string) error {
 	if len(parts) == 0 {
 		return fmt.Errorf("empty hook command")
 	}
-	prog := parts[0]
-	args := parts[1:]
+	// prog := parts[0]
+	// args := parts[1:]
 
-	cmd := exec.Command(prog, args...)
-	cmd.Dir = workDir      // Set the working directory for the command
-	cmd.Stdout = os.Stdout // Stream stdout to the user's terminal
-	cmd.Stderr = os.Stderr // Stream stderr to the user's terminal
+	// cmd := exec.Command(prog, args...)
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = workDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
 }

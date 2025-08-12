@@ -8,20 +8,24 @@ Haloy is a free tool for zero‑downtime Docker app deploys with automatic HAPro
 * 💻 Straightforward command-line interface.
 * 🌐 HTTP API for automation, integration, and remote management.
 
-## Get Started
-These are the steps to install Haloy on the server where you are hosting your dockerized applications. 
-
-### Requirements
-- __Docker installed and running__
+## Requirements
+- Docker installed and running
 - Your user is part of the docker group. This lets you run Haloy and Docker commands without sudo.
     - Add your user: `sudo usermod -aG docker $(whoami)`
     - Verify (you should see "docker"): `id -nG $(whoami)` or `groups $(whoami)`
     - Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
     - Test it: `docker ps` (should work without sudo).
+- Haloy has been tested on Debian 12, but should work on most systems. 
 
-> ⚠️ **Note:** Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
+> [!NOTE]
+> Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
+## Get Started
+These are the steps to install Haloy on the server where you are hosting your dockerized applications. 
 
-### Install
+## Install
+
+### Server Install
+Run this on the server you plan on running Haloy:
 ```bash
 curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
 ```
@@ -35,10 +39,8 @@ If you want to use the API for remote deployments and you have added DNS records
 ```bash
 haloyadm init --api-domain api.yourserver.com --acme-email you@youremail.com
 ```
-This will create the necessary config files and setup the directories in ~/.local/share/haloy. 
 
-
-### Remote deploys
+### Client install (optional for remote deploys)
 Run this on your local development machine or any machine that only needs to deploy applications to the server. It installs only the `haloy` client.
 
 ```bash
@@ -51,14 +53,17 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 
-### Configure Your Apps
+## Deploying Apps
 
-TODO
 
-#### DNS Setup 🗺️
-For TLS (HTTPS) to work, you need to set up DNS records pointing to your server's public IP address for each domain you plan to use. You can typically do this in your domain registrar's control panel by creating A (for IPv4) or AAAA (for IPv6) records.
+### Quickstart
+To get up and running quickly with your app you can build the images locally on your own system. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. Here's a simple bash script you can use for the pre deploy hook.
 
-### Deploy
+### Configuration
+Create a haloy.yaml file. TODO: add full list of config options with explanation.
+
+
+### Deploy commands
 
 ```bash
 # Deploy app
@@ -105,43 +110,12 @@ Each app in the `apps` list can have the following properties:
 - `volumes`: Docker volumes to mount
 - `healthCheckPath`: (Optional) The HTTP path that Haloy will check for a 2xx status code to determine if your application is healthy. This is used as a fallback if you don't define a HEALTHCHECK instruction in your Dockerfile. (Default: "/")
 
-### Source Configuration
-The `source` property is mandatory and tells Haloy how to obtain your application's Docker image. You must specify exactly one of the following two options:
 
-#### Option 1: `dockerfile`
-Builds the image from a local Dockerfile.
+## Hooks
+Haloy has pre deploy and post deploy hooks which will execute commands on the machine you are running `haloy`. 
 
-```yaml
-source:
-  dockerfile:
-    path: "/path/to/your/app/Dockerfile"
-    buildContext: "/path/to/your/app"
-```
-- `path`: (Required) The absolute path to the Dockerfile.
-- `buildContext`: (Required) The absolute path to the directory to use as the Docker build context.
+TODO: documents how hooks work.
 
-#### Option 2: `image`
-Pulls a pre-built image from a Docker registry. This is perfect for deploying third-party applications or apps from your own CI/CD pipeline.
-```yaml
-source:
-  image:
-    repository: "nginx" # Can be e.g., ghcr.io/my-org/my-app
-    tag: "1.21-alpine" # Optional, defaults to "latest"
-    registry: # Optional, for private registries
-      server: "ghcr.io"
-      username:
-        type: "env" # or "secret" or "plain"
-        value: "GITHUB_USER"
-      password:
-        type: "secret"
-        value: "github-token"
-```
-- `repository`: (Required) The name of the image repository (e.g., nginx, my-org/my-app).
-- `tag`: (Optional) The image tag to pull. Defaults to latest. (optional)
-- `registry`: (Optional) Authentication details for pulling from a private registry. The server is optional and will be inferred from the repository if omitted (e.g., for Docker Hub). The `username` and `password` sources can be:
-  - `type: "plain"`: The `value` is the literal username/password.
-  - `type: "env"`: The `value` is the name of an environment variable to read from.
-  - `type: "secret"`: The `value` is the name of a secret stored in Haloy.
 
 ## How Rollbacks Work
 
