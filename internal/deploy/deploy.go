@@ -28,7 +28,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 
 	err := docker.EnsureImageUpToDate(ctx, cli, logger, appConfig.Image)
 	if err != nil {
-		return fmt.Errorf("failed to ensure image is up to date: %w", err)
+		return err
 	}
 	newImageRef, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
 	if err != nil {

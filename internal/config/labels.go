@@ -160,14 +160,10 @@ func (cl *ContainerLabels) Validate() error {
 				return fmt.Errorf("domain validation failed: %w", err)
 			}
 		}
+	}
 
-		if cl.ACMEEmail == "" {
-			return fmt.Errorf("ACME email must be set if domains are defined")
-		}
-
-		if !helpers.IsValidEmail(cl.ACMEEmail) {
-			return fmt.Errorf("ACME email is not valid")
-		}
+	if cl.ACMEEmail != "" && !helpers.IsValidEmail(cl.ACMEEmail) {
+		return fmt.Errorf("ACME email is not valid")
 	}
 
 	if cl.Port == "" {
