@@ -161,8 +161,8 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 	for _, d := range deployments {
 		backendName := d.Labels.AppName
 		backends += fmt.Sprintf("backend %s\n", backendName)
-		for i, inst := range d.Instances {
-			backends += fmt.Sprintf("%sserver app%d %s:%s check\n", indent, i+1, inst.IP, inst.Port)
+		for i, instance := range d.Instances {
+			backends += fmt.Sprintf("%sserver app%d %s:%s check\n", indent, i+1, instance.IP, instance.Port)
 		}
 	}
 

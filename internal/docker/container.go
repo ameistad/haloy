@@ -382,7 +382,6 @@ func ContainerNetworkIP(containerInfo container.InspectResponse, networkName str
 	}
 
 	if !containerInfo.State.Running {
-		// Include more details about why the container isn't running
 		exitCode := 0
 		if containerInfo.State.ExitCode != 0 {
 			exitCode = containerInfo.State.ExitCode
@@ -391,8 +390,7 @@ func ContainerNetworkIP(containerInfo container.InspectResponse, networkName str
 	}
 
 	if _, exists := containerInfo.NetworkSettings.Networks[networkName]; !exists {
-		// List available networks for debugging
-		var availableNetworks []string
+		var availableNetworks []string // List available networks for debugging
 		for netName := range containerInfo.NetworkSettings.Networks {
 			availableNetworks = append(availableNetworks, netName)
 		}
@@ -409,13 +407,11 @@ func ContainerNetworkIP(containerInfo container.InspectResponse, networkName str
 
 // checkImagePlatformCompatibility verifies the image platform matches the host
 func checkImagePlatformCompatibility(ctx context.Context, cli *client.Client, imageRef string) error {
-	// Get image details
 	imageInspect, err := cli.ImageInspect(ctx, imageRef)
 	if err != nil {
 		return fmt.Errorf("failed to inspect image %s: %w", imageRef, err)
 	}
 
-	// Get host platform info
 	hostInfo, err := cli.Info(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get host info: %w", err)
@@ -424,14 +420,12 @@ func checkImagePlatformCompatibility(ctx context.Context, cli *client.Client, im
 	imagePlatform := imageInspect.Architecture
 	hostPlatform := hostInfo.Architecture
 
-	// Common platform mappings
 	platformMap := map[string]string{
 		"x86_64":  "amd64",
 		"aarch64": "arm64",
 		"armv7l":  "arm",
 	}
 
-	// Normalize platform names
 	if normalized, exists := platformMap[imagePlatform]; exists {
 		imagePlatform = normalized
 	}
