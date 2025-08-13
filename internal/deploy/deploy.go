@@ -53,7 +53,7 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	} else if len(runResult) == 1 {
 		logger.Info("Container started successfully", "containerID", runResult[0].ID, "deploymentID", deploymentID)
 	} else {
-		logger.Info("Containers started successfully", "count", len(runResult), "deploymentID", deploymentID)
+		logger.Info(fmt.Sprintf("Containers started successfully (%d replicas)", len(runResult)), "count", len(runResult), "deploymentID", deploymentID)
 	}
 	if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef, *appConfig.DeploymentsToKeep); err != nil {
 		logger.Warn("Failed to write app config history", "error", err)
