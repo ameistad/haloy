@@ -5,9 +5,16 @@ import (
 	"strings"
 )
 
+type ImageSource string
+
+const (
+	ImageSourceRegistry ImageSource = "registry"
+	ImageSourceLocal    ImageSource = "local"
+)
+
 type Image struct {
-	// Repository should include registry if not Docker Hub, e.g. "ghcr.io/myorg/myapp"
 	Repository   string        `json:"repository" yaml:"repository" toml:"repository"`
+	Source       ImageSource   `json:"source,omitempty" yaml:"source,omitempty" toml:"source,omitempty"`
 	Tag          string        `json:"tag,omitempty" yaml:"tag,omitempty" toml:"tag,omitempty"`
 	RegistryAuth *RegistryAuth `json:"registry,omitempty" yaml:"registry,omitempty" toml:"registry,omitempty"`
 }
@@ -40,6 +47,13 @@ func (i *Image) Validate() error {
 	if strings.ContainsAny(i.Repository, " \t\n\r") {
 		return fmt.Errorf("source.image.repository '%s' contains whitespace", i.Repository)
 	}
+
+	if i.Source != "" {
+		if i.Source != ImageSourceRegistry && i.Source != ImageSourceLocal {
+			return fmt.Errorf("source.image.source '%s' is invalid (must be 'registry' or 'local')", i.Source)
+		}
+	}
+
 	if strings.ContainsAny(i.Tag, " \t\n\r") {
 		return fmt.Errorf("source.image.tag '%s' contains whitespace", i.Tag)
 	}

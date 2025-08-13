@@ -88,24 +88,43 @@ func getRegistryAuthString(imageConfig config.Image) (string, error) {
 
 func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.Logger, imageConfig config.Image) error {
 	imageRef := imageConfig.ImageRef()
+
+	local, err := cli.ImageInspect(ctx, imageRef)
+	localExists := (err == nil)
+
+	source := imageConfig.Source
+	if source == "" {
+		source = config.ImageSourceRegistry // Default to registry if not specified
+	}
+
+	if source == config.ImageSourceLocal {
+		if !localExists {
+			return fmt.Errorf("local image %s not found", imageRef)
+		}
+		logger.Debug("Using local image", "image", imageRef)
+		return nil
+	}
+
 	registryAuth, err := getRegistryAuthString(imageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to resolve registry auth for image %s: %w", imageRef, err)
 	}
-	// Try inspecting local image
-	local, err := cli.ImageInspect(ctx, imageRef)
-	if err == nil {
-		// Inspect remote manifest (HEAD)
+
+	if localExists {
 		remote, err := cli.DistributionInspect(ctx, imageRef, registryAuth)
-		if err == nil {
-			remoteDigest := remote.Descriptor.Digest.String()
-			for _, rd := range local.RepoDigests {
-				// rd is "repo@sha256:..."
-				if strings.HasSuffix(rd, "@"+remoteDigest) {
-					return nil
-				}
+		if err != nil {
+			// Registry check failed - this is an error for registry images
+			return fmt.Errorf("failed to check remote registry for image %s: %w", imageRef, err)
+		}
+
+		remoteDigest := remote.Descriptor.Digest.String()
+		for _, rd := range local.RepoDigests {
+			if strings.HasSuffix(rd, "@"+remoteDigest) {
+				logger.Debug("Registry image is up to date", "image", imageRef)
+				return nil // Local matches remote - use local
 			}
 		}
+		logger.Debug("Local image outdated, pulling from registry", "image", imageRef)
 	}
 
 	// If we reach here, either the image doesn't exist locally or the remote digest doesn't match
