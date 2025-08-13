@@ -10,7 +10,7 @@ const (
 	DockerNetwork            = "haloy-public"
 	DefaultDeploymentsToKeep = 6
 	DefaultHealthCheckPath   = "/"
-	DefaultContainerPort     = "80"
+	DefaultContainerPort     = "8080"
 	DefaultReplicas          = 1
 
 	CertificatesHTTPProviderPort = "8080"

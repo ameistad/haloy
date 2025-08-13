@@ -133,7 +133,7 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 
 	checkedDeployments, failedContainerIDs := u.deploymentManager.HealthCheckNewContainers(ctx, logger)
 	if len(failedContainerIDs) > 0 {
-		return fmt.Errorf("deployment aborted: failed to perform health check on new containers (%s): %w", strings.Join(failedContainerIDs, ", "), err)
+		return fmt.Errorf("deployment aborted: failed to perform health check on containers (%s)", strings.Join(failedContainerIDs, ", "))
 	} else {
 		apps := make([]string, 0, len(checkedDeployments))
 		for _, dep := range checkedDeployments {

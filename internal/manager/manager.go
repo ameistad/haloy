@@ -128,7 +128,7 @@ func RunManager(debug bool) {
 
 	updater := NewUpdater(updaterConfig)
 	if err := updater.Update(ctx, logger, TriggerReasonInitial, nil); err != nil {
-		logger.Error("Background update failed", "error", err)
+		logger.Error("Initial update failed", "error", err)
 	}
 
 	logger.Info("Haloy manager initialized",

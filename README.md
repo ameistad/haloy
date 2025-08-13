@@ -84,7 +84,7 @@ For a full list of command run `haloy help`
 Each app in the `apps` list can have the following properties:
 
 - `name`: (Required) Unique name for the app.
-- `source`: (Required) Defines where to get your application's Docker image. See the [Source Configuration](#source) below.
+- `image`: TODO
 - `domains`: (Required) A list of domains for the app. Can be a simple list of strings or a map with aliases. Aliases will automatically be redirected to the main (canonical) domain.
   - Example:
     ```yaml
@@ -94,7 +94,7 @@ Each app in the `apps` list can have the following properties:
         - "www.example.com"
     - domain: "api.example.com"
     ```
-- `acmeEmail`: (Required) The email address to use for Let's Encrypt TLS certificate registration.
+- `acmeEmail`: The email address to use for Let's Encrypt TLS certificate registration.
 - `env`: (Optional) Environment variables for the container
   - Example:
     ```yaml
@@ -105,7 +105,7 @@ Each app in the `apps` list can have the following properties:
           secretName: "my-secret-key" # Reference to a secret. 
       ```
 - `deploymentsToKeep`: (Optional) Number of old deployment data (images and config) to keep for rollbacks (default: 5)
-- `port`: (Optional) The port your application container listens on. Haloy needs this to configure HAProxy correctly. (Default: "80")
+- `port`: (Optional) If not set you need to use port 8080 as this is the default. If you use any other port in your container you need to set this.
 - `replicas`: (Optional) The number of container instances to run for this application. When thera are more than one replicas, Haloy starts multiple identical containers and automatically configures HAProxy to distribute traffic between them using round-robin load balancing. (Default: 1)
 - `volumes`: Docker volumes to mount
 - `healthCheckPath`: (Optional) The HTTP path that Haloy will check for a 2xx status code to determine if your application is healthy. This is used as a fallback if you don't define a HEALTHCHECK instruction in your Dockerfile. (Default: "/")
@@ -120,13 +120,6 @@ TODO: documents how hooks work.
 ## How Rollbacks Work
 
 Haloy provides robust rollback capabilities, allowing you to revert your application to a previous, stable state. This is achieved by leveraging historical Docker images and stored application configurations.
-
-### Deployment History
-Whenever a new application is successfully deployed, Haloy performs the following actions:
-
-1.  **Image Tagging**: The Docker image used for the deployment is tagged with a unique `deployment-id`. This ID is a timestamp in `YYYYMMDDHHMMSS` format (e.g., `20250615214304`), ensuring chronological order and uniqueness. For example, an image `my-app:latest` deployed at a specific time might also be tagged as `my-app:20250615214304`.
-2.  **Configuration Snapshot**: A snapshot of the application's configuration (`AppConfig`) at the time of deployment is saved to a history folder, named after the `deployment-id` (e.g., `~/.config/haloy/history/20250615214304.yml`). This ensures that not only the image but also the exact configuration (domains, environment variables, health checks, etc.) from that specific deployment is preserved.
-3.  **Automatic Cleanup**: To prevent excessive disk usage, Haloy automatically prunes old deployment history, keeping only the most recent `N` deployments as configured by `deploymentsToKeep` (default: 5). Similarly, old Docker image tags (excluding `:latest` and those in use by running containers) are removed for images associated with older deployments.
 
 ### Performing a Rollback
 To initiate a rollback, you use the `haloy rollback` command.
