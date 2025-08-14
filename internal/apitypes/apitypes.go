@@ -12,7 +12,8 @@ type HealthResponse struct {
 }
 
 type DeployRequest struct {
-	AppConfig config.AppConfig `json:"app"`
+	AppConfig    config.AppConfig `json:"app"`
+	ConfigFormat string           `json:"configFormat,omitempty"`
 }
 
 type DeployResponse struct {

@@ -13,7 +13,7 @@ type EnvVar struct {
 }
 
 // Validate ensures the EnvVar is correctly configured.
-func (ev *EnvVar) Validate() error {
+func (ev *EnvVar) Validate(format string) error {
 	if ev.Name == "" {
 		return errors.New("environment variable name cannot be empty")
 	}
@@ -21,11 +21,12 @@ func (ev *EnvVar) Validate() error {
 	hasValue := ev.Value != ""
 	hasSecretName := ev.SecretName != ""
 
+	secretNameField := getFieldNameForFormat(*ev, "SecretName", format) // the field uses different casing based on format.
 	if hasValue && hasSecretName {
-		return fmt.Errorf("environment variable '%s': cannot provide both 'value' and 'secretName'", ev.Name)
+		return fmt.Errorf("environment variable '%s': cannot provide both 'value' and '%s'", ev.Name, secretNameField)
 	}
 	if !hasValue && !hasSecretName {
-		return fmt.Errorf("environment variable '%s': must provide either 'value' or 'secretName'", ev.Name)
+		return fmt.Errorf("environment variable '%s': must provide either 'value' or '%s'", ev.Name, secretNameField)
 	}
 	return nil
 }

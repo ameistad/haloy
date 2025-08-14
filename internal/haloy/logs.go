@@ -29,7 +29,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 			// Load server URL from config if not provided
 			targetServer := serverURL
 			if targetServer == "" {
-				appConfig, err := config.LoadAndValidateAppConfig(".")
+				appConfig, _, err := config.LoadAppConfig(".")
 				if err == nil && appConfig.Server != "" {
 					targetServer = appConfig.Server
 				} else {

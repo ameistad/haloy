@@ -54,47 +54,46 @@ func (ac *AppConfig) Normalize() *AppConfig {
 	return ac
 }
 
-// LoadAppConfig loads the application configuration from a file path.
-func LoadAppConfig(path string) (*AppConfig, error) {
+// LoadAppConfig loads and validates an application configuration from a file.
+// Returns:
+//   - appConfig: Parsed and validated application configuration, nil on error
+//   - format: Detected format ("json", "yaml", "yml", or "toml"), useful for error messages
+//   - err: Any error encountered during loading, parsing, or validation
+func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error) {
 	configFile, err := FindConfigFile(path)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+
+	format, err = getConfigFormat(configFile)
+	if err != nil {
+		return nil, "", err
 	}
 
 	k := koanf.New(".")
-	parser, err := getConfigParser(configFile)
+	parser, err := getConfigParser(format)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := k.Load(file.Provider(configFile), parser); err != nil {
-		return nil, fmt.Errorf("failed to load config file: %w", err)
+		return nil, "", fmt.Errorf("failed to load config file: %w", err)
 	}
 
-	var appConfig AppConfig
-	tag, err := getConfigTag(configFile)
-	if err != nil {
-		return nil, err
+	if err := k.UnmarshalWithConf("", &appConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
+		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-	if err := k.UnmarshalWithConf("", &appConfig, koanf.UnmarshalConf{Tag: tag}); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-	return &appConfig, nil
-}
 
-// LoadAndValidateAppConfig loads the configuration from a file path, normalizes it, and validates it.
-func LoadAndValidateAppConfig(path string) (*AppConfig, error) {
-	appConfig, err := LoadAppConfig(path)
-	if err != nil {
-		return nil, err
+	if appConfig == nil {
+		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
 	appConfig = appConfig.Normalize()
 
-	if err := appConfig.Validate(); err != nil {
-		return appConfig, fmt.Errorf("config validation failed: %w", err)
+	if err := appConfig.Validate(format); err != nil {
+		return nil, format, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	return appConfig, nil
+	return appConfig, format, nil
 }
 
 var supportedExtensions = []string{".json", ".yaml", ".yml", ".toml"}

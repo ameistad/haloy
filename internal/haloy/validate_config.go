@@ -38,7 +38,7 @@ If no path is provided, the current directory is used.`,
 			}
 
 			// Load and validate the config
-			_, err = config.LoadAndValidateAppConfig(configPath)
+			_, _, err = config.LoadAppConfig(configPath)
 			if err != nil {
 				ui.Error("Config validation failed: %v", err)
 				return

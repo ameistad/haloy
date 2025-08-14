@@ -36,7 +36,7 @@ func SecretsSetCommand() *cobra.Command {
 				configPath = "."
 			}
 
-			appConfig, _ := config.LoadAndValidateAppConfig(configPath)
+			appConfig, _, _ := config.LoadAppConfig(configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
@@ -76,7 +76,7 @@ func SecretsListCommand() *cobra.Command {
 				configPath = "."
 			}
 
-			appConfig, _ := config.LoadAndValidateAppConfig(configPath)
+			appConfig, _, _ := config.LoadAppConfig(configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
@@ -132,7 +132,7 @@ func SecretsDeleteCommand() *cobra.Command {
 				configPath = "."
 			}
 
-			appConfig, _ := config.LoadAndValidateAppConfig(configPath)
+			appConfig, _, _ := config.LoadAppConfig(configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {

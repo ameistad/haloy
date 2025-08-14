@@ -30,12 +30,12 @@ func LoadClientConfig(path string) (*ClientConfig, error) {
 	}
 
 	var clientConfig ClientConfig
-	tag, err := getConfigTag(path)
+	format, err := getConfigFormat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := k.UnmarshalWithConf("", &clientConfig, koanf.UnmarshalConf{Tag: tag}); err != nil {
+	if err := k.UnmarshalWithConf("", &clientConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal client config: %w", err)
 	}
 	return &clientConfig, nil

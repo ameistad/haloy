@@ -60,12 +60,12 @@ func LoadManagerConfig(path string) (*ManagerConfig, error) {
 	}
 
 	var managerConfig ManagerConfig
-	tag, err := getConfigTag(path)
+	format, err := getConfigFormat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := k.UnmarshalWithConf("", &managerConfig, koanf.UnmarshalConf{Tag: tag}); err != nil {
+	if err := k.UnmarshalWithConf("", &managerConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal manager config: %w", err)
 	}
 	return &managerConfig, nil

@@ -217,8 +217,8 @@ func (c *APIClient) stream(ctx context.Context, path string, handler func(data s
 	return nil
 }
 
-func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig) (*apitypes.DeployResponse, error) {
-	request := apitypes.DeployRequest{AppConfig: appConfig}
+func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig, format string) (*apitypes.DeployResponse, error) {
+	request := apitypes.DeployRequest{AppConfig: appConfig, ConfigFormat: format}
 	var response apitypes.DeployResponse
 	err := c.post(ctx, "deploy", request, &response)
 	return &response, err

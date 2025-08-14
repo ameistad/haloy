@@ -31,7 +31,9 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 			if t.AppConfig == nil {
 				return fmt.Errorf("failed to load app config for %s: %w", appName, err)
 			}
-			if err := DeployApp(ctx, cli, newDeploymentID, *t.AppConfig, logger); err != nil {
+			// Adding config format here doesn't seem necessary as it is mainly used to return better validation errors.
+			// If we already have used the config it's already been validated.
+			if err := DeployApp(ctx, cli, newDeploymentID, *t.AppConfig, "", logger); err != nil {
 				return fmt.Errorf("failed to deploy app %s: %w", appName, err)
 			}
 

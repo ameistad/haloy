@@ -34,7 +34,7 @@ If no path is provided, the current directory is used.`,
 				configPath = "."
 			}
 
-			appConfig, err := config.LoadAndValidateAppConfig(configPath)
+			appConfig, _, err := config.LoadAppConfig(configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return

@@ -25,7 +25,7 @@ func VersionCmd() *cobra.Command {
 				configPath = "."
 			}
 
-			appConfig, _ := config.LoadAndValidateAppConfig(configPath) // we don't strictly need an app config for this to work.
+			appConfig, _, _ := config.LoadAppConfig(configPath) // we don't strictly need an app config for this to work.
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {

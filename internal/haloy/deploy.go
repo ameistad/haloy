@@ -39,7 +39,7 @@ If no path is provided, the current directory is used.`,
 				configPath = "."
 			}
 
-			appConfig, err := config.LoadAndValidateAppConfig(configPath)
+			appConfig, format, err := config.LoadAppConfig(configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
@@ -65,7 +65,7 @@ If no path is provided, the current directory is used.`,
 			defer cancel()
 
 			api := apiclient.New(targetServer)
-			resp, err := api.Deploy(ctx, *appConfig)
+			resp, err := api.Deploy(ctx, *appConfig, format)
 			if err != nil {
 				ui.Error("Deployment request failed: %v", err)
 				return

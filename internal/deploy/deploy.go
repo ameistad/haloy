@@ -19,9 +19,9 @@ func CreateDeploymentID() string {
 	nanos := fmt.Sprintf("%02d", (now.Nanosecond()/10000000)%100) // Last 2 digits of centiseconds
 	return timestamp + nanos
 }
-func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, logger *slog.Logger) error {
+func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, configFormat string, logger *slog.Logger) error {
 	normalizedAppConfig := appConfig.Normalize()
-	if err := normalizedAppConfig.Validate(); err != nil {
+	if err := normalizedAppConfig.Validate(configFormat); err != nil {
 		return fmt.Errorf("app config validation failed: %w", err)
 	}
 	imageRef := appConfig.Image.ImageRef()

@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func (ac *AppConfig) Validate() error {
+func (ac *AppConfig) Validate(format string) error {
 
 	if !isValidAppName(ac.Name) {
 		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
@@ -36,7 +36,7 @@ func (ac *AppConfig) Validate() error {
 
 	// Validate environment variables.
 	for j, envVar := range ac.Env {
-		if err := envVar.Validate(); err != nil {
+		if err := envVar.Validate("yaml"); err != nil {
 			return fmt.Errorf("env[%d]: %w", j, err)
 		}
 	}
