@@ -38,7 +38,8 @@ func InitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize Haloy data directory and start core services",
-		Long: `Initialize Haloy by creating the data directory structure and starting core services.
+		Long: fmt.Sprintf(
+			`Initialize Haloy by creating the data directory structure and starting core services.
 
 This command will:
 - Create the config directory (default: ~/.config/haloy)
@@ -47,7 +48,9 @@ This command will:
 - Create the Docker network for Haloy services
 - Start HAProxy and haloy-manager containers (unless --no-services is used)
 
-The data directory can be customized by setting the HALOY_DATA_DIR environment variable.`,
+The data directory can be customized by setting the %s environment variable.`,
+			constants.EnvVarDataDir,
+		),
 		Run: func(cmd *cobra.Command, args []string) {
 
 			var createdDirs []string

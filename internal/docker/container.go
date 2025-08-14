@@ -95,7 +95,7 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 	}
 
 	for i := range make([]struct{}, *appConfig.Replicas) {
-		envVars := append(envVars, fmt.Sprintf("HALOY_REPLICA_ID=%d", i+1))
+		envVars := append(envVars, fmt.Sprintf("%s=%d", constants.EnvVarReplicaID, i+1))
 		containerConfig := &container.Config{
 			Image:  imageRef,
 			Labels: labels,

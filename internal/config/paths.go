@@ -13,10 +13,10 @@ func ensureDir(dirPath string) error {
 	return os.MkdirAll(dirPath, constants.ModeDirPrivate)
 }
 
-// If HALOY_DATA_DIR is set, it will use that instead.
+// If constants.EnvVarDataDir is set, it will use that instead.
 func DataDir() (string, error) {
 	// allow overriding via env
-	if envPath, ok := os.LookupEnv("HALOY_DATA_DIR"); ok && envPath != "" {
+	if envPath, ok := os.LookupEnv(constants.EnvVarDataDir); ok && envPath != "" {
 		// Handle tilde expansion for env var
 		if strings.HasPrefix(envPath, "~/") {
 			home, err := os.UserHomeDir()
@@ -38,7 +38,7 @@ func DataDir() (string, error) {
 
 // ConfigDir returns the Haloy configuration directory
 func ConfigDir() (string, error) {
-	if envPath, ok := os.LookupEnv("HALOY_CONFIG_DIR"); ok && envPath != "" {
+	if envPath, ok := os.LookupEnv(constants.EnvVarConfigDir); ok && envPath != "" {
 		if strings.HasPrefix(envPath, "~/") {
 			home, err := os.UserHomeDir()
 			if err != nil {

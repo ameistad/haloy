@@ -59,7 +59,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	}
 
 	if debug {
-		args = append(args[:2], append([]string{"--env", "HALOY_DEBUG=true"}, args[2:]...)...)
+		args = append(args[:2], append([]string{"--env", fmt.Sprintf("%s=true", constants.EnvVarDebug)}, args[2:]...)...)
 	}
 
 	args = append(args, image)
