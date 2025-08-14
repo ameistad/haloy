@@ -53,9 +53,11 @@ Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
-			targetServer := appConfig.Server
-			if serverURL != "" {
-				targetServer = serverURL
+
+			targetServer, err := getServer(appConfig, serverURL)
+			if err != nil {
+				ui.Error("%v", err)
+				return
 			}
 
 			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
@@ -115,9 +117,11 @@ If no path is provided, the current directory is used.`,
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
-			targetServer := appConfig.Server
-			if serverURL != "" {
-				targetServer = serverURL
+
+			targetServer, err := getServer(appConfig, serverURL)
+			if err != nil {
+				ui.Error("%v", err)
+				return
 			}
 
 			ui.Info("Rollback targets for application: %s using server %s", appConfig.Name, targetServer)

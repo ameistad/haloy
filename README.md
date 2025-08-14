@@ -100,7 +100,7 @@ Note that we need to add source: local to the image configuration to indicate th
   "server": "https://haloy.my-app.com",
   "name": "my-app",
   "image": {
-    "repository": "haloy-demo",
+    "repository": "my-app",
     "source": "local",
     "tag": "latest"
   },
