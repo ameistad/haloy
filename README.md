@@ -53,14 +53,85 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 
+## Building and Configuring
+
+__Creating the config file__
+Create a haloy.yaml file. 
+Haloy supports yaml, json and toml configuration formats. 
+
+Keep in mind that JSON uses `camelCase` and yaml and toml uses `snake_case`.
+
+You can call the file whatever you like, but if you don't use haloy.json,yaml/yml,toml you have to specify what config file to use. For example `haloy deploy my-app.json`
+
+By using a config file it's easy to keep it in version control with the rest of your code. 
+
+__Add configuration__
+Here's some minimal examples of configs. [Checkout the full list of configuration options](#configuration-options).
+```json
+// haloy.json
+{
+  "server": "https://haloy.my-app.com",
+  "name": "my-app",
+  "image": {
+    "repository": "ghcr.io/your-github-user/my-app",
+    "tag": "latest"
+  },
+  "domains": [
+    {
+      "domain": "my-app.com",
+      "aliases": ["www.my-app.com", "blog.my-app.com"],
+    }
+  ],
+  "acmeEmail": "acme@my-app.com",
+  "healthCheckPath": "/health",
+}
+```
+
+
+### Build locally with a hook
+To get up and running quickly with your app you can build the images locally on your own system and upload with scp to your server. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. 
+
+Here's a simple configuration illustrating how we can build and deploy without needing a Docker registry.
+
+Note that we need to add source: local to the image configuration to indicate that we don't need to pull from a registry.
+```json
+// haloy.json
+  {
+  "server": "https://haloy.my-app.com",
+  "name": "my-app",
+  "image": {
+    "repository": "haloy-demo",
+    "source": "local",
+    "tag": "latest"
+  },
+  "domains": [
+    {
+      "domain": "my-app.com"
+    }
+  ],
+  "acmeEmail": "acme@my-app-com",
+  "healthCheckPath": "/health.html",
+  "preDeploy": [
+    "docker build --platform linux/amd64 -t haloy-demo-buzy .",
+    "docker save -o haloy-demo-buzy.tar haloy-demo-buzy",
+    "scp haloy-demo-buzy.tar $(whoami)@hermes:/tmp/haloy-demo-buzy.tar",
+    "ssh $(whoami)@hermes \"docker load -i /tmp/haloy-demo-buzy.tar && rm /tmp/haloy-demo-buzy.tar\"",
+    "rm haloy-demo-buzy.tar"
+  ]
+}
+
+
+```
+
+
+### Configuration options
+TODO: add a table of all the AppConfig options here.
+
+
 ## Deploying Apps
 
 
-### Quickstart
-To get up and running quickly with your app you can build the images locally on your own system. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. Here's a simple bash script you can use for the pre deploy hook.
 
-### Configuration
-Create a haloy.yaml file. TODO: add full list of config options with explanation.
 
 
 ### Deploy commands
