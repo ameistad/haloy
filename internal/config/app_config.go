@@ -70,11 +70,12 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 		return nil, "", err
 	}
 
-	k := koanf.New(".")
 	parser, err := getConfigParser(format)
 	if err != nil {
 		return nil, "", err
 	}
+
+	k := koanf.New(".")
 	if err := k.Load(file.Provider(configFile), parser); err != nil {
 		return nil, "", fmt.Errorf("failed to load config file: %w", err)
 	}

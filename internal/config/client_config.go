@@ -20,21 +20,23 @@ func LoadClientConfig(path string) (*ClientConfig, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, nil
 	}
-	k := koanf.New(".")
-	parser, err := getConfigParser(path)
-	if err != nil {
-		return nil, err
-	}
-	if err := k.Load(file.Provider(path), parser); err != nil {
-		return nil, fmt.Errorf("failed to load client config file: %w", err)
-	}
 
-	var clientConfig ClientConfig
 	format, err := getConfigFormat(path)
 	if err != nil {
 		return nil, err
 	}
 
+	parser, err := getConfigParser(format)
+	if err != nil {
+		return nil, err
+	}
+
+	k := koanf.New(".")
+	if err := k.Load(file.Provider(path), parser); err != nil {
+		return nil, fmt.Errorf("failed to load client config file: %w", err)
+	}
+
+	var clientConfig ClientConfig
 	if err := k.UnmarshalWithConf("", &clientConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal client config: %w", err)
 	}

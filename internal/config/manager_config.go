@@ -50,21 +50,23 @@ func LoadManagerConfig(path string) (*ManagerConfig, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, nil
 	}
-	k := koanf.New(".")
-	parser, err := getConfigParser(path)
-	if err != nil {
-		return nil, err
-	}
-	if err := k.Load(file.Provider(path), parser); err != nil {
-		return nil, fmt.Errorf("failed to load manager config file: %w", err)
-	}
 
-	var managerConfig ManagerConfig
 	format, err := getConfigFormat(path)
 	if err != nil {
 		return nil, err
 	}
 
+	parser, err := getConfigParser(format)
+	if err != nil {
+		return nil, err
+	}
+
+	k := koanf.New(".")
+	if err := k.Load(file.Provider(path), parser); err != nil {
+		return nil, fmt.Errorf("failed to load manager config file: %w", err)
+	}
+
+	var managerConfig ManagerConfig
 	if err := k.UnmarshalWithConf("", &managerConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal manager config: %w", err)
 	}
