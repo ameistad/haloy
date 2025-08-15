@@ -54,18 +54,18 @@ func TestValidateDomain(t *testing.T) {
 		domain  string
 		wantErr bool
 	}{
-		{"valid domain", "example.com", true},
-		{"valid domain with subdomain", "sub.example.co.uk", true},
-		{"valid domain with hyphen", "example-domain.com", true},
-		{"invalid TLD too short", "example.c", false},
-		{"invalid no TLD", "example", false},
-		{"invalid starting with hyphen", "-example.com", false},
-		{"invalid domain with space", "example domain.com", false},
-		{"empty domain", "", false},
+		{"valid domain", "example.com", false},
+		{"valid domain with subdomain", "sub.example.co.uk", false},
+		{"valid domain with hyphen", "example-domain.com", false},
+		{"invalid TLD too short", "example.c", true},
+		{"invalid no TLD", "example", true},
+		{"invalid starting with hyphen", "-example.com", true},
+		{"invalid domain with space", "example domain.com", true},
+		{"empty domain", "", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := helpers.IsValidDomain(tt.domain); (err != nil) == tt.wantErr {
+			if err := helpers.IsValidDomain(tt.domain); (err == nil) == tt.wantErr {
 				t.Errorf("ValidateDomain() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/constants"
@@ -81,8 +83,10 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 	}
 
 	configKeys := k.Keys()
-	for _, key := range configKeys {
-		fmt.Println("Config key:", key)
+	appConfigType := reflect.TypeOf(AppConfig{})
+
+	if err := checkUnknownFields(appConfigType, configKeys, format); err != nil {
+		return nil, "", err
 	}
 
 	if err := k.UnmarshalWithConf("", &appConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
@@ -128,12 +132,13 @@ func FindConfigFile(path string) (string, error) {
 		return "", fmt.Errorf("path does not exist: %s", absPath)
 	}
 
-	// If it's a file, validate it's a supported config file
+	// If it's a file, validate it's a supported extension
 	if !stat.IsDir() {
-		if isValidConfigFile(absPath) {
-			return absPath, nil
+		ext := filepath.Ext(absPath)
+		if !slices.Contains(supportedExtensions, ext) {
+			return "", fmt.Errorf("file %s is not a valid haloy config file (must be .json, .yaml, .yml, or .toml)", absPath)
 		}
-		return "", fmt.Errorf("file %s is not a valid haloy config file (must be .json, .yaml, .yml, or .toml)", absPath)
+		return absPath, nil
 	}
 
 	// If it's a directory, look for haloy config files
@@ -146,28 +151,4 @@ func FindConfigFile(path string) (string, error) {
 
 	return "", fmt.Errorf("no haloy config file found in directory %s (looking for: %s)",
 		absPath, strings.Join(supportedConfigNames, ", "))
-}
-
-// isValidConfigFile checks if a file has a supported extension and reasonable name
-func isValidConfigFile(path string) bool {
-	ext := filepath.Ext(path)
-	base := filepath.Base(path)
-
-	// Check if extension is supported
-	for _, supportedExt := range supportedExtensions {
-		if ext == supportedExt {
-			// For flexibility, accept any filename with supported extension
-			// but prefer haloy.* naming
-			return true
-		}
-	}
-
-	// Also check if it's exactly one of our preferred names
-	for _, configName := range supportedConfigNames {
-		if base == configName {
-			return true
-		}
-	}
-
-	return false
 }
