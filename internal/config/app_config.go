@@ -80,6 +80,11 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 		return nil, "", fmt.Errorf("failed to load config file: %w", err)
 	}
 
+	configKeys := k.Keys()
+	for _, key := range configKeys {
+		fmt.Println("Config key:", key)
+	}
+
 	if err := k.UnmarshalWithConf("", &appConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
 		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
 	}

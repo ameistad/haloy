@@ -42,7 +42,7 @@ func getConfigParser(format string) (koanf.Parser, error) {
 }
 
 // getFieldNameForFormat returns the field name as it appears in the specified format
-func getFieldNameForFormat(v interface{}, fieldName, format string) string {
+func getFieldNameForFormat(v any, fieldName, format string) string {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
