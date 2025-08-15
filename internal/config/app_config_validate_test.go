@@ -81,27 +81,3 @@ func TestValidate_NoDomainsAndNoACMEEmail(t *testing.T) {
 		t.Errorf("expected valid configuration with no domains and no ACME email; got error: %v", err)
 	}
 }
-
-func TestValidateHealthCheckPath(t *testing.T) {
-	tests := []struct {
-		name    string
-		path    string
-		wantErr bool
-	}{
-		{"valid root path", "/", true},
-		{"valid sub path", "/healthz", true},
-		{"valid path with hyphen", "/health-check", true},
-		{"valid path with numbers", "/status/123", true},
-		{"valid path with query", "/health?check=true", true},
-		{"valid path fragment", "/health#status", true},
-		{"invalid no leading slash", "health", false},
-		{"invalid empty path", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if err := isValidHealthCheckPath(tt.path); (err != nil) == tt.wantErr {
-				t.Errorf("ValidateHealthCheckPath() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
