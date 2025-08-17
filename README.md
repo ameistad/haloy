@@ -8,24 +8,10 @@ Haloy is a free tool for zero‑downtime Docker app deploys with automatic HAPro
 * 💻 Straightforward command-line interface.
 * 🌐 HTTP API for automation, integration, and remote management.
 
-## Requirements
-- Docker installed and running
-- Your user is part of the docker group. This lets you run Haloy and Docker commands without sudo.
-    - Add your user: `sudo usermod -aG docker $(whoami)`
-    - Verify (you should see "docker"): `id -nG $(whoami)` or `groups $(whoami)`
-    - Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
-    - Test it: `docker ps` (should work without sudo).
-- Haloy has been tested on Debian 12, but should work on most systems. 
-
-> [!NOTE]
-> Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
-## Get Started
-These are the steps to install Haloy on the server where you are hosting your dockerized applications. 
-
 ## Install
+For Haloy to work you need to have Docker installed. It's also recommended that you add your user to the [Docker user group](#add-user-to-docker-group).
 
-### Server Install
-Run this on the server you plan on running Haloy:
+Run this on your server:
 ```bash
 curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
 ```
@@ -51,6 +37,18 @@ After installation, ensure `~/.local/bin` is in your `PATH`:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+### Add user to docker group
+`sudo usermod -aG docker $(whoami)`
+
+Verify (you should see "docker"): `id -nG $(whoami)` or `groups $(whoami)`
+
+Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
+
+Test it: `docker ps` (should work without sudo).
+
+> [!NOTE]
+> Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
 
 
 ## Building and Configuring
