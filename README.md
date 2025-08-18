@@ -1,17 +1,17 @@
 # Haloy
-Haloy is a free tool for zero‑downtime Docker app deploys with automatic HAProxy routing and TLS certificates.
+Haloy is a simple and lightweight cli tool for deploying your app to a server that you control.
 
 ## ✨ Features
-* 🐳 Deploy and rollback any application using Docker.
-* 🔄 High-performance reverse proxy leveraging [HAProxy](https://www.haproxy.org/). 
+* 🐳 Zero-downtime deploys.
 * 🔒 Automatic obtain and renew SSL/TLS certificates
-* 💻 Straightforward command-line interface.
+* Easy rollbacks
+* 🔄 High-performance reverse proxy leveraging [HAProxy](https://www.haproxy.org/). 
 * 🌐 HTTP API for automation, integration, and remote management.
 
 ## Install
 For Haloy to work you need to have Docker installed. It's also recommended that you add your user to the [Docker user group](#add-user-to-docker-group).
 
-Run this on your server:
+Run this on your server to install the `haloy` (deploy) and `haloyadm` (server admin) cli tools:
 ```bash
 curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
 ```
@@ -26,8 +26,8 @@ If you want to use the API for remote deployments and you have added DNS records
 haloyadm init --api-domain api.yourserver.com --acme-email you@youremail.com
 ```
 
-### Client install (optional for remote deploys)
-Run this on your local development machine or any machine that only needs to deploy applications to the server. It installs only the `haloy` client.
+## Remote deploys (optional)
+If you want to trigger deploys from a CI or your own machine you only need the `haloy` cli tool. Install with this command:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
@@ -53,11 +53,8 @@ Test it: `docker ps` (should work without sudo).
 
 ## Building and Configuring
 
-__Creating the config file__
-Create a haloy.yaml file. 
-Haloy supports yaml, json and toml configuration formats. 
 
-Keep in mind that JSON uses `camelCase` and yaml and toml uses `snake_case`.
+The first step is to create a `haloy.yaml` file (json and toml is also supported).
 
 You can call the file whatever you like, but if you don't use haloy.json,yaml/yml,toml you have to specify what config file to use. For example `haloy deploy my-app.json`
 
@@ -65,8 +62,26 @@ By using a config file it's easy to keep it in version control with the rest of 
 
 __Add configuration__
 Here's some minimal examples of configs. [Checkout the full list of configuration options](#configuration-options).
+
+`haloy.yaml`
+```yaml
+server: "https://haloy.my-app.com"
+name: "my-app"
+image:
+  repository: "ghcr.io/your-github-user/my-app"
+  tag: "latest"
+domains:
+  - domain: "my-app.com"
+    aliases:
+      - "www.my-app.com"
+      - "blog.my-app.com"
+acme_email: "acme@my-app.com"
+```
+
+<details>
+<summary>haloy.json example</summary>
+
 ```json
-// haloy.json
 {
   "server": "https://haloy.my-app.com",
   "name": "my-app",
@@ -81,10 +96,37 @@ Here's some minimal examples of configs. [Checkout the full list of configuratio
     }
   ],
   "acmeEmail": "acme@my-app.com",
-  "healthCheckPath": "/health",
 }
 ```
 
+</details>
+
+<details>
+<summary>haloy.toml example</summary>
+
+```toml
+server = "https://haloy.my-app.com"
+name = "my-app"
+acmeEmail = "acme@my-app.com"
+healthCheckPath = "/health"
+
+[image]
+repository = "ghcr.io/your-github-user/my-app"
+tag = "latest"
+
+[[domains]]
+domain = "my-app.com"
+aliases = ["www.my-app.com", "blog.my-app.com"]
+```
+
+</details>
+### The configration file
+Haloy support yaml, json and toml format for the configuration file. Keep in mind that config options (fields/keys) uses camelCase for json and snake_case for yaml and toml.
+
+
+You can name the file whatever you want and it can live anywhere as long as the cli tool haloy has access to it. It's often a good idea to keep it in your repo so it's version controlled. 
+
+If you don't provide a path to the file name when running `haloy deploy` it will look for a haloy.yaml in the current directory. 
 
 ### Build locally with a hook
 To get up and running quickly with your app you can build the images locally on your own system and upload with scp to your server. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. 
