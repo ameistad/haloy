@@ -33,9 +33,14 @@ If you want to trigger deploys from a CI or your own machine you only need the `
 curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
 ```
 
-After installation, ensure `~/.local/bin` is in your `PATH`:
+Ensure `~/.local/bin` is in your `PATH`:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+Automatically setup API token and set default server:
+```bash
+haloy setup ssh user@<ip|host>
 ```
 
 ### Add user to docker group
@@ -60,8 +65,7 @@ You can call the file whatever you like, but if you don't use haloy.json,yaml/ym
 
 By using a config file it's easy to keep it in version control with the rest of your code. 
 
-__Add configuration__
-Here's some minimal examples of configs. [Checkout the full list of configuration options](#configuration-options).
+__Add configuration the `haloy.yaml` config file__
 
 `haloy.yaml`
 ```yaml
@@ -120,8 +124,11 @@ aliases = ["www.my-app.com", "blog.my-app.com"]
 ```
 
 </details>
+
+[Checkout the full list of configuration options](#configuration-options).
+
 ### The configration file
-Haloy support yaml, json and toml format for the configuration file. Keep in mind that config options (fields/keys) uses camelCase for json and snake_case for yaml and toml.
+Haloy support `yaml/yml`, `json` and `toml` format for the configuration file. Keep in mind that config options (fields/keys) uses camelCase for json and snake_case for yaml and toml.
 
 
 You can name the file whatever you want and it can live anywhere as long as the cli tool haloy has access to it. It's often a good idea to keep it in your repo so it's version controlled. 
@@ -135,7 +142,6 @@ Here's a simple configuration illustrating how we can build and deploy without n
 
 Note that we need to add source: local to the image configuration to indicate that we don't need to pull from a registry.
 ```json
-// haloy.json
   {
   "server": "https://haloy.my-app.com",
   "name": "my-app",
@@ -150,7 +156,6 @@ Note that we need to add source: local to the image configuration to indicate th
     }
   ],
   "acmeEmail": "acme@my-app-com",
-  "healthCheckPath": "/health.html",
   "preDeploy": [
     "docker build --platform linux/amd64 -t haloy-demo-buzy .",
     "docker save -o haloy-demo-buzy.tar haloy-demo-buzy",
@@ -163,12 +168,11 @@ Note that we need to add source: local to the image configuration to indicate th
 
 ```
 
-
 ### Configuration options
 TODO: add a table of all the AppConfig options here.
 
 
-## Deploying Apps
+## Deploying
 
 
 
@@ -205,7 +209,7 @@ Each app in the `apps` list can have the following properties:
         - "www.example.com"
     - domain: "api.example.com"
     ```
-- `acmeEmail`: The email address to use for Let's Encrypt TLS certificate registration.
+- `acme_email`: The email address to use for Let's Encrypt TLS certificate registration.
 - `env`: (Optional) Environment variables for the container
   - Example:
     ```yaml
@@ -213,13 +217,13 @@ Each app in the `apps` list can have the following properties:
         - name: "NODE_ENV"
           value: "production" # plain text value
         - name: "API_SECRET_KEY"
-          secretName: "my-secret-key" # Reference to a secret. 
+          secret_name: "my-secret-key" # Reference to a secret. 
       ```
-- `deploymentsToKeep`: (Optional) Number of old deployment data (images and config) to keep for rollbacks (default: 5)
+- `deployments_to_keep`: (Optional) Number of old deployment data (images and config) to keep for rollbacks (default: 5)
 - `port`: (Optional) If not set you need to use port 8080 as this is the default. If you use any other port in your container you need to set this.
 - `replicas`: (Optional) The number of container instances to run for this application. When thera are more than one replicas, Haloy starts multiple identical containers and automatically configures HAProxy to distribute traffic between them using round-robin load balancing. (Default: 1)
 - `volumes`: Docker volumes to mount
-- `healthCheckPath`: (Optional) The HTTP path that Haloy will check for a 2xx status code to determine if your application is healthy. This is used as a fallback if you don't define a HEALTHCHECK instruction in your Dockerfile. (Default: "/")
+- `health_check_path`: (Optional) The HTTP path that Haloy will check for a 2xx status code to determine if your application is healthy. This is used as a fallback if you don't define a HEALTHCHECK instruction in your Dockerfile. (Default: "/")
 
 
 ## Hooks
