@@ -19,7 +19,7 @@ __Prerequisites:__
 - You've added your user to the docker group to run commands without sudo. (See instructions below).
 - A Docker image for your application pushed to a registry (like Docker Hub or GHCR).
 
-## Step 1: Install and Initialize Haloy on Your Server
+## Install and Initialize Haloy on Your Server
 First, SSH into your server.
 
 1. Install the `haloy` and `haloyadm` tools using the install script:
@@ -37,13 +37,18 @@ First, SSH into your server.
     haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
     ```
 
-## Step 2: Configure Your Local Machine for Remote Deploys
-Now, on your local development machine:
+## Configure Your Local Machine for Remote Deploys
+This is optional as you can run the `haloy` command from your server and it will use the API locally. 
 
 1. Install the haloy client tool:
-    ```bash
-    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
-    ```
+  ```bash
+  curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
+  ```
+
+1. Ensure ~/.local/bin is in your PATH. Add this to your ~/.bashrc, ~/.zshrc, or equivalent shell profile:
+  ```bash
+  export PATH="$HOME/.local/bin:$PATH"?
+  ```
 
 ## Install
 For Haloy to work you need to have Docker installed. It's also recommended that you add your user to the [Docker user group](#add-user-to-docker-group).
