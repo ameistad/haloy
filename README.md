@@ -1,12 +1,49 @@
 # Haloy
-Haloy is a simple and lightweight cli tool for deploying your app to a server that you control.
+Haloy is a simple and lightweight CLI tool for deploying your apps to a server that you control. It automates the deployment of Docker containers and manages HAProxy to handle reverse proxying, load balancing, and TLS termination.
 
 ## ✨ Features
-* 🐳 Zero-downtime deploys.
-* 🔒 Automatic obtain and renew SSL/TLS certificates
-* Easy rollbacks
-* 🔄 High-performance reverse proxy leveraging [HAProxy](https://www.haproxy.org/). 
-* 🌐 HTTP API for automation, integration, and remote management.
+  * **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
+* **Automatic TLS:** Provides free, automatically renewing TLS certificates from Let's Encrypt.
+* **Easy Rollbacks:** Instantly revert to any previous deployment with a single command.
+* **Simple Horizontal Scaling:** Scale your application by changing a single number in your config to run multiple container instances.
+* **High-performance Reverse Proxy:** Leverages [HAProxy](https://www.haproxy.org/) for load balancing, HTTPS termination, and HTTP/2 support.
+* **Deploy from Anywhere:** A simple API allows for remote deployments from your local machine or a CI/CD pipeline.
+
+
+# 🚀 Getting Started: Your First Deploy in 5 Minutes
+This guide will walk you through setting up Haloy and deploying a sample application.
+
+__Prerequisites:__
+- A server with a public IP address.
+- Docker installed on your server.
+- You've added your user to the docker group to run commands without sudo. (See instructions below).
+- A Docker image for your application pushed to a registry (like Docker Hub or GHCR).
+
+## Step 1: Install and Initialize Haloy on Your Server
+First, SSH into your server.
+
+1. Install the `haloy` and `haloyadm` tools using the install script:
+    ```bash
+    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
+    ```
+    You may need to add ~/.local/bin to your server's $PATH.
+
+1. Initialize the Haloy services. This command creates the necessary directories and starts the Haloy Manager and HAProxy containers.
+    ```bash
+    haloyadm init
+    ```
+    💡 Optional: If have domain ready, you can secure the Haloy API itself during initialization:
+    ```bash
+    haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
+    ```
+
+## Step 2: Configure Your Local Machine for Remote Deploys
+Now, on your local development machine:
+
+1. Install the haloy client tool:
+    ```bash
+    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
+    ```
 
 ## Install
 For Haloy to work you need to have Docker installed. It's also recommended that you add your user to the [Docker user group](#add-user-to-docker-group).
@@ -168,9 +205,35 @@ Note that we need to add source: local to the image configuration to indicate th
 
 ```
 
-### Configuration options
-TODO: add a table of all the AppConfig options here.
+## ⚙️ Configuration Options
+Haloy uses a single configuration file for each application. While `haloy.yaml` is the default, you can also use `.json` or `.toml`. Note that YAML and TOML use `snake_case`, while JSON uses `camelCase`.
 
+| Key                 | Type      | Required | Description                                                                                                                                                                     |
+|---------------------|-----------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`              | `string`  | **Yes** | A unique name for your application. Used for naming containers and HAProxy backends.                                                                                              |
+| `image`             | `object`  | **Yes** | Defines the Docker image to be deployed. See [Image Configuration](#image-configuration) below.                                                                                   |
+| `server`            | `string`  | No       | The URL of the Haloy manager API. If not set, you must configure it globally with `haloy setup ssh`.                                                                              |
+| `domains`           | `array`   | No       | A list of domains for your app. Each item can define a `domain` (canonical) and `aliases`. Required for web traffic.                                                              |
+| `acme_email`        | `string`  | No       | The email address for Let's Encrypt registration. Required if `domains` are specified.                                                                                          |
+| `replicas`          | `integer` | No       | The number of container instances to run for this application for horizontal scaling. Defaults to `1`.                                                                            |
+| `port`              | `string`  | No       | The port your application listens on inside the container. Defaults to `"8080"`.                                                                                                |
+| `health_check_path` | `string`  | No       | The HTTP path for health checks (e.g., `/health`). Haloy expects a 2xx status code. Defaults to `/`. Ignored if your Dockerfile has a `HEALTHCHECK` instruction.                 |
+| `env`               | `array`   | No       | A list of environment variables. Can be a plaintext `value` or a reference to a `secret_name`.                                                                                    |
+| `volumes`           | `array`   | No       | A list of Docker volume mounts in the format `/host/path:/container/path`.                                                                                                      |
+| `deployments_to_keep` | `integer` | No       | Number of old deployments (images and configs) to keep for rollbacks. Defaults to `6`.                                                                                          |
+| `pre_deploy`        | `array`   | No       | A list of shell commands to execute on the client machine **before** the deployment starts.                                                                                       |
+| `post_deploy`       | `array`   | No       | A list of shell commands to execute on the client machine **after** the deployment finishes.                                                                                      |
+| `network_mode`      | `string`  | No       | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`).                                                                                  |
+
+#### Image Configuration
+The `image` object has the following fields:
+
+| Key          | Type     | Required | Description                                                                                                                                                                   |
+|--------------|----------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `repository` | `string` | **Yes** | The name of the Docker image (e.g., `ghcr.io/my-user/my-app`).                                                                                                                  |
+| `tag`        | `string` | No       | The image tag to use. Defaults to `latest`.                                                                                                                                   |
+| `source`     | `string` | No       | Set to `local` if the image is already on the server and should not be pulled from a registry. Defaults to `registry`.                                                         |
+| `registry`   | `object` | No       | Authentication details for a private Docker registry. Includes `server`, `username`, and `password`. The credentials themselves can be sourced from env vars, secrets, or plaintext. |
 
 ## Deploying
 
