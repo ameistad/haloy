@@ -5,18 +5,23 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	_ "modernc.org/sqlite"
 )
 
 const driverName = "sqlite"
-const dbName = "haloy.db"
 
 type DB struct {
 	*sql.DB
 }
 
-func New(dbPath string) (*DB, error) {
-	dbFile := filepath.Join(dbPath, dbName)
+func New() (*DB, error) {
+	dataDir, err := config.DataDir()
+	if err != nil {
+		return nil, err
+	}
+	dbFile := filepath.Join(dataDir, constants.DBDir, constants.DBFileName)
 	database, err := sql.Open(driverName, dbFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

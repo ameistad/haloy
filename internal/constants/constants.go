@@ -18,24 +18,31 @@ const (
 	DefaultAPIServerURL          = "http://localhost:9999" // Default URL for the haloy API server
 
 	// Environment variables
-	EnvVarAgeIdentity = "HALOY_ENCRYPTION_KEY"
-	EnvVarAPIToken    = "HALOY_API_TOKEN"
-	EnvVarReplicaID   = "HALOY_REPLICA_ID" // available in all containers.
-	EnvVarDataDir     = "HALOY_DATA_DIR"   // used to override default data directory.
-	EnvVarConfigDir   = "HALOY_CONFIG_DIR" // used to override default config directory.
-	EnvVarDebug       = "HALOY_DEBUG"
+	EnvVarAgeIdentity   = "HALOY_ENCRYPTION_KEY"
+	EnvVarAPIToken      = "HALOY_API_TOKEN"
+	EnvVarReplicaID     = "HALOY_REPLICA_ID" // available in all containers.
+	EnvVarDataDir       = "HALOY_DATA_DIR"   // used to override default data directory.
+	EnvVarConfigDir     = "HALOY_CONFIG_DIR" // used to override default config directory for haloy.
+	EnvVarDebug         = "HALOY_DEBUG"
+	EnvVarSystemInstall = "HALOY_SYSTEM_INSTALL" // used to disable system wide install
 
-	// Paths specific to the haloy manager which runs in a docker container. Important that they use consistent naming.
-	HaloyConfigPath         = "/haloy-config"
-	HAProxyConfigPath       = "/haproxy-config"
-	CertificatesStoragePath = "/cert-storage"
-	DBPath                  = "/db"
+	// Directories
+	SystemDataDir   = "/var/lib/haloy"
+	SystemConfigDir = "/etc/haloy"
+	UserDataDir     = "~/.local/share/haloy"
+	UserConfigDir   = "~/.config/haloy"
+
+	// Subdirectories
+	DBDir            = "db"
+	HAProxyConfigDir = "haproxy-config"
+	CertStorageDir   = "cert-storage"
 
 	// File names
 	ManagerConfigFileName = "manager.yaml"
 	ClientConfigFileName  = "client.yaml"
 	ConfigEnvFileName     = ".env"
 	HAProxyConfigFileName = "haproxy.cfg"
+	DBFileName            = "haloy.db"
 )
 
 // File and directory permissions

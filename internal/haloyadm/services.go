@@ -20,7 +20,7 @@ import (
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
-func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
+func startHaloyManager(ctx context.Context, dataDir, managerConfigDir string, devMode bool, debug bool) error {
 	image := "ghcr.io/ameistad/haloy-manager:latest"
 	if devMode {
 		image = "haloy-manager:latest" // Use local image in dev mode
@@ -36,20 +36,22 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--name", constants.ManagerContainerName,
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.CertificatesHTTPProviderPort, constants.CertificatesHTTPProviderPort),
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.APIServerPort, constants.APIServerPort),
-		"--volume", fmt.Sprintf("%s:%s:ro", configDir, constants.HaloyConfigPath),
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.HAProxyConfigPath, constants.HAProxyConfigPath),
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.CertificatesStoragePath, constants.CertificatesStoragePath),
-		"--volume", fmt.Sprintf("%s%s:%s:rw", dataDir, constants.DBPath, constants.DBPath),
+		"--volume", fmt.Sprintf("%s:%s:ro", managerConfigDir, managerConfigDir), // /etc/haloy or ~/.config/haloy
+		"--volume", fmt.Sprintf("%s:%s:rw", dataDir, dataDir), // /var/lib/haloy or ~/.local/share/haloy
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		"--user", fmt.Sprintf("%d:%d", uid, gid),
 		"--group-add", dockerGID,
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
 		"--restart", "unless-stopped",
 		"--network", constants.DockerNetwork,
+		// Path environment variables so we can use paths functions and get the same results as on the host system.
+		"--env", fmt.Sprintf("%s=%s", constants.EnvVarDataDir, dataDir),
+		"--env", fmt.Sprintf("%s=%s", constants.EnvVarConfigDir, managerConfigDir),
+		"--env", fmt.Sprintf("%s=%s", constants.EnvVarSystemInstall, fmt.Sprintf("%t", config.IsSystemMode())),
 	}
 
-	// using godotenv to add env variables because --env-file does not support quotes in values.
-	envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
+	// using godotenv to add env variables from .env because --env-file does not support quotes in values.
+	envFile := filepath.Join(managerConfigDir, constants.ConfigEnvFileName)
 	env, err := godotenv.Read(envFile)
 	if err != nil {
 		return fmt.Errorf("failed to read env file: %w", err)
@@ -100,15 +102,15 @@ func getDockerGroupID() string {
 	return "999"
 }
 
-// startHaproxy runs the docker command to start haloy-haproxy.
-func startHaproxy(ctx context.Context, dataDir string) error {
+// startHAProxy runs the docker command to start HAProxy.
+func startHAProxy(ctx context.Context, dataDir string) error {
 	cmd := exec.CommandContext(ctx, "docker", "run",
 		"--detach",
 		"--name", constants.HAProxyContainerName,
 		"--publish", "80:80",
 		"--publish", "443:443",
-		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy:ro", dataDir, constants.HAProxyConfigPath),
-		"--volume", fmt.Sprintf("%s%s:/usr/local/etc/haproxy-certs:rw", dataDir, constants.CertificatesStoragePath),
+		"--volume", fmt.Sprintf("%s/%s:/usr/local/etc/haproxy:ro", dataDir, constants.HAProxyConfigDir),
+		"--volume", fmt.Sprintf("%s/%s:/usr/local/etc/haproxy-certs:rw", dataDir, constants.CertStorageDir),
 		"--volume", fmt.Sprintf("%s/error-pages:/usr/local/etc/haproxy-errors:ro", dataDir),
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole),
 		// Running as root is necessary for privileged ports 80 and 443.
@@ -151,7 +153,7 @@ func containerExists(ctx context.Context, role string) (bool, error) {
 	return output != "", nil
 }
 
-func startServices(ctx context.Context, dataDir, configDir string, devMode, restart, debug bool) error {
+func startServices(ctx context.Context, dataDir, managerConfigDir string, devMode, restart, debug bool) error {
 	// Check if containers exist
 	managerExists, err := containerExists(ctx, config.ManagerLabelRole)
 	if err != nil {
@@ -190,11 +192,11 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 	}
 
 	// Start the services
-	if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
+	if err := startHaloyManager(ctx, dataDir, managerConfigDir, devMode, debug); err != nil {
 		return err
 	}
 
-	if err := startHaproxy(ctx, dataDir); err != nil {
+	if err := startHAProxy(ctx, dataDir); err != nil {
 		return err
 	}
 

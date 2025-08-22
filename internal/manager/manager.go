@@ -60,7 +60,7 @@ func RunManager(debug bool) {
 		logger.Info("Debug mode enabled: No changes will be applied to HAProxy. Staging certificates will be used for all domains.")
 	}
 
-	db, err := storage.New(constants.DBPath)
+	db, err := storage.New()
 	if err != nil {
 		logger.Error("Failed to initialize database", "error", err)
 		return
@@ -72,7 +72,17 @@ func RunManager(debug bool) {
 	}
 	logger.Info("Database initialized successfully")
 
-	configFilePath := filepath.Join(constants.HaloyConfigPath, constants.ManagerConfigFileName)
+	dataDir, err := config.DataDir()
+	if err != nil {
+		logger.Error("Failed to get data directory", "error", err)
+		return
+	}
+	managerConfigDir, err := config.ManagerConfigDir()
+	if err != nil {
+		logger.Error("Failed to get manager config directory", "error", err)
+		return
+	}
+	configFilePath := filepath.Join(managerConfigDir, constants.ManagerConfigFileName)
 	managerConfig, err := config.LoadManagerConfig(configFilePath)
 	if err != nil {
 		logger.Error("Failed to load configuration file", "error", err)
@@ -110,7 +120,7 @@ func RunManager(debug bool) {
 
 	deploymentManager := NewDeploymentManager(cli, managerConfig)
 	certManagerConfig := CertificatesManagerConfig{
-		CertDir:          constants.CertificatesStoragePath,
+		CertDir:          filepath.Join(dataDir, constants.CertStorageDir),
 		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
 		TlsStaging:       debug,
 	}
@@ -118,7 +128,7 @@ func RunManager(debug bool) {
 	if err != nil {
 		logging.LogFatal(logger, "Failed to create certificate manager", "error", err)
 	}
-	haproxyManager := NewHAProxyManager(cli, managerConfig, constants.HAProxyConfigPath, debug)
+	haproxyManager := NewHAProxyManager(cli, managerConfig, filepath.Join(dataDir, constants.HAProxyConfigDir), debug)
 	updaterConfig := UpdaterConfig{
 		Cli:               cli,
 		DeploymentManager: deploymentManager,

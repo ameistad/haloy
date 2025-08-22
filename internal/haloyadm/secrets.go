@@ -74,8 +74,7 @@ func SecretsRollCmd() *cobra.Command {
 				return
 			}
 
-			dbPath := filepath.Join(dataDir, constants.DBPath)
-			db, err := storage.New(dbPath)
+			db, err := storage.New()
 			if err != nil {
 				ui.Error("Failed to connect to database: %v", err)
 				return

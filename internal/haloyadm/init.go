@@ -34,6 +34,7 @@ func InitCmd() *cobra.Command {
 	var devMode bool
 	var debug bool
 	var noLogs bool
+	var localInstall bool
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -41,10 +42,13 @@ func InitCmd() *cobra.Command {
 		Long: fmt.Sprintf(
 			`Initialize Haloy by creating the data directory structure and starting core services.
 
+Installation modes:
+  Default (system): Uses system directories (/etc/haloy, /var/lib/haloy) when running as root
+  --local-install:  Forces user directories (~/.config/haloy, ~/.local/share/haloy)
+
 This command will:
-- Create the config directory (default: ~/.config/haloy)
-- Create the data directory (default: ~/.local/share/haloy)
-- Copy initial files and templates
+- Create the data directory (default: /var/lib/haloy)
+- Create the config directory for the manager (default: /etc/haloy)
 - Create the Docker network for Haloy services
 - Start HAProxy and haloy-manager containers (unless --no-services is used)
 
@@ -52,6 +56,13 @@ The data directory can be customized by setting the %s environment variable.`,
 			constants.EnvVarDataDir,
 		),
 		Run: func(cmd *cobra.Command, args []string) {
+			if localInstall {
+				os.Setenv(constants.EnvVarSystemInstall, "false")
+			}
+
+			if !config.IsSystemMode() {
+				ui.Info("Installing in local mode (user directories)")
+			}
 
 			var createdDirs []string
 			var cleanupOnFailure bool = true
@@ -80,17 +91,17 @@ The data directory can be customized by setting the %s environment variable.`,
 				return
 			}
 
-			configDir, err := config.ConfigDir()
+			managerConfigDir, err := config.ManagerConfigDir()
 			if err != nil {
-				ui.Error("Failed to determine config directory: %v\n", err)
+				ui.Error("Failed to determine manager config directory: %v\n", err)
 				return
 			}
 
-			if err := validateAndPrepareDirectory(configDir, "Config", override); err != nil {
+			if err := validateAndPrepareDirectory(managerConfigDir, "Manager Config", override); err != nil {
 				ui.Error("%v\n", err)
 				return
 			}
-			createdDirs = append(createdDirs, configDir)
+			createdDirs = append(createdDirs, managerConfigDir)
 
 			if err := validateAndPrepareDirectory(dataDir, "Data", override); err != nil {
 				ui.Error("%v\n", err)
@@ -112,14 +123,14 @@ The data directory can be customized by setting the %s environment variable.`,
 			}
 
 			// Use createdDirs for cleanup if later steps fail
-			if err := createConfigFiles(apiToken, identity.String(), apiDomain, acmeEmail, configDir); err != nil {
+			if err := createConfigFiles(apiToken, identity.String(), apiDomain, acmeEmail, managerConfigDir); err != nil {
 				ui.Error("Failed to create config files: %v\n", err)
 				return
 			}
 
 			var emptyDirs = []string{
-				filepath.Base(constants.HAProxyConfigPath),
-				filepath.Base(constants.DBPath),
+				filepath.Base(constants.HAProxyConfigDir),
+				filepath.Base(constants.DBDir),
 			}
 			if err := copyDataFiles(dataDir, emptyDirs); err != nil {
 				ui.Error("Failed to create configuration files: %v\n", err)
@@ -135,7 +146,7 @@ The data directory can be customized by setting the %s environment variable.`,
 
 			successMsg := "Haloy initialized successfully!\n\n"
 			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
-			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
+			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", managerConfigDir)
 			if apiDomain != "" {
 				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", apiDomain)
 			}
@@ -146,7 +157,7 @@ The data directory can be customized by setting the %s environment variable.`,
 			// Start the haloy-manager container and haproxy container, stream logs if requested.
 			if !skipServices {
 				ui.Info("Starting Haloy services...")
-				if err := startServices(ctx, dataDir, configDir, devMode, override, debug); err != nil {
+				if err := startServices(ctx, dataDir, managerConfigDir, devMode, override, debug); err != nil {
 					ui.Error("%s", err)
 					return
 				}
@@ -172,6 +183,8 @@ The data directory can be customized by setting the %s environment variable.`,
 	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream manager initialization logs")
+	cmd.Flags().BoolVar(&localInstall, "local-install", false, "Install in user directories instead of system directories")
+
 	return cmd
 }
 

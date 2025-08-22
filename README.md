@@ -1,5 +1,6 @@
 # Haloy
-Haloy is a simple and lightweight CLI tool for deploying your apps to a server that you control. It automates the deployment of Docker containers and manages HAProxy to handle reverse proxying, load balancing, and TLS termination.
+
+Haloy is a simple and lightweight CLI tool for deploying your apps to a server that you control.
 
 ## ✨ Features
   * **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
@@ -7,165 +8,119 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 * **Easy Rollbacks:** Instantly revert to any previous deployment with a single command.
 * **Simple Horizontal Scaling:** Scale your application by changing a single number in your config to run multiple container instances.
 * **High-performance Reverse Proxy:** Leverages [HAProxy](https://www.haproxy.org/) for load balancing, HTTPS termination, and HTTP/2 support.
-* **Deploy from Anywhere:** A simple API allows for remote deployments from your local machine or a CI/CD pipeline.
+* **Deploy from Anywhere:** Integrated API allows for remote deployments from your local machine or a CI/CD pipeline.
 
 
-# 🚀 Getting Started: Your First Deploy in 5 Minutes
-This guide will walk you through setting up Haloy and deploying a sample application.
+## 🚀 Quick Start
 
-__Prerequisites:__
-- A server with a public IP address.
-- Docker installed on your server.
-- You've added your user to the docker group to run commands without sudo. (See instructions below).
-- A Docker image for your application pushed to a registry (like Docker Hub or GHCR).
+### Prerequisites
+- A server with root access and a public IP address 
+- Docker installed on your server
+- Docker image for your app
 
-## Install and Initialize Haloy on Your Server
-First, SSH into your server.
+### 1. Install and Initialize Haloy on Your Server
 
-1. Install the `haloy` and `haloyadm` tools using the install script:
+1. Install `haloyadm` (system-wide installation):
     ```bash
-    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
-    ```
-    You may need to add ~/.local/bin to your server's $PATH.
-
-1. Initialize the Haloy services. This command creates the necessary directories and starts the Haloy Manager and HAProxy containers.
-    ```bash
-    haloyadm init
-    ```
-    💡 Optional: If have domain ready, you can secure the Haloy API itself during initialization:
-    ```bash
-    haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
+    sudo curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
     ```
 
-## Configure Your Local Machine for Remote Deploys
-This is optional as you can run the `haloy` command from your server and it will use the API locally. 
+2. Initialize the Haloy services:
+    ```bash
+    sudo haloyadm init
+    ```
 
-1. Install the haloy client tool:
-  ```bash
-  curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
-  ```
-
-1. Ensure ~/.local/bin is in your PATH. Add this to your ~/.bashrc, ~/.zshrc, or equivalent shell profile:
-  ```bash
-  export PATH="$HOME/.local/bin:$PATH"?
-  ```
-
-## Install
-For Haloy to work you need to have Docker installed. It's also recommended that you add your user to the [Docker user group](#add-user-to-docker-group).
-
-Run this on your server to install the `haloy` (deploy) and `haloyadm` (server admin) cli tools:
-```bash
-curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-server.sh | bash
-```
-
-Then run:
-```bash
-haloyadm init
-```
-
-If you want to use the API for remote deployments and you have added DNS records to the server.
-```bash
-haloyadm init --api-domain api.yourserver.com --acme-email you@youremail.com
-```
-
-## Remote deploys (optional)
-If you want to trigger deploys from a CI or your own machine you only need the `haloy` cli tool. Install with this command:
-
-```bash
-curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install.sh | bash
-```
-
-Ensure `~/.local/bin` is in your `PATH`:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-Automatically setup API token and set default server:
-```bash
-haloy setup ssh user@<ip|host>
-```
-
-### Add user to docker group
-`sudo usermod -aG docker $(whoami)`
-
-Verify (you should see "docker"): `id -nG $(whoami)` or `groups $(whoami)`
-
-Important: Log out and log back in for the group change to take effect, or run `newgrp docker` in your current shell.
-
-Test it: `docker ps` (should work without sudo).
+    💡 **Optional**: Secure the Haloy API with a domain during initialization:
+    ```bash
+    sudo haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
+    ```
 
 > [!NOTE]
-> Adding your user to the `docker` group gives it root-equivalent access to Docker. Only do this for trusted users. If you prefer you can skip this step and run Haloy with `sudo` (e.g., `sudo haloy init`).
+> For development or non-root installations, you can install in user mode:
+> ```bash
+> # Install to user directory
+> curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
+> 
+> # Initialize in local mode
+> haloyadm init --local-install
+> ```
 
+### 2. Install `haloy` Client
 
-## Building and Configuring
+This installs the `haloy` client tool for deploying applications. Install this on the machine you want to deploy from (local machine, CI/CD server, or the same server).
 
+1. Install the haloy client:
+    ```bash
+    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
+    ```
 
-The first step is to create a `haloy.yaml` file (json and toml is also supported).
+2. Ensure `~/.local/bin` is in your PATH:
+    ```bash
+    export PATH="$HOME/.local/bin:$PATH"
+    ```
+    Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
 
-You can call the file whatever you like, but if you don't use haloy.json,yaml/yml,toml you have to specify what config file to use. For example `haloy deploy my-app.json`
+3. Connect to your server:
+    ```bash
+    haloy setup haloy.yourserver.com <api-token>
+    ``` 
 
-By using a config file it's easy to keep it in version control with the rest of your code. 
+### 3. Create `haloy.yaml`
+In your application's project directory, create a `haloy.yaml` file:
 
-__Add configuration the `haloy.yaml` config file__
-
-`haloy.yaml`
 ```yaml
-server: "https://haloy.my-app.com"
+# Server URL (optional if running haloy on the server)
+server: haloy.yourserver.com
+
+# Unique name for your application
 name: "my-app"
+
+# Docker image to deploy
 image:
-  repository: "ghcr.io/your-github-user/my-app"
+  repository: "ghcr.io/your-username/my-app"
   tag: "latest"
+
+# Domain configuration
 domains:
   - domain: "my-app.com"
     aliases:
       - "www.my-app.com"
-      - "blog.my-app.com"
-acme_email: "acme@my-app.com"
+
+# Email for Let's Encrypt registration
+acme_email: "you@email.com"
 ```
 
-<details>
-<summary>haloy.json example</summary>
+> [!NOTE]
+> The configuration file doesn't have to live in your project directory and you can name it whatever you like, but if you don't use haloy.yaml you have to specify the path to the file. For example `haloy deploy my-app.yaml`. 
 
-```json
-{
-  "server": "https://haloy.my-app.com",
-  "name": "my-app",
-  "image": {
-    "repository": "ghcr.io/your-github-user/my-app",
-    "tag": "latest"
-  },
-  "domains": [
-    {
-      "domain": "my-app.com",
-      "aliases": ["www.my-app.com", "blog.my-app.com"],
-    }
-  ],
-  "acmeEmail": "acme@my-app.com",
-}
+For all available options, see the full [Configuration Options](#confiuration-options) table below.
+
+### 4. Deploy
+
+```bash
+haloy deploy
 ```
 
-</details>
+## Alternative: Docker Group Setup
 
-<details>
-<summary>haloy.toml example</summary>
+Instead of using `sudo`, you can add your user to the docker group:
 
-```toml
-server = "https://haloy.my-app.com"
-name = "my-app"
-acmeEmail = "acme@my-app.com"
-healthCheckPath = "/health"
+```bash
+# Add user to docker group
+sudo usermod -aG docker $(whoami)
 
-[image]
-repository = "ghcr.io/your-github-user/my-app"
-tag = "latest"
+# Log out and back in, or run:
+newgrp docker
 
-[[domains]]
-domain = "my-app.com"
-aliases = ["www.my-app.com", "blog.my-app.com"]
+# Test access
+docker ps
+
+# Now you can run without sudo:
+haloyadm init --local-install
 ```
 
-</details>
+> [!WARNING]
+> Adding your user to the `docker` group gives root-equivalent access. Only do this for trusted users.
 
 [Checkout the full list of configuration options](#configuration-options).
 
@@ -185,7 +140,7 @@ Here's a simple configuration illustrating how we can build and deploy without n
 Note that we need to add source: local to the image configuration to indicate that we don't need to pull from a registry.
 ```json
   {
-  "server": "https://haloy.my-app.com",
+  "server": "https://haloy.yourserver.com",
   "name": "my-app",
   "image": {
     "repository": "my-app",
@@ -199,19 +154,24 @@ Note that we need to add source: local to the image configuration to indicate th
   ],
   "acmeEmail": "acme@my-app-com",
   "preDeploy": [
-    "docker build --platform linux/amd64 -t haloy-demo-buzy .",
-    "docker save -o haloy-demo-buzy.tar haloy-demo-buzy",
-    "scp haloy-demo-buzy.tar $(whoami)@hermes:/tmp/haloy-demo-buzy.tar",
-    "ssh $(whoami)@hermes \"docker load -i /tmp/haloy-demo-buzy.tar && rm /tmp/haloy-demo-buzy.tar\"",
-    "rm haloy-demo-buzy.tar"
+    "docker build --platform linux/amd64 -t my-app .",
+    "docker save -o my-app.tar my-app",
+    "scp my-app.tar $(whoami)@server-ip:/tmp/my-app.tar",
+    "ssh $(whoami)@hermes \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\"",
+    "rm my-app.tar"
   ]
 }
 
 
 ```
 
-## ⚙️ Configuration Options
-Haloy uses a single configuration file for each application. While `haloy.yaml` is the default, you can also use `.json` or `.toml`. Note that YAML and TOML use `snake_case`, while JSON uses `camelCase`.
+## Configuration Options
+
+### Format Support
+Haloy supports YAML, JSON, and TOML formats:
+- **YAML/TOML**: Use `snake_case` (e.g., `acme_email`)
+- **JSON**: Use `camelCase` (e.g., `acmeEmail`)
+
 
 | Key                 | Type      | Required | Description                                                                                                                                                                     |
 |---------------------|-----------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

@@ -13,62 +13,85 @@ func ensureDir(dirPath string) error {
 	return os.MkdirAll(dirPath, constants.ModeDirPrivate)
 }
 
-// If constants.EnvVarDataDir is set, it will use that instead.
-func DataDir() (string, error) {
-	// allow overriding via env
-	if envPath, ok := os.LookupEnv(constants.EnvVarDataDir); ok && envPath != "" {
-		// Handle tilde expansion for env var
-		if strings.HasPrefix(envPath, "~/") {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			envPath = filepath.Join(home, envPath[2:])
+// expandPath handles tilde expansion for paths
+func expandPath(path string) (string, error) {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
 		}
-		return envPath, nil
+		path = filepath.Join(home, path[2:])
 	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(home, ".local", "share", "haloy")
 	return path, nil
 }
 
-// ConfigDir returns the Haloy configuration directory
+// DataDir returns the Haloy data directory
+// Should work for code run in containers and host filesystem.
+// System install: /var/lib/haloy
+// User install: ~/.local/share/haloy
+func DataDir() (string, error) {
+	if envPath, ok := os.LookupEnv(constants.EnvVarDataDir); ok && envPath != "" {
+		return expandPath(envPath)
+	}
+
+	if !IsSystemMode() {
+		return expandPath(constants.UserDataDir)
+	}
+
+	return constants.SystemDataDir, nil
+}
+
+// ManagerConfigDir returns the configuration directory for haloy manager.
+// Should work for code run in containers and host filesystem.
+// System install: /etc/haloy
+// User install: ~/.config/haloy
+func ManagerConfigDir() (string, error) {
+	if envPath, ok := os.LookupEnv(constants.EnvVarConfigDir); ok && envPath != "" {
+		expandedPath, err := expandPath(envPath)
+		if err != nil {
+			return "", err
+		}
+		if err := ensureDir(expandedPath); err != nil {
+			return "", err
+		}
+		return expandedPath, nil
+	}
+
+	// Default to system mode unless explicitly disabled
+	if IsSystemMode() {
+		if err := ensureDir(constants.SystemConfigDir); err != nil {
+			return "", err
+		}
+		return constants.SystemConfigDir, nil
+	}
+
+	// User mode fallback
+	expandedPath, err := expandPath(constants.UserConfigDir)
+	if err != nil {
+		return "", err
+	}
+	if err := ensureDir(expandedPath); err != nil {
+		return "", err
+	}
+	return expandedPath, nil
+}
+
+// ConfigDir returns the configuration directory for haloy
+// Defaults to ~/.config/haloy
 func ConfigDir() (string, error) {
 	if envPath, ok := os.LookupEnv(constants.EnvVarConfigDir); ok && envPath != "" {
-		if strings.HasPrefix(envPath, "~/") {
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return "", err
-			}
-			envPath = filepath.Join(home, envPath[2:])
+		envPath, err := expandPath(envPath)
+		if err != nil {
+			return "", err
 		}
+
 		if err := ensureDir(envPath); err != nil {
 			return "", err
 		}
 		return envPath, nil
 	}
 
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	path := filepath.Join(home, ".config", "haloy")
-	if err := ensureDir(path); err != nil {
-		return "", err
-	}
-	return path, nil
-}
-
-func ServicesDockerComposeFile() (string, error) {
-	dataDir, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dataDir, "docker-compose.yml"), nil
+	return expandPath(constants.UserConfigDir)
 }
 
 func HAProxyConfigFilePath() (string, error) {
@@ -76,5 +99,15 @@ func HAProxyConfigFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dataDir, "haproxy-config", constants.HAProxyConfigFileName), nil
+	return filepath.Join(dataDir, constants.HAProxyConfigDir, constants.HAProxyConfigFileName), nil
+}
+
+func IsSystemMode() bool {
+	// Check explicit override first
+	if systemInstall := os.Getenv(constants.EnvVarSystemInstall); systemInstall != "" {
+		return systemInstall == "true"
+	}
+
+	// Default to true (system mode) unless running as non-root user
+	return os.Geteuid() == 0
 }

@@ -60,7 +60,7 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 
 	// Process secret environment variables
 	if len(secretEnvVars) > 0 {
-		db, err := storage.New(constants.DBPath)
+		db, err := storage.New()
 		if err != nil {
 			return result, fmt.Errorf("failed to create database: %w", err)
 		}

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/ameistad/haloy/internal/storage"
 	"github.com/docker/docker/api/types/filters"
@@ -24,7 +23,7 @@ func resolveRegistryAuthSource(ras config.RegistryAuthSource) (string, error) {
 	case "env":
 		return os.Getenv(ras.Value), nil
 	case "secret":
-		db, err := storage.New(constants.DBPath)
+		db, err := storage.New()
 		if err != nil {
 			return "", fmt.Errorf("failed to create secrets manager: %w", err)
 		}
