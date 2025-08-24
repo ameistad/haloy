@@ -10,7 +10,6 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 * **High-performance Reverse Proxy:** Leverages [HAProxy](https://www.haproxy.org/) for load balancing, HTTPS termination, and HTTP/2 support.
 * **Deploy from Anywhere:** Integrated API allows for remote deployments from your local machine or a CI/CD pipeline.
 
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -41,13 +40,21 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 > # Install to user directory
 > curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
 > 
+> # Add your user to the docker group (required for non-root Docker access)
+> sudo usermod -aG docker $(whoami)
+> 
+> # Log out and back in, or run:
+> newgrp docker
+> 
+> # Test Docker access
+> docker ps
+> 
 > # Initialize in local mode
 > haloyadm init --local-install
 > ```
-
+> [!WARNING]
+> Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access, so only do this for trusted users.
 ### 2. Install `haloy` Client
-
-This installs the `haloy` client tool for deploying applications. Install this on the machine you want to deploy from (local machine, CI/CD server, or the same server).
 
 1. Install the haloy client:
     ```bash
@@ -101,28 +108,40 @@ For all available options, see the full [Configuration Options](#confiuration-op
 haloy deploy
 ```
 
-## Alternative: Docker Group Setup
+## Configuration Reference
 
-Instead of using `sudo`, you can add your user to the docker group:
+### Format Support
+Haloy supports YAML, JSON, and TOML formats:
+- **YAML/TOML**: Use `snake_case` (e.g., `acme_email`)
+- **JSON**: Use `camelCase` (e.g., `acmeEmail`)
 
-```bash
-# Add user to docker group
-sudo usermod -aG docker $(whoami)
+### Configuration Options
 
-# Log out and back in, or run:
-newgrp docker
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `name` | string | **Yes** | Unique application name |
+| `image` | object | **Yes** | Docker image configuration |
+| `server` | string | No | Haloy manager API URL |
+| `domains` | array | No | Domain configuration |
+| `acme_email` | string | No | Let's Encrypt email (required with domains) |
+| `replicas` | integer | No | Number of container instances (default: 1) |
+| `port` | string | No | Container port (default: "8080") |
+| `health_check_path` | string | No | Health check endpoint (default: "/") |
+| `env` | array | No | Environment variables |
+| `volumes` | array | No | Volume mounts |
+| `deployments_to_keep` | integer | No | Deployment history to keep (default: 6) |
+| `pre_deploy` | array | No | Commands to run before deploy |
+| `post_deploy` | array | No | Commands to run after deploy |
+| `network_mode` | string | No | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`) |
 
-# Test access
-docker ps
+#### Image Configuration
 
-# Now you can run without sudo:
-haloyadm init --local-install
-```
-
-> [!WARNING]
-> Adding your user to the `docker` group gives root-equivalent access. Only do this for trusted users.
-
-[Checkout the full list of configuration options](#configuration-options).
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `repository` | string | **Yes** | Docker image name |
+| `tag` | string | No | Image tag (default: "latest") |
+| `registry` | object | No | Private registry authentication |
+| `source` | string | No | Set to "local" for images already on server |
 
 ### The configration file
 Haloy support `yaml/yml`, `json` and `toml` format for the configuration file. Keep in mind that config options (fields/keys) uses camelCase for json and snake_case for yaml and toml.
@@ -161,44 +180,7 @@ Note that we need to add source: local to the image configuration to indicate th
     "rm my-app.tar"
   ]
 }
-
-
 ```
-
-## Configuration Options
-
-### Format Support
-Haloy supports YAML, JSON, and TOML formats:
-- **YAML/TOML**: Use `snake_case` (e.g., `acme_email`)
-- **JSON**: Use `camelCase` (e.g., `acmeEmail`)
-
-
-| Key                 | Type      | Required | Description                                                                                                                                                                     |
-|---------------------|-----------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `name`              | `string`  | **Yes** | A unique name for your application. Used for naming containers and HAProxy backends.                                                                                              |
-| `image`             | `object`  | **Yes** | Defines the Docker image to be deployed. See [Image Configuration](#image-configuration) below.                                                                                   |
-| `server`            | `string`  | No       | The URL of the Haloy manager API. If not set, you must configure it globally with `haloy setup ssh`.                                                                              |
-| `domains`           | `array`   | No       | A list of domains for your app. Each item can define a `domain` (canonical) and `aliases`. Required for web traffic.                                                              |
-| `acme_email`        | `string`  | No       | The email address for Let's Encrypt registration. Required if `domains` are specified.                                                                                          |
-| `replicas`          | `integer` | No       | The number of container instances to run for this application for horizontal scaling. Defaults to `1`.                                                                            |
-| `port`              | `string`  | No       | The port your application listens on inside the container. Defaults to `"8080"`.                                                                                                |
-| `health_check_path` | `string`  | No       | The HTTP path for health checks (e.g., `/health`). Haloy expects a 2xx status code. Defaults to `/`. Ignored if your Dockerfile has a `HEALTHCHECK` instruction.                 |
-| `env`               | `array`   | No       | A list of environment variables. Can be a plaintext `value` or a reference to a `secret_name`.                                                                                    |
-| `volumes`           | `array`   | No       | A list of Docker volume mounts in the format `/host/path:/container/path`.                                                                                                      |
-| `deployments_to_keep` | `integer` | No       | Number of old deployments (images and configs) to keep for rollbacks. Defaults to `6`.                                                                                          |
-| `pre_deploy`        | `array`   | No       | A list of shell commands to execute on the client machine **before** the deployment starts.                                                                                       |
-| `post_deploy`       | `array`   | No       | A list of shell commands to execute on the client machine **after** the deployment finishes.                                                                                      |
-| `network_mode`      | `string`  | No       | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`).                                                                                  |
-
-#### Image Configuration
-The `image` object has the following fields:
-
-| Key          | Type     | Required | Description                                                                                                                                                                   |
-|--------------|----------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `repository` | `string` | **Yes** | The name of the Docker image (e.g., `ghcr.io/my-user/my-app`).                                                                                                                  |
-| `tag`        | `string` | No       | The image tag to use. Defaults to `latest`.                                                                                                                                   |
-| `source`     | `string` | No       | Set to `local` if the image is already on the server and should not be pulled from a registry. Defaults to `registry`.                                                         |
-| `registry`   | `object` | No       | Authentication details for a private Docker registry. Includes `server`, `username`, and `password`. The credentials themselves can be sourced from env vars, secrets, or plaintext. |
 
 ## Deploying
 
