@@ -17,14 +17,14 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 - Docker installed on your server
 - Docker image for your app
 
-### 1. Install and Initialize Haloy on Your Server
+### 1. Install and Initialize the Haloy Manager on Your Server
 
 1. Install `haloyadm` (system-wide installation):
     ```bash
     sudo curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
     ```
 
-2. Initialize the Haloy services:
+2. Initialize the `haloy-manager` and `HAProxy`:
     ```bash
     sudo haloyadm init
     ```
@@ -52,11 +52,12 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 > # Initialize in local mode
 > haloyadm init --local-install
 > ```
-> [!WARNING]
-> Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access, so only do this for trusted users.
+>
+> ⚠️ Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access, so only do this for trusted users.
 ### 2. Install `haloy` Client
+The next step is to install the `haloy` CLI tool that will interact with the haloy server.
 
-1. Install the haloy client:
+1. Install `haloy`
     ```bash
     curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
     ```
@@ -115,6 +116,11 @@ Haloy supports YAML, JSON, and TOML formats:
 - **YAML/TOML**: Use `snake_case` (e.g., `acme_email`)
 - **JSON**: Use `camelCase` (e.g., `acmeEmail`)
 
+### Naming and Location
+You can name the file whatever you want and it can live anywhere as long as the cli tool haloy has access to it. It's often a good idea to keep it in your repo so it's version controlled. 
+
+If you don't provide a path to the file name when running `haloy deploy` it will look for a haloy.yaml in the current directory.
+
 ### Configuration Options
 
 | Key | Type | Required | Description |
@@ -143,15 +149,29 @@ Haloy supports YAML, JSON, and TOML formats:
 | `registry` | object | No | Private registry authentication |
 | `source` | string | No | Set to "local" for images already on server |
 
-### The configration file
-Haloy support `yaml/yml`, `json` and `toml` format for the configuration file. Keep in mind that config options (fields/keys) uses camelCase for json and snake_case for yaml and toml.
+## Commands
 
+```bash
+# Deploy application
+haloy deploy [config-file]
 
-You can name the file whatever you want and it can live anywhere as long as the cli tool haloy has access to it. It's often a good idea to keep it in your repo so it's version controlled. 
+# Check status
+haloy status [config-file]
 
-If you don't provide a path to the file name when running `haloy deploy` it will look for a haloy.yaml in the current directory. 
+# List deployments
+haloy rollback <app-name>
 
-### Build locally with a hook
+# Rollback to specific deployment
+haloy rollback <app-name> <deployment-id>
+
+# Manage secrets
+haloy secrets init
+haloy secrets set <name> <value>
+haloy secrets list
+haloy secrets delete <name>
+```
+
+### Build Locally With the `pre_deploy` hook.
 To get up and running quickly with your app you can build the images locally on your own system and upload with scp to your server. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. 
 
 Here's a simple configuration illustrating how we can build and deploy without needing a Docker registry.
@@ -181,350 +201,104 @@ Note that we need to add source: local to the image configuration to indicate th
   ]
 }
 ```
-
-## Deploying
-
-
-
-
-
-### Deploy commands
+## Secrets Management
 
 ```bash
-# Deploy app
-haloy deploy my-app.yaml
-
-# Check the status
-haloy status my-app.yaml
-
-# Roll back to a previous deployment
-haloy rollback my-app.yaml 20231026143000
-```
-
-For a full list of command run `haloy help`
-
-## Configuration
-### App Configuration
-
-Each app in the `apps` list can have the following properties:
-
-- `name`: (Required) Unique name for the app.
-- `image`: TODO
-- `domains`: (Required) A list of domains for the app. Can be a simple list of strings or a map with aliases. Aliases will automatically be redirected to the main (canonical) domain.
-  - Example:
-    ```yaml
-    domains:
-    - domain: "example.com"
-      aliases:
-        - "www.example.com"
-    - domain: "api.example.com"
-    ```
-- `acme_email`: The email address to use for Let's Encrypt TLS certificate registration.
-- `env`: (Optional) Environment variables for the container
-  - Example:
-    ```yaml
-      env:
-        - name: "NODE_ENV"
-          value: "production" # plain text value
-        - name: "API_SECRET_KEY"
-          secret_name: "my-secret-key" # Reference to a secret. 
-      ```
-- `deployments_to_keep`: (Optional) Number of old deployment data (images and config) to keep for rollbacks (default: 5)
-- `port`: (Optional) If not set you need to use port 8080 as this is the default. If you use any other port in your container you need to set this.
-- `replicas`: (Optional) The number of container instances to run for this application. When thera are more than one replicas, Haloy starts multiple identical containers and automatically configures HAProxy to distribute traffic between them using round-robin load balancing. (Default: 1)
-- `volumes`: Docker volumes to mount
-- `health_check_path`: (Optional) The HTTP path that Haloy will check for a 2xx status code to determine if your application is healthy. This is used as a fallback if you don't define a HEALTHCHECK instruction in your Dockerfile. (Default: "/")
-
-
-## Hooks
-Haloy has pre deploy and post deploy hooks which will execute commands on the machine you are running `haloy`. 
-
-TODO: documents how hooks work.
-
-
-## How Rollbacks Work
-
-Haloy provides robust rollback capabilities, allowing you to revert your application to a previous, stable state. This is achieved by leveraging historical Docker images and stored application configurations.
-
-### Performing a Rollback
-To initiate a rollback, you use the `haloy rollback` command.
-
-**List Rollback Targets**: If you run `haloy rollback <app-name>` without specifying a `deployment-id`, Haloy will list all available historical deployments for that application. This list includes the `deployment-id`, the `image tag` used, and indicates which one is currently considered "latest".
-
-```bash
-haloy rollback my-app
-```
-This command leverages the stored image tags and optionally the configuration snapshots to show you the previous deployment states.
-
-**Execute Rollback**: To perform the rollback, you provide the `deployment-id` of the specific historical version you wish to restore.
-
-```bash
-haloy rollback my-app 20231026143000
-```
-
-When a rollback is executed, Haloy uses the image corresponding to the `target-deployment-id`. It also attempts to retrieve the stored `AppConfig` from that historical `deployment-id`. This historical image and configuration are then used to initiate a *new* deployment, complete with a *new* unique `deployment-id`. This ensures that the rollback itself creates a new, trackable deployment in your history, maintaining the integrity of your deployment timeline. The previous running containers for the application (that are not part of the new deployment) will be stopped and removed.
-
-### Secrets Management
-
-Haloy provides a secure way to manage sensitive environment variables using the `secrets` command:
-
-```bash
-# Initialize the secrets system (generates encryption keys)
+# Initialize secrets system
 haloy secrets init
 
 # Store a secret
-haloy secrets set api-key "your-secret-api-key"
+haloy secrets set api-key "your-secret-value"
 
-# List all stored secrets
+# List secrets
 haloy secrets list
 
-# Delete a secret
-haloy secrets delete api-key
+# Use in configuration
+env:
+  - name: "API_KEY"
+    secret_name: "api-key"
 ```
 
-To use a secret in your app configuration:
+## Horizontal Scaling
 
-1. Store the secret using `haloy secrets set <secret-name> <value>`
-2. Reference it in your `apps.yml` file:
-   ```yaml
-   env:
-     - name: "API_KEY"
-       secretName: "api-key"  # References the stored secret named "api-key"
-   ```
+Scale your application by setting the `replicas` field:
 
-Secrets are securely encrypted at rest using [age encryption](https://age-encryption.org) and are only decrypted when needed for deployments.
-
-
-#### Storing AGE-SECRET-KEY (private key)
-By default the key used to decrypt secrets is stored in `~/.config/haloy/age_identity.txt` with strict permissions set. Instead of relying on the ~/.config/haloy/age_identity.txt file, you can provide the private key directly via the `HALOY_AGE_IDENTITY` environment variable.
-
-1. Get your private key. You can display it by reading the identity file:
-```bash
-cat ~/.config/haloy/age_identity.txt
-```
-
-2. Set the `HALOY_AGE_IDENTITY` environment variable in your shell environment with the value of the key.
-
-```bash
-export HALOY_AGE_IDENTITY="AGE-SECRET-KEY-1..."
-```
-Haloy will automatically use this environment variable for decrypting secrets if it is set.
-
-## Preparing Images for Haloy
-To ensure smooth, reliable deployments, your application images should be built with a few best practices in mind.
-
-### Health Checks
-Haloy checks the health of new containers before finalizing a deployment and switching traffic. This is crucial for achieving zero-downtime deployments. Haloy uses two methods to determine if an application is ready:
-
-__1. Recommended Method. `HEALTHCHECK` in Dockerfile__
-
-The most reliable way to report your application's status is by using the native `HEALTHCHECK` instruction in your Dockerfile. Haloy respects this instruction and will wait for the container's status to become healthy before proceeding with the deployment.
-
-Example Dockerfile:
-```dockerfile
-FROM node:18-alpine
-
-# ... (rest of your app setup) ...
-
-# This command checks if the app is responding on port 3000 at the /healthz endpoint.
-# It should return exit code 0 on success or 1 on failure.
-HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -q --spider http://localhost:3000/healthz || exit 1
-
-CMD [ "node", "server.js" ]
-```
-
-__2. Fallback Method: `healthCheckPath` in `apps.yml`__
-If your Docker image does not include a `HEALTHCHECK` instruction, Haloy will fall back to performing an HTTP GET request. It will send the request to the endpoint you specify in the `healthCheckPath` property of your `apps.yml` file. Haloy considers the application healthy if it receives any `2xx` status code in response.
-
-## Horizontal Scaling with Replicas
-Haloy supports horizontal scaling out-of-the-box through the replicas property in your apps.yml configuration. By setting this value to more than one, you instruct Haloy to start multiple identical instances of your application's container for a single deployment.
-
-When you run multiple replicas, Haloy automatically configures the HAProxy backend to load balance traffic across all healthy instances of your application. By default, it uses a round-robin strategy to distribute incoming requests evenly. This setup enhances both performance and availability, as traffic will be redirected away from any instance that fails its health check.
-
-This property allows you to easily scale your application to handle more traffic and improve its fault tolerance without any manual configuration of the load balancer. The default is 1 replica if the property is not specified.
-
-__Example__: Here’s how you would configure an application to run with three replicas:
 ```yaml
-apps:
-  - name: "my-scalable-app"
-    source:
-      image:
-        repository: "my-org/my-app"
-        tag: "1.2.0"
-    replicas: 3 # Haloy will start 3 instances of this container
-    domains:
-      - domain: "api.example.com"
-    acmeEmail: "your-email@example.com"
+name: "my-scalable-app"
+image:
+  repository: "my-org/my-app"
+  tag: "1.2.0"
+replicas: 3  # Run 3 instances
+domains:
+  - domain: "api.example.com"
+acme_email: "you@email.com"
+```
+
+## Uninstalling
+
+### Remove Client Only
+```bash
+curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/uninstall-haloy.sh | bash
+```
+
+### Remove Admin Tool Only
+```bash
+curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/uninstall-haloyadm.sh | bash
+```
+
+### Complete Server Removal
+```bash
+curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/uninstall-server.sh | bash
+```
+
+## Directory Structure
+
+Haloy uses standard system directories:
+
+**System Installation (default):**
+```
+/etc/haloy/              # Configuration
+├── manager.yaml         # Manager settings
+├── .env                 # API tokens
+└── docker-compose.yml   # Service definitions
+
+/var/lib/haloy/          # Data
+├── haproxy-config/      # HAProxy configs
+├── cert-storage/        # SSL certificates
+└── data/                # Database files
+```
+
+**User Installation (`--local-install`):**
+```
+~/.config/haloy/         # Configuration
+~/.local/share/haloy/    # Data
 ```
 
 ## Architecture
 
-Haloy is designed to simplify the deployment and management of Dockerized applications with dynamic HAProxy-based load balancing and automated SSL certificate management. Its architecture comprises several key components:
+Haloy consists of several components:
 
-1.  **Haloy CLI (`haloy`):**
-    * The command-line interface used by developers to interact with the Haloy system.
-    * Responsibilities: Initializing Haloy, managing application configurations (`apps.yml`), deploying applications, managing secrets, checking status, etc.
+1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
+2. **Haloy Manager** - Service discovery and configuration management
+3. **HAProxy** - Load balancer and SSL termination
+4. **Application Containers** - Your deployed applications
 
-2.  **Haloy Manager (daemon):**
-    * A long-running daemon (typically run as a Docker container itself, e.g., `ghcr.io/ameistad/haloy-manager`).
-    * **Core Responsibilities:**
-        * **Service Discovery:** Continuously monitors Docker for application containers managed by Haloy, identified by specific Docker labels.
-        * **Dynamic HAProxy Configuration:** Generates and applies HAProxy configurations based on the discovered application containers and their labels. It signals HAProxy to reload its configuration gracefully with zero downtime.
-        * **Automated Certificate Management:** Manages SSL/TLS certificates using ACME (Let's Encrypt) for domains specified in application labels. It handles certificate issuance and renewals.
-        * **Event Handling:** Responds to Docker events (e.g., container start/stop) to keep the HAProxy configuration up-to-date.
-
-3.  **HAProxy (daemon):**
-    * A high-performance TCP/HTTP load balancer.
-    * Haloy configures HAProxy to:
-        * Route traffic based on hostnames to the appropriate backend application containers.
-        * Terminate HTTPS connections using certificates managed by the Haloy Manager.
-        * Handle HTTP to HTTPS redirection.
-        * Serve ACME HTTP-01 challenges.
-
-4.  **Application Containers:**
-    * User-provided Dockerized applications.
-    * These containers **must** be deployed with specific Docker labels (see below) for the Haloy Manager to discover and manage them.
-
-### Service Discovery and Configuration via Docker Labels
-
-Docker labels are the cornerstone of how the Haloy Manager identifies and configures services for HAProxy. When you deploy an application through Haloy (based on your `apps.yml` configuration), the resulting containers are automatically assigned these crucial labels.
-
-Haloy uses the following Docker container labels on your application containers:
-
-* `dev.haloy.role`: (Required) Identifies the role of the container. For applications managed by Haloy and configured in HAProxy, this should be set to `app`.
-* `dev.haloy.appName`: (Required) The unique name of your application. This is used to group container instances and name HAProxy backends.
-* `dev.haloy.deployment-id`: (Required) An identifier for a specific deployment version of your application (e.g., a timestamp). This helps Haloy manage different versions and is crucial for zero-downtime deployments and rollbacks.
-* `dev.haloy.port`: (Required, defaults to "80" if not specified in app config) The port your application container listens on. HAProxy will forward traffic to this port on the container's IP address.
-* `dev.haloy.health-check-path`: (Required, defaults to "/" if not specified in app config) The HTTP path on your application that Haloy (and HAProxy) can use to check its health.
-* `dev.haloy.acme.email`: (Required) The email address used for ACME (Let's Encrypt) to obtain SSL/TLS certificates for the domains associated with this application. These certificates are then used by HAProxy for HTTPS termination.
-* `dev.haloy.domain.<index>`: (Required, e.g., `dev.haloy.domain.0`) The canonical domain name for a set of hostnames serving your application (e.g., `example.com`). HAProxy uses this for host-based ACLs (Access Control Lists) to route traffic.
-* `dev.haloy.domain.<index>.alias.<alias_index>`: (Optional, e.g., `dev.haloy.domain.0.alias.0`) Defines an alias for the canonical domain at the same `<index>` (e.g., `www.example.com`). HAProxy will typically be configured to redirect traffic from these aliases to the canonical domain over HTTPS.
-
-This mechanism allows Haloy to dynamically adapt the HAProxy configuration without manual intervention as applications are deployed, updated, or scaled.
-
-**Example in `apps.yml` leading to these labels:**
-
-When you define an application in your `apps.yml` like this:
-
-```yaml
-apps:
-  - name: "my-web-app"
-    source:
-      # ... source definition isn't defined in labels
-    domains:
-      - domain: "myapp.example.com"
-        aliases:
-          - "www.myapp.example.com"
-    acmeEmail: "user@example.com"
-    port: "3000"
-    healthCheckPath: "/status"
-    # ... other app config
-```
-Haloy will (upon deployment) create containers with labels similar to:
-
-* `dev.haloy.role`: app
-* `dev.haloy.appName`: my-web-app
-* `dev.haloy.deployment-id`: 20250528210000 (example timestamp)
-* `dev.haloy.port`: 3000
-* `dev.haloy.health-check-path`: /status
-* `dev.haloy.acme.email`: user@example.com
-* `dev.haloy.domain.0`: myapp.example.com
-* `dev.haloy.domain.0.alias.0`: www.myapp.example.com
-
-These labels are then read by the Haloy manager to dynamically generate the HAProxy configuration, ensuring traffic is routed correctly and securely to your application instances.
-
-### Directory Structure
-
-Haloy uses two separate directories to organize its files:
-
-__Configuration Directory (`~/.config/haloy`)__
-Used for CLI settings and authentication:
-- **`.env`** - API token for connecting to remote haloy-manager instances
-- Can be customized with `HALOY_CONFIG_DIR` environment variable
-
-__Data Directory (`~/.local/share/haloy`)__
-- Docker Compose files for haloy-manager and HAProxy
-- **`haproxy-config`** - Dynamic HAProxy configuration file
-- **`cert-storage/`** - SSL certificates and ACME account data
-- **`.env`** - Local haloy-manager environment variables
-- **`haloy.db`** - SQLite database (future feature)
-- Can be customized with `HALOY_DATA_DIR` environment variable
-
+The system uses Docker labels for service discovery and dynamic configuration generation.
 
 ## Development
 
-### Building the CLI
-
+### Building
 ```bash
 go build -o haloy ./cmd/cli
 ```
 
-## Releasing
+### Releasing
+Create an annotated tag to trigger automated release:
+```bash
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
 
-Haloy uses GitHub Actions for automated builds and releases.
-
-### Automated Release Process
-
-1. Make sure all code changes are committed and pushed to main:
-   - Any workflow or CI/CD changes should be made separately from the release process
-   - Push these changes and wait for the workflow to complete before proceeding
-
-2. Update the version number in relevant files:
-   ```bash
-   # Edit the version constant in internal/version/version.go
-   git add internal/version/version.go
-   git commit -m "Bump version to v1.0.0"
-   git push origin main
-   ```
-
-3. Create an annotated tag for the release:
-   ```bash
-   git tag -a v1.0.0 -m "Release v1.0.0: Brief description of changes"
-   git push origin v1.0.0
-   ```
-
-4. GitHub Actions will automatically:
-   - Run all tests
-   - Build the manager Docker image and push it to GitHub Container Registry with version tags
-   - Build the CLI binaries for all supported platforms
-   - Create a GitHub Release with the binaries attached
-
-5. Verify the release at:
-   ```
-   https://github.com/ameistad/haloy/releases
-   ```
-
-**Important Note**: The workflow is optimized to:
-- Only run tests for pushes to branches and pull requests
-- Run the full build process (including release) only when pushing a tag
-- This separation prevents duplicate builds and conserves GitHub Actions minutes
-
-### Manual Release Process
-
-1. Build the CLI for multiple platforms:
-   ```bash
-   # Linux (AMD64)
-   GOOS=linux GOARCH=amd64 go build -o haloy-linux-amd64 ./cmd/cli
-   
-   # Linux (ARM64)
-   GOOS=linux GOARCH=arm64 go build -o haloy-linux-arm64 ./cmd/cli
-   
-   # macOS (AMD64)
-   GOOS=darwin GOARCH=amd64 go build -o haloy-darwin-amd64 ./cmd/cli
-   
-   # macOS (ARM64)
-   GOOS=darwin GOARCH=arm64 go build -o haloy-darwin-arm64 ./cmd/cli
-   
-   # Windows
-   GOOS=windows GOARCH=amd64 go build -o haloy-windows-amd64.exe ./cmd/cli
-   ```
-
-2. Build and push the manager Docker image:
-   ```bash
-   docker build -t ghcr.io/ameistad/haloy-manager:latest -f build/manager/Dockerfile .
-   docker push ghcr.io/ameistad/haloy-manager:latest
-   ```
 ## License
 
 [MIT License](LICENSE)
