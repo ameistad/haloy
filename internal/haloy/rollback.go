@@ -28,7 +28,7 @@ The path can be:
 
 If no path is provided, the current directory is used.
 
-Use 'haloy rollback-targets [path]' to list available deployment IDs.`,
+Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 		Args: cobra.RangeArgs(1, 2), // 1-2 args: [path] deployment-id OR deployment-id
 		Run: func(cmd *cobra.Command, args []string) {
 			var targetDeploymentID string

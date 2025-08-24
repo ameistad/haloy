@@ -107,6 +107,9 @@ For all available options, see the full [Configuration Options](#configuration-o
 
 ```bash
 haloy deploy
+
+# Check status
+haloy status
 ```
 
 ## Configuration Reference
@@ -128,7 +131,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `replicas` | integer | No | Number of container instances (default: 1) |
 | `port` | string | No | Container port (default: "8080") |
 | `health_check_path` | string | No | Health check endpoint (default: "/") |
-| `env` | array | No | Environment variables |
+| `env` | array | No | Environment variables (see [Environment Variables](#environment-variables)) |
 | `volumes` | array | No | Volume mounts |
 | `deployments_to_keep` | integer | No | Deployment history to keep (default: 6) |
 | `pre_deploy` | array | No | Commands to run before deploy |
@@ -144,26 +147,128 @@ Haloy supports YAML, JSON, and TOML formats:
 | `registry` | object | No | Private registry authentication |
 | `source` | string | No | Set to "local" for images already on server |
 
+#### Environment Variables
+
+Environment variables can be configured in two ways:
+
+**1. Plain text values:**
+```yaml
+env:
+  - name: "DATABASE_URL"
+    value: "postgres://localhost:5432/myapp"
+  - name: "DEBUG"
+    value: "true"
+```
+
+**2. Secret references:** (requires [secrets management](#secrets-management))
+```yaml
+env:
+  - name: "API_KEY"
+    secret_name: "my-api-key"
+  - name: "DATABASE_PASSWORD"
+    secret_name: "db-password"
+```
+
+**Environment Variable Configuration:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | Environment variable name |
+| `value` | string | No* | Plain text value |
+| `secret_name` | string | No* | Reference to a stored secret |
+
+> **Note**: You must provide either `value` OR `secret_name`, but not both.
+
+**Examples:**
+
+<details>
+<summary>YAML Format</summary>
+
+```yaml
+env:
+  - name: "NODE_ENV"
+    value: "production"
+  - name: "PORT"
+    value: "3000"
+  - name: "API_SECRET"
+    secret_name: "app-api-secret"
+```
+</details>
+
+<details>
+<summary>JSON Format</summary>
+
+```json
+{
+  "env": [
+    {
+      "name": "NODE_ENV",
+      "value": "production"
+    },
+    {
+      "name": "PORT", 
+      "value": "3000"
+    },
+    {
+      "name": "API_SECRET",
+      "secretName": "app-api-secret"
+    }
+  ]
+}
+```
+</details>
+
+<details>
+<summary>TOML Format</summary>
+
+```toml
+[[env]]
+name = "NODE_ENV"
+value = "production"
+
+[[env]]
+name = "PORT"
+value = "3000"
+
+[[env]]
+name = "API_SECRET"
+secret_name = "app-api-secret"
+```
+</details>
+
+**Security Best Practices:**
+- ✅ Use `secret_name` for sensitive values (passwords, API keys, tokens)
+- ✅ Use `value` for non-sensitive configuration (ports, URLs, feature flags)
+- ❌ Never put sensitive data in `value` fields as they're stored in plain text
+
 ## Commands
 
 ```bash
 # Deploy application
-haloy deploy [config-file]
+haloy deploy [config-path]
 
 # Check status
-haloy status [config-file]
+haloy status [config-path]
 
-# List deployments
-haloy rollback <app-name>
+# Stop application containers
+haloy stop [config-path]
+
+# Validate configuration file
+haloy validate-config [config-path]
+
+# List available rollback targets
+haloy rollback-targets [config-path]
 
 # Rollback to specific deployment
-haloy rollback <app-name> <deployment-id>
+haloy rollback [config-path] <deployment-id>
 
 # Manage secrets
-haloy secrets init
 haloy secrets set <name> <value>
 haloy secrets list
 haloy secrets delete <name>
+
+# Roll secrets with haloyadm (creates new encryption key and re-encrypts all existing secrets)
+sudo haloyadm secrets roll
 ```
 
 ### Build Locally With the `pre_deploy` hook.
@@ -195,23 +300,6 @@ Note that we need to add source: local to the image configuration to indicate th
     "rm my-app.tar"
   ]
 }
-```
-## Secrets Management
-
-```bash
-# Initialize secrets system
-haloy secrets init
-
-# Store a secret
-haloy secrets set api-key "your-secret-value"
-
-# List secrets
-haloy secrets list
-
-# Use in configuration
-env:
-  - name: "API_KEY"
-    secret_name: "api-key"
 ```
 
 ## Horizontal Scaling
@@ -255,12 +343,11 @@ Haloy uses standard system directories:
 /etc/haloy/              # Configuration
 ├── manager.yaml         # Manager settings
 ├── .env                 # API tokens
-└── docker-compose.yml   # Service definitions
 
 /var/lib/haloy/          # Data
 ├── haproxy-config/      # HAProxy configs
 ├── cert-storage/        # SSL certificates
-└── data/                # Database files
+└── db/                  # Database files
 ```
 
 **User Installation (`--local-install`):**
@@ -274,25 +361,12 @@ Haloy uses standard system directories:
 Haloy consists of several components:
 
 1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
-2. **Haloy Manager** - Service discovery and configuration management
-3. **HAProxy** - Load balancer and SSL termination
-4. **Application Containers** - Your deployed applications
+1. **Haloy Admin CLI (`haloyadm`) - Command-line interface to administrate haloy-manager and secrets.
+1. **Haloy Manager** - Service discovery and configuration management
+1. **HAProxy** - Load balancer and SSL termination
+1. **Application Containers** - Your deployed applications
 
 The system uses Docker labels for service discovery and dynamic configuration generation.
-
-## Development
-
-### Building
-```bash
-go build -o haloy ./cmd/cli
-```
-
-### Releasing
-Create an annotated tag to trigger automated release:
-```bash
-git tag -a v1.0.0 -m "Release v1.0.0"
-git push origin v1.0.0
-```
 
 ## License
 
