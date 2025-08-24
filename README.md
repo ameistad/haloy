@@ -101,7 +101,7 @@ acme_email: "you@email.com"
 > [!NOTE]
 > The configuration file doesn't have to live in your project directory and you can name it whatever you like, but if you don't use haloy.yaml you have to specify the path to the file. For example `haloy deploy my-app.yaml`. 
 
-For all available options, see the full [Configuration Options](#confiuration-options) table below.
+For all available options, see the full [Configuration Options](#configuration-options) table below.
 
 ### 4. Deploy
 
@@ -115,11 +115,6 @@ haloy deploy
 Haloy supports YAML, JSON, and TOML formats:
 - **YAML/TOML**: Use `snake_case` (e.g., `acme_email`)
 - **JSON**: Use `camelCase` (e.g., `acmeEmail`)
-
-### Naming and Location
-You can name the file whatever you want and it can live anywhere as long as the cli tool haloy has access to it. It's often a good idea to keep it in your repo so it's version controlled. 
-
-If you don't provide a path to the file name when running `haloy deploy` it will look for a haloy.yaml in the current directory.
 
 ### Configuration Options
 
