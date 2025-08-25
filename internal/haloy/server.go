@@ -33,7 +33,14 @@ func ServerAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <url> <token>",
 		Short: "Add a new Haloy server",
-		Args:  cobra.ExactArgs(2),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				ui.Error("Error: You must provide a <url> and a <token> to add a server.\n")
+				ui.Info("%s", cmd.UsageString())
+				return fmt.Errorf("requires at least 2 arg(s), only received %d", len(args))
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			url := args[0]
 			token := strings.Join(args[1:], " ")
