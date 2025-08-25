@@ -91,17 +91,17 @@ The data directory can be customized by setting the %s environment variable.`,
 				return
 			}
 
-			managerConfigDir, err := config.ManagerConfigDir()
+			configDir, err := config.ConfigDir()
 			if err != nil {
 				ui.Error("Failed to determine manager config directory: %v\n", err)
 				return
 			}
 
-			if err := validateAndPrepareDirectory(managerConfigDir, "Manager Config", override); err != nil {
+			if err := validateAndPrepareDirectory(configDir, "Manager Config", override); err != nil {
 				ui.Error("%v\n", err)
 				return
 			}
-			createdDirs = append(createdDirs, managerConfigDir)
+			createdDirs = append(createdDirs, configDir)
 
 			if err := validateAndPrepareDirectory(dataDir, "Data", override); err != nil {
 				ui.Error("%v\n", err)
@@ -123,7 +123,7 @@ The data directory can be customized by setting the %s environment variable.`,
 			}
 
 			// Use createdDirs for cleanup if later steps fail
-			if err := createConfigFiles(apiToken, identity.String(), apiDomain, acmeEmail, managerConfigDir); err != nil {
+			if err := createConfigFiles(apiToken, identity.String(), apiDomain, acmeEmail, configDir); err != nil {
 				ui.Error("Failed to create config files: %v\n", err)
 				return
 			}
@@ -146,7 +146,7 @@ The data directory can be customized by setting the %s environment variable.`,
 
 			successMsg := "Haloy initialized successfully!\n\n"
 			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
-			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", managerConfigDir)
+			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
 			if apiDomain != "" {
 				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", apiDomain)
 			}
@@ -157,7 +157,7 @@ The data directory can be customized by setting the %s environment variable.`,
 			// Start the haloy-manager container and haproxy container, stream logs if requested.
 			if !skipServices {
 				ui.Info("Starting Haloy services...")
-				if err := startServices(ctx, dataDir, managerConfigDir, devMode, override, debug); err != nil {
+				if err := startServices(ctx, dataDir, configDir, devMode, override, debug); err != nil {
 					ui.Error("%s", err)
 					return
 				}
@@ -190,10 +190,10 @@ The data directory can be customized by setting the %s environment variable.`,
 	return cmd
 }
 
-func copyDataFiles(dst string, emptyDirs []string) error {
+func copyDataFiles(dataDir string, emptyDirs []string) error {
 	// First create empty directories
 	for _, dir := range emptyDirs {
-		dirPath := filepath.Join(dst, dir)
+		dirPath := filepath.Join(dataDir, dir)
 		if err := os.MkdirAll(dirPath, constants.ModeDirPrivate); err != nil {
 			return fmt.Errorf("failed to create empty directory %s: %w", dirPath, err)
 		}
@@ -211,7 +211,7 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 			return fmt.Errorf("failed to determine relative path: %w", err)
 		}
 
-		targetPath := filepath.Join(dst, relPath)
+		targetPath := filepath.Join(dataDir, relPath)
 		if d.IsDir() {
 			if err := os.MkdirAll(targetPath, constants.ModeDirPrivate); err != nil {
 				return err
@@ -250,13 +250,13 @@ func copyDataFiles(dst string, emptyDirs []string) error {
 	}
 
 	// Now handle template files
-	if err := copyConfigTemplateFiles(); err != nil {
+	if err := copyConfigTemplateFiles(dataDir); err != nil {
 		return fmt.Errorf("failed to copy template files: %w", err)
 	}
 
 	return nil
 }
-func copyConfigTemplateFiles() error {
+func copyConfigTemplateFiles(dataDir string) error {
 	haproxyConfigTemplateData := embed.HAProxyTemplateData{
 		HTTPFrontend:            "",
 		HTTPSFrontend:           "",
@@ -269,10 +269,7 @@ func copyConfigTemplateFiles() error {
 		return fmt.Errorf("failed to build HAProxy template: %w", err)
 	}
 
-	haproxyConfigFilePath, err := config.HAProxyConfigFilePath()
-	if err != nil {
-		return fmt.Errorf("failed to determine HAProxy config file path: %w", err)
-	}
+	haproxyConfigFilePath := filepath.Join(dataDir, constants.HAProxyConfigDir, constants.HAProxyConfigFileName)
 
 	if err := os.WriteFile(haproxyConfigFilePath, haproxyConfigFile.Bytes(), constants.ModeFileDefault); err != nil {
 		return fmt.Errorf("failed to write updated haproxy config file: %w", err)
@@ -348,7 +345,7 @@ func validateAndPrepareDirectory(dirPath, dirType string, overrideExisting bool)
 				strings.ToLower(dirType), dirPath)
 		}
 		if !overrideExisting {
-			return fmt.Errorf("%s directory already exists: %s\nUse --override-existing to overwrite",
+			return fmt.Errorf("%s directory already exists: %s\nUse --override to overwrite",
 				strings.ToLower(dirType), dirPath)
 		}
 		ui.Info("Removing existing %s directory: %s\n", strings.ToLower(dirType), dirPath)

@@ -3,15 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/constants"
 )
-
-// EnsureDir creates the directory and any necessary parents, logging an error if it fails.
-func ensureDir(dirPath string) error {
-	return os.MkdirAll(dirPath, constants.ModeDirPrivate)
-}
 
 // expandPath handles tilde expansion for paths
 func expandPath(path string) (string, error) {
@@ -41,27 +37,21 @@ func DataDir() (string, error) {
 	return constants.SystemDataDir, nil
 }
 
-// ManagerConfigDir returns the configuration directory for haloy manager.
-// Should work for code run in containers and host filesystem.
-// System install: /etc/haloy
-// User install: ~/.config/haloy
-func ManagerConfigDir() (string, error) {
+// ConfigDir returns the configuration directory for haloy/haloyadm
+// System mode: /etc/haloy
+// User mode: ~/.config/haloy
+func ConfigDir() (string, error) {
+	// Environment variable override takes priority
 	if envPath, ok := os.LookupEnv(constants.EnvVarConfigDir); ok && envPath != "" {
 		expandedPath, err := expandPath(envPath)
 		if err != nil {
 			return "", err
 		}
-		if err := ensureDir(expandedPath); err != nil {
-			return "", err
-		}
 		return expandedPath, nil
 	}
 
-	// Default to system mode unless explicitly disabled
+	// System mode detection (haloyadm)
 	if IsSystemMode() {
-		if err := ensureDir(constants.SystemConfigDir); err != nil {
-			return "", err
-		}
 		return constants.SystemConfigDir, nil
 	}
 
@@ -70,42 +60,18 @@ func ManagerConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := ensureDir(expandedPath); err != nil {
-		return "", err
-	}
 	return expandedPath, nil
-}
-
-// ConfigDir returns the configuration directory for haloy
-// Defaults to ~/.config/haloy
-func ConfigDir() (string, error) {
-	if envPath, ok := os.LookupEnv(constants.EnvVarConfigDir); ok && envPath != "" {
-		envPath, err := expandPath(envPath)
-		if err != nil {
-			return "", err
-		}
-
-		if err := ensureDir(envPath); err != nil {
-			return "", err
-		}
-		return envPath, nil
-	}
-
-	return expandPath(constants.UserConfigDir)
-}
-
-func HAProxyConfigFilePath() (string, error) {
-	dataDir, err := DataDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dataDir, constants.HAProxyConfigDir, constants.HAProxyConfigFileName), nil
 }
 
 func IsSystemMode() bool {
 	// Check explicit override first
 	if systemInstall := os.Getenv(constants.EnvVarSystemInstall); systemInstall != "" {
 		return systemInstall == "true"
+	}
+
+	// On Windows, default to user mode (system mode requires explicit setting)
+	if runtime.GOOS == "windows" {
+		return false
 	}
 
 	// Default to true (system mode) unless running as non-root user

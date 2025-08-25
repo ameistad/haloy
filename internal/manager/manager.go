@@ -77,12 +77,12 @@ func RunManager(debug bool) {
 		logger.Error("Failed to get data directory", "error", err)
 		return
 	}
-	managerConfigDir, err := config.ManagerConfigDir()
+	configDir, err := config.ConfigDir()
 	if err != nil {
 		logger.Error("Failed to get manager config directory", "error", err)
 		return
 	}
-	configFilePath := filepath.Join(managerConfigDir, constants.ManagerConfigFileName)
+	configFilePath := filepath.Join(configDir, constants.ManagerConfigFileName)
 	managerConfig, err := config.LoadManagerConfig(configFilePath)
 	if err != nil {
 		logger.Error("Failed to load configuration file", "error", err)
