@@ -221,6 +221,11 @@ func ServerListCmd() *cobra.Command {
 				return
 			}
 
+			if err = config.LoadEnvFiles(); err != nil {
+				ui.Error("Failed to load environment files: %v", err)
+				return
+			}
+
 			ui.Info("List of servers:")
 			headers := []string{"URL", "ENV VAR", "EXISTS"}
 			rows := make([][]string, 0, len(servers))
