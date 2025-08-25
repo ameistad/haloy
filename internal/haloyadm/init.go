@@ -173,6 +173,8 @@ The data directory can be customized by setting the %s environment variable.`,
 				}
 			}
 
+			ui.Info("You can now connect to this server with:\n%s", apiToken)
+
 		},
 	}
 

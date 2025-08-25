@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/knadh/koanf/providers/file"
@@ -13,7 +14,31 @@ import (
 )
 
 type ClientConfig struct {
-	DefaultServer string `json:"defaultServer" yaml:"default_server" toml:"default_server"`
+	Servers map[string]string `json:"servers" yaml:"servers" toml:"servers"`
+}
+
+func (cc *ClientConfig) AddServer(url, token string) {
+	if cc.Servers == nil {
+		cc.Servers = make(map[string]string)
+	}
+	cc.Servers[url] = token
+}
+
+func (cc *ClientConfig) RemoveServer(url string) error {
+	if _, exists := cc.Servers[url]; !exists {
+		return fmt.Errorf("server %s not found", url)
+	}
+	delete(cc.Servers, url)
+	return nil
+}
+
+func (cc *ClientConfig) ListServers() []string {
+	var urls []string
+	for url := range cc.Servers {
+		urls = append(urls, url)
+	}
+	sort.Strings(urls)
+	return urls
 }
 
 func LoadClientConfig(path string) (*ClientConfig, error) {
