@@ -35,7 +35,8 @@ func ServerAddCmd() *cobra.Command {
 		Short: "Add a new Haloy server",
 		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
-			url, token := args[0], args[1]
+			url := args[0]
+			token := strings.Join(args[1:], " ")
 
 			if url == "" {
 				ui.Error("URL is required")
