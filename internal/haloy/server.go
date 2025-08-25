@@ -104,6 +104,10 @@ func ServerAddCmd() *cobra.Command {
 				return
 			}
 
+			if clientConfig == nil {
+				clientConfig = &config.ClientConfig{}
+			}
+
 			clientConfig.AddServer(normalizedURL, tokenEnv, force)
 
 			if err := config.SaveClientConfig(clientConfig, clientConfigPath); err != nil {
