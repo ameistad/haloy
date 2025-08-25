@@ -22,6 +22,19 @@ type ServerConfig struct {
 	TokenEnv string `json:"token_env" yaml:"token_env" toml:"token_env"`
 }
 
+func (cc *ClientConfig) GetServerTokenEnv(url string) (string, error) {
+	normalizedURL, err := helpers.NormalizeServerURL(url)
+	if err != nil {
+		return "", err
+	}
+
+	server, exists := cc.Servers[normalizedURL]
+	if !exists {
+		return "", fmt.Errorf("server %s not found in config", normalizedURL)
+	}
+	return server.TokenEnv, nil
+}
+
 func (cc *ClientConfig) AddServer(url, tokenEnv string, force bool) error {
 	normalizedURL, err := helpers.NormalizeServerURL(url)
 	if err != nil {

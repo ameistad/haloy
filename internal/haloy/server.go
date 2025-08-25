@@ -22,13 +22,13 @@ func ServerCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(ServerAddCmd())
-	// cmd.AddCommand(ServerDeleteCmd())
-	// cmd.AddCommand(ServerListCmd())
+	cmd.AddCommand(ServerDeleteCmd())
+	cmd.AddCommand(ServerListCmd())
 
 	return cmd
 }
-
 func ServerAddCmd() *cobra.Command {
+
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "add <url> <token>",
@@ -126,5 +126,115 @@ func ServerAddCmd() *cobra.Command {
 }
 
 func generateTokenEnvName(url string) string {
-	return fmt.Sprintf("HALOY_TOKEN_%s", strings.ToUpper(helpers.SanitizeString(url)))
+	return fmt.Sprintf("HALOY_API_TOKEN_%s", strings.ToUpper(helpers.SanitizeString(url)))
+}
+
+func ServerDeleteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete <url>",
+		Short: "Delete a Haloy server",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			url := args[0]
+
+			if url == "" {
+				ui.Error("URL is required")
+				return
+			}
+
+			normalizedURL, err := helpers.NormalizeServerURL(url)
+			if err != nil {
+				ui.Error("Invalid URL: %v", err)
+				return
+			}
+
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to get config dir: %v", err)
+				return
+			}
+
+			clientConfigPath := filepath.Join(configDir, constants.ClientConfigFileName)
+			clientConfig, err := config.LoadClientConfig(clientConfigPath)
+			if err != nil {
+				ui.Error("Failed to load client config: %v", err)
+				return
+			}
+
+			if clientConfig == nil {
+				ui.Error("No config file found in %s", clientConfigPath)
+			}
+
+			tokenEnv, err := clientConfig.GetServerTokenEnv(normalizedURL)
+			if err != nil {
+				ui.Error("Server %s not found in config", normalizedURL)
+				return
+			}
+
+			envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
+			env, _ := godotenv.Read(envFile)
+			if _, exists := env[tokenEnv]; exists {
+				delete(env, tokenEnv)
+				if err := godotenv.Write(env, envFile); err != nil {
+					ui.Warn("Failed to write env file: %v", err)
+					ui.Info("Please remove the token %s from %s manually", tokenEnv, envFile)
+				}
+			}
+			clientConfig.DeleteServer(normalizedURL)
+			if err := config.SaveClientConfig(clientConfig, clientConfigPath); err != nil {
+				ui.Error("Failed to save client config: %v", err)
+				return
+			}
+
+			ui.Success("Server %s deleted successfully", normalizedURL)
+		},
+	}
+	return cmd
+}
+
+func ServerListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List all Haloy servers",
+		Run: func(cmd *cobra.Command, args []string) {
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to get config dir: %v", err)
+				return
+			}
+
+			clientConfigPath := filepath.Join(configDir, constants.ClientConfigFileName)
+			clientConfig, err := config.LoadClientConfig(clientConfigPath)
+			if err != nil {
+				ui.Error("Failed to load client config: %v", err)
+				return
+			}
+
+			if clientConfig == nil {
+				ui.Error("No config file found in %s", clientConfigPath)
+				return
+			}
+
+			servers := clientConfig.Servers
+			if len(servers) == 0 {
+				ui.Info("No Haloy servers found")
+				return
+			}
+
+			ui.Info("List of servers:")
+			headers := []string{"URL", "ENV VAR", "EXISTS"}
+			rows := make([][]string, 0, len(servers))
+			for url, config := range servers {
+				tokenExists := "⚠️ no"
+				token := os.Getenv(config.TokenEnv)
+				if token != "" {
+					tokenExists = "✅ yes"
+				}
+				rows = append(rows, []string{url, config.TokenEnv, tokenExists})
+			}
+
+			ui.Table(headers, rows)
+		},
+	}
+	return cmd
 }
