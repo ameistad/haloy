@@ -361,7 +361,7 @@ Haloy uses standard system directories:
 Haloy consists of several components:
 
 1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
-1. **Haloy Admin CLI (`haloyadm`) - Command-line interface to administrate haloy-manager and secrets.
+1. **Haloy Admin CLI** (`haloyadm`) - Command-line interface to administrate haloy-manager and secrets.
 1. **Haloy Manager** - Service discovery and configuration management
 1. **HAProxy** - Load balancer and SSL termination
 1. **Application Containers** - Your deployed applications
