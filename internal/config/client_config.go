@@ -8,27 +8,50 @@ import (
 	"sort"
 
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 	"gopkg.in/yaml.v3"
 )
 
 type ClientConfig struct {
-	Servers map[string]string `json:"servers" yaml:"servers" toml:"servers"`
+	Servers map[string]ServerConfig `json:"servers" yaml:"servers" toml:"servers"`
 }
 
-func (cc *ClientConfig) AddServer(url, token string) {
+type ServerConfig struct {
+	TokenEnv string `json:"token_env" yaml:"token_env" toml:"token_env"`
+}
+
+func (cc *ClientConfig) AddServer(url, tokenEnv string, force bool) error {
+	normalizedURL, err := helpers.NormalizeServerURL(url)
+	if err != nil {
+		return err
+	}
+
 	if cc.Servers == nil {
-		cc.Servers = make(map[string]string)
+		cc.Servers = make(map[string]ServerConfig)
 	}
-	cc.Servers[url] = token
+
+	if !force {
+		if _, exists := cc.Servers[normalizedURL]; exists {
+			return fmt.Errorf("server %s already exists. Use --force to override", normalizedURL)
+		}
+	}
+
+	cc.Servers[normalizedURL] = ServerConfig{TokenEnv: tokenEnv}
+	return nil
 }
 
-func (cc *ClientConfig) RemoveServer(url string) error {
-	if _, exists := cc.Servers[url]; !exists {
-		return fmt.Errorf("server %s not found", url)
+func (cc *ClientConfig) DeleteServer(url string) error {
+	normalizedURL, err := helpers.NormalizeServerURL(url)
+	if err != nil {
+		return err
 	}
-	delete(cc.Servers, url)
+
+	if _, exists := cc.Servers[normalizedURL]; !exists {
+		return fmt.Errorf("server %s not found", normalizedURL)
+	}
+	delete(cc.Servers, normalizedURL)
 	return nil
 }
 
@@ -68,16 +91,16 @@ func LoadClientConfig(path string) (*ClientConfig, error) {
 	return &clientConfig, nil
 }
 
-func (cc *ClientConfig) Save(path string) error {
+func SaveClientConfig(config *ClientConfig, path string) error {
 	ext := filepath.Ext(path)
 	var data []byte
 	var err error
 
 	switch ext {
 	case ".json":
-		data, err = json.MarshalIndent(cc, "", "  ")
+		data, err = json.MarshalIndent(config, "", "  ")
 	default: // yaml
-		data, err = yaml.Marshal(cc)
+		data, err = yaml.Marshal(config)
 	}
 
 	if err != nil {

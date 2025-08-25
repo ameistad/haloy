@@ -13,6 +13,7 @@ import (
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 )
@@ -24,18 +25,19 @@ type APIClient struct {
 	apiToken string
 }
 
-func New(serverURL string) *APIClient {
+func New(url string) *APIClient {
 	token, err := config.LoadAPIToken()
 	if err != nil {
 		ui.Error("Failed to load API token: %v", err)
 		ui.Info("Set %s environment variable or create a %s file", constants.EnvVarAPIToken, constants.ConfigEnvFileName)
 		// Continue without token - let API calls fail with proper auth errors
 	}
+
 	return &APIClient{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		baseURL:  serverURL,
+		baseURL:  helpers.BuildServerURL(url), // full url with protocol.
 		apiToken: token,
 	}
 }

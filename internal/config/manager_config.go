@@ -73,16 +73,16 @@ func LoadManagerConfig(path string) (*ManagerConfig, error) {
 	return &managerConfig, nil
 }
 
-func (mc *ManagerConfig) Save(path string) error {
+func SaveManagerConfig(config *ManagerConfig, path string) error {
 	ext := filepath.Ext(path)
 	var data []byte
 	var err error
 
 	switch ext {
 	case ".json":
-		data, err = json.MarshalIndent(mc, "", "  ")
+		data, err = json.MarshalIndent(config, "", "  ")
 	default: // yaml
-		data, err = yaml.Marshal(mc)
+		data, err = yaml.Marshal(config)
 	}
 
 	if err != nil {
