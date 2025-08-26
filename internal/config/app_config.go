@@ -17,6 +17,7 @@ type AppConfig struct {
 	Name              string   `json:"name" yaml:"name" toml:"name"`
 	Image             Image    `json:"image" yaml:"image" toml:"image"`
 	Server            string   `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
+	APITokenEnv       string   `json:"apiTokenEnv,omitempty" yaml:"api_token_env,omitempty" toml:"api_token_env,omitempty"`
 	Domains           []Domain `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
 	ACMEEmail         string   `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
 	Env               []EnvVar `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`

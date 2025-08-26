@@ -11,7 +11,15 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
-func getToken(url string) (string, error) {
+func getToken(appConfig *config.AppConfig, url string) (string, error) {
+	// Check for app-specific token env var
+	if appConfig.APITokenEnv != "" {
+		if token := os.Getenv(appConfig.APITokenEnv); token != "" {
+			return token, nil
+		}
+		return "", fmt.Errorf("api token defined in config not found: %s environment variable not set", appConfig.APITokenEnv)
+	}
+
 	configDir, err := config.ConfigDir()
 	if err != nil {
 		return "", err

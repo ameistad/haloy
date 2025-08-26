@@ -33,7 +33,7 @@ func VersionCmd() *cobra.Command {
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return

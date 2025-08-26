@@ -60,7 +60,7 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -130,7 +130,7 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return

@@ -44,7 +44,7 @@ func SecretsSetCommand() *cobra.Command {
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -90,7 +90,7 @@ func SecretsListCommand() *cobra.Command {
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -152,7 +152,7 @@ func SecretsDeleteCommand() *cobra.Command {
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return

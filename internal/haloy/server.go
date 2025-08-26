@@ -228,7 +228,7 @@ func ServerListCmd() *cobra.Command {
 			}
 
 			ui.Info("List of servers:")
-			headers := []string{"URL", "ENV VAR", "EXISTS"}
+			headers := []string{"URL", "ENV VAR", "ENV VAR EXISTS"}
 			rows := make([][]string, 0, len(servers))
 			for url, config := range servers {
 				tokenExists := "⚠️ no"

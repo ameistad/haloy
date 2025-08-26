@@ -47,7 +47,7 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return

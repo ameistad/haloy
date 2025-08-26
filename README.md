@@ -68,10 +68,23 @@ The next step is to install the `haloy` CLI tool that will interact with the hal
     ```
     Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
 
-3. Connect to your server:
+3. Add your server:
     ```bash
-    haloy setup haloy.yourserver.com <api-token>
+    haloy server add haloy.yourserver.com <api-token>
     ``` 
+
+> [!TIP]
+> **Token Management**: You can configure multiple servers and manage tokens flexibly:
+> ```bash
+> # Add multiple servers
+> haloy server add https://production.haloy.dev <prod-token>
+> haloy server add https://staging.haloy.dev <staging-token>
+> 
+> # Or use app-specific tokens in your config
+> # api_token_env: "MY_CUSTOM_TOKEN"
+> ```
+> 
+> See [Authentication & Token Management](#authentication--token-management) for advanced usage patterns.
 
 ### 3. Create `haloy.yaml`
 In your application's project directory, create a `haloy.yaml` file:
@@ -112,6 +125,18 @@ haloy deploy
 haloy status
 ```
 
+## Architecture
+
+Haloy consists of several components:
+
+1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
+1. **Haloy Admin CLI** (`haloyadm`) - Command-line interface to administrate haloy-manager and secrets.
+1. **Haloy Manager** - Service discovery and configuration management
+1. **HAProxy** - Load balancer and SSL termination
+1. **Application Containers** - Your deployed applications
+
+The system uses Docker labels for service discovery and dynamic configuration generation.
+
 ## Configuration Reference
 
 ### Format Support
@@ -126,6 +151,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `name` | string | **Yes** | Unique application name |
 | `image` | object | **Yes** | Docker image configuration |
 | `server` | string | No | Haloy manager API URL |
+| `api_token_env` | string | No | Environment variable containing API token (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
 | `domains` | array | No | Domain configuration |
 | `acme_email` | string | No | Let's Encrypt email (required with domains) |
 | `replicas` | integer | No | Number of container instances (default: 1) |
@@ -279,7 +305,7 @@ Here's a simple configuration illustrating how we can build and deploy without n
 Note that we need to add source: local to the image configuration to indicate that we don't need to pull from a registry.
 ```json
   {
-  "server": "https://haloy.yourserver.com",
+  "server": "haloy.yourserver.com",
   "name": "my-app",
   "image": {
     "repository": "my-app",
@@ -356,17 +382,94 @@ Haloy uses standard system directories:
 ~/.local/share/haloy/    # Data
 ```
 
-## Architecture
+## Authentication & Token Management
 
-Haloy consists of several components:
+Haloy checks for API tokens in this order:
 
-1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
-1. **Haloy Admin CLI** (`haloyadm`) - Command-line interface to administrate haloy-manager and secrets.
-1. **Haloy Manager** - Service discovery and configuration management
-1. **HAProxy** - Load balancer and SSL termination
-1. **Application Containers** - Your deployed applications
+1. **App config**: `api_token_env` field in your `haloy.yaml`
+2. **Client config**: Tokens stored via `haloy server add`
 
-The system uses Docker labels for service discovery and dynamic configuration generation.
+### Managing Servers
+
+```bash
+# Get your API token from the server
+sudo haloyadm api token
+
+# Add a server
+haloy server add api.haloy.dev <your-api-token>
+
+# List servers (shows which tokens are available)
+haloy server list
+
+# Remove a server
+haloy server delete api.haloy.dev
+```
+
+### How It Works
+
+`haloy server add` creates two files:
+
+**`~/.config/haloy/client.yaml`** - Server references:
+```yaml
+servers:
+  "api.haloy.dev":
+    token_env: "HALOY_TOKEN_API_HALOY_DEV"
+```
+
+**`~/.config/haloy/.env`** - Actual tokens:
+```bash
+HALOY_TOKEN_API_HALOY_DEV=abc123token456
+```
+
+When you deploy, Haloy:
+1. Loads `.env` files from current directory and config directory
+2. Gets server URL from your config
+3. Looks up the token environment variable
+4. Makes authenticated API calls
+
+### Set Token In App Configuration
+
+Override the default token for specific apps or environments:
+
+```yaml
+name: "my-app"
+server: "api.haloy.dev"
+api_token_env: "PRODUCTION_DEPLOY_TOKEN"  # Use this token instead
+image:
+  repository: "my-app"
+  tag: "latest"
+```
+
+Set the token in your environment:
+```bash
+export PRODUCTION_DEPLOY_TOKEN="your_token_here"
+```
+
+### Use Cases
+
+**Multiple environments:**
+```bash
+# staging.haloy.yaml
+api_token_env: "STAGING_TOKEN"
+
+# production.haloy.yaml  
+api_token_env: "PROD_TOKEN"
+```
+
+**CI/CD per-project:**
+```bash
+export PROJECT_A_TOKEN="token_a"
+export PROJECT_B_TOKEN="token_b"
+
+haloy deploy project-a/haloy.yaml  # Uses PROJECT_A_TOKEN
+haloy deploy project-b/haloy.yaml  # Uses PROJECT_B_TOKEN
+```
+
+### Security
+
+- ✅ `.env` files have `0600` permissions (owner only)
+- ✅ Config files contain no secrets
+- ✅ Works with environment variables or `.env` files
 
 ## License
 

@@ -46,7 +46,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 				return
 			}
 
-			token, err := getToken(targetServer)
+			token, err := getToken(appConfig, targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return
