@@ -163,6 +163,12 @@ func ServerDeleteCmd() *cobra.Command {
 
 			if clientConfig == nil {
 				ui.Error("No config file found in %s", clientConfigPath)
+				return
+			}
+
+			if len(clientConfig.Servers) == 0 {
+				ui.Error("No servers found in client config")
+				return
 			}
 
 			serverConfig, exists := clientConfig.Servers[normalizedURL]
@@ -220,8 +226,6 @@ func ServerListCmd() *cobra.Command {
 				ui.Info("No Haloy servers found")
 				return
 			}
-
-			config.LoadEnvFiles()
 
 			ui.Info("List of servers:")
 			headers := []string{"URL", "ENV VAR", "EXISTS"}

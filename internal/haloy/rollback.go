@@ -60,11 +60,17 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			resp, err := api.Rollback(ctx, appConfig.Name, targetDeploymentID)
 			if err != nil {
 				ui.Error("Rollback failed: %v", err)
@@ -124,11 +130,17 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ui.Info("Rollback targets for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			targets, err := api.RollbackTargets(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get rollback targets: %v", err)

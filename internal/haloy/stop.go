@@ -46,11 +46,17 @@ If no path is provided, the current directory is used.`,
 				targetServer = serverURL
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ui.Info("Stopping application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			response, err := api.StopApp(ctx, appConfig.Name, removeContainersFlag)
 			if err != nil {
 				ui.Error("Failed to stop app: %v", err)

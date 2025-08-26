@@ -69,7 +69,7 @@ func getServer(appConfig *config.AppConfig, url string) (string, error) {
 
 	// If only one server configured, use it as default
 	if len(clientConfig.Servers) == 1 {
-		for url, _ := range clientConfig.Servers {
+		for url := range clientConfig.Servers {
 			return url, nil
 		}
 	}

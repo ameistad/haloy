@@ -44,10 +44,16 @@ func SecretsSetCommand() *cobra.Command {
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			err = api.SetSecret(ctx, name, value)
 			if err != nil {
 				ui.Error("Failed to set secret: %v", err)
@@ -84,9 +90,15 @@ func SecretsListCommand() *cobra.Command {
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			response, err := api.SecretsList(ctx)
 			if err != nil {
 				ui.Error("Failed to list secrets: %v", err)
@@ -140,10 +152,16 @@ func SecretsDeleteCommand() *cobra.Command {
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			err = api.DeleteSecret(ctx, name)
 			if err != nil {
 				ui.Error("Failed to delete secret: %v", err)

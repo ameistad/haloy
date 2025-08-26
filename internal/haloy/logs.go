@@ -46,13 +46,19 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ui.Info("Connecting to haloy manager at %s", targetServer)
 			ui.Info("Streaming all logs... (Press Ctrl+C to stop)")
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			if err := api.StreamLogs(ctx); err != nil {
 				ui.Error("Failed to stream logs: %v", err)
 				return

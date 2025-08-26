@@ -47,11 +47,17 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
+			token, err := getToken(targetServer)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
 			ui.Info("Getting status for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			status, err := api.AppStatus(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get app status: %v", err)
