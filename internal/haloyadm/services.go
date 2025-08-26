@@ -283,9 +283,9 @@ func ensureNetwork(ctx context.Context) error {
 }
 
 // streamManagerInitLogs waits for the API to become available and streams initialization logs
-func streamManagerInitLogs(ctx context.Context) error {
+func streamManagerInitLogs(ctx context.Context, token string) error {
 	apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
-	api := apiclient.New(apiURL)
+	api := apiclient.New(apiURL, token)
 
 	ui.Info("Connecting to manager API...")
 

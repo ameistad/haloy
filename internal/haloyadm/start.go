@@ -2,6 +2,7 @@ package haloyadm
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -27,7 +28,6 @@ func StartCmd() *cobra.Command {
 		Long:  "Start the haloy services, including HAProxy and haloy-manager.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-
 			ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 			defer cancel()
 
@@ -58,9 +58,14 @@ func StartCmd() *cobra.Command {
 
 			if !noLogs {
 				ui.Info("Waiting for manager API to become available...")
+				token := os.Getenv(constants.EnvVarAPIToken)
+				if token == "" {
+					ui.Error("Failed to get API token")
+					return
+				}
 
 				// Wait for API to become available and stream init logs
-				if err := streamManagerInitLogs(ctx); err != nil {
+				if err := streamManagerInitLogs(ctx, token); err != nil {
 					ui.Warn("Failed to stream manager initialization logs: %v", err)
 					ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
 				}

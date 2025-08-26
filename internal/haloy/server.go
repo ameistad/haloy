@@ -165,19 +165,19 @@ func ServerDeleteCmd() *cobra.Command {
 				ui.Error("No config file found in %s", clientConfigPath)
 			}
 
-			tokenEnv, err := clientConfig.GetServerTokenEnv(normalizedURL)
-			if err != nil {
+			serverConfig, exists := clientConfig.Servers[normalizedURL]
+			if !exists {
 				ui.Error("Server %s not found in config", normalizedURL)
 				return
 			}
 
 			envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 			env, _ := godotenv.Read(envFile)
-			if _, exists := env[tokenEnv]; exists {
-				delete(env, tokenEnv)
+			if _, exists := env[serverConfig.TokenEnv]; exists {
+				delete(env, serverConfig.TokenEnv)
 				if err := godotenv.Write(env, envFile); err != nil {
 					ui.Warn("Failed to write env file: %v", err)
-					ui.Info("Please remove the token %s from %s manually", tokenEnv, envFile)
+					ui.Info("Please remove the token %s from %s manually", serverConfig.TokenEnv, envFile)
 				}
 			}
 			clientConfig.DeleteServer(normalizedURL)
@@ -221,10 +221,7 @@ func ServerListCmd() *cobra.Command {
 				return
 			}
 
-			if err = config.LoadEnvFiles(); err != nil {
-				ui.Error("Failed to load environment files: %v", err)
-				return
-			}
+			config.LoadEnvFiles()
 
 			ui.Info("List of servers:")
 			headers := []string{"URL", "ENV VAR", "EXISTS"}

@@ -10,32 +10,40 @@ import (
 )
 
 func LogsCmd() *cobra.Command {
+	var configPath string
 	var serverURL string
 
 	cmd := &cobra.Command{
-		Use:   "logs",
+		Use:   "logs [config-path]",
 		Short: "Stream logs from the haloy manager",
 		Long: `Stream all logs from the haloy manager in real-time.
 
-This includes:
-- Deployment logs
-- Certificate renewal logs
-- Docker event logs
-- HAProxy configuration updates
-- General manager activity
+		The path can be:
+- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
+- A full path to a config file with supported extension
+- A relative path to either of the above
+
+If no path is provided, the current directory is used.
 
 The logs are streamed in real-time and will continue until interrupted (Ctrl+C).`,
+		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// Load server URL from config if not provided
-			targetServer := serverURL
-			if targetServer == "" {
-				appConfig, _, err := config.LoadAppConfig(".")
-				if err == nil && appConfig.Server != "" {
-					targetServer = appConfig.Server
-				} else {
-					ui.Error("Server URL is required. Use --server flag or configure in haloy config file")
-					return
-				}
+			if len(args) > 0 {
+				configPath = args[0]
+			} else if configPath == "" {
+				configPath = "."
+			}
+
+			appConfig, _, err := config.LoadAppConfig(configPath)
+			if err != nil {
+				ui.Error("Failed to load config: %v", err)
+				return
+			}
+
+			targetServer, err := getServer(appConfig, serverURL)
+			if err != nil {
+				ui.Error("%v", err)
+				return
 			}
 
 			ui.Info("Connecting to haloy manager at %s", targetServer)

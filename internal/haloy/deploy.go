@@ -16,7 +16,7 @@ import (
 
 func DeployAppCmd() *cobra.Command {
 	var configPath string
-	var serverURL string
+	var server string
 	var noLogs bool
 
 	cmd := &cobra.Command{
@@ -54,7 +54,13 @@ If no path is provided, the current directory is used.`,
 				}
 			}
 
-			targetServer, err := getServer(appConfig, serverURL)
+			targetServer, err := getServer(appConfig, server)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
+			token, err := getToken(targetServer)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -64,7 +70,7 @@ If no path is provided, the current directory is used.`,
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer)
+			api := apiclient.New(targetServer, token)
 			resp, err := api.Deploy(ctx, *appConfig, format)
 			if err != nil {
 				ui.Error("Deployment request failed: %v", err)
@@ -97,7 +103,7 @@ If no path is provided, the current directory is used.`,
 	}
 
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
-	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
+	cmd.Flags().StringVarP(&server, "server", "s", "", "Haloy server URL (overrides config)")
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
 
 	return cmd

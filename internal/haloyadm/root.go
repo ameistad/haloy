@@ -1,14 +1,18 @@
 package haloyadm
 
 import (
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/spf13/cobra"
 )
 
 // NewRootCmd creates the root command
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "haloyadm",
-		Short:         "Commands to manage the haloy-manager",
+		Use:   "haloyadm",
+		Short: "Commands to manage the haloy-manager",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			config.LoadEnvFiles() // load environment variables in .env for all commands.
+		},
 		SilenceErrors: true, // Don't print errors automatically
 		SilenceUsage:  true, // Don't show usage on error
 	}

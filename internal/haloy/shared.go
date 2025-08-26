@@ -2,17 +2,52 @@ package haloy
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
-func getServer(appConfig *config.AppConfig, serverURL string) (string, error) {
+func getToken(url string) (string, error) {
+	configDir, err := config.ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	clientConfigPath := filepath.Join(configDir, constants.ClientConfigFileName)
+	clientConfig, err := config.LoadClientConfig(clientConfigPath)
+	if err != nil {
+		return "", err
+	}
+
+	if clientConfig == nil {
+		return "", fmt.Errorf("no client configuration found. Run: haloy server add <url> <token>")
+	}
+
+	normalizedURL, err := helpers.NormalizeServerURL(url)
+	if err != nil {
+		return "", err
+	}
+
+	serverConfig, exists := clientConfig.Servers[normalizedURL]
+	if !exists {
+		return "", fmt.Errorf("server %s not configured. Run: haloy server add %s <token>", normalizedURL, normalizedURL)
+	}
+
+	token := os.Getenv(serverConfig.TokenEnv)
+	if token == "" {
+		return "", fmt.Errorf("token not found for server %s. Please set environment variable: %s", normalizedURL, serverConfig.TokenEnv)
+	}
+
+	return token, nil
+}
+
+func getServer(appConfig *config.AppConfig, url string) (string, error) {
 	// Explicit server URL parameter takes highest priority
-	if serverURL != "" {
-		return serverURL, nil
+	if url != "" {
+		return url, nil
 	}
 
 	// Server specified in app config
@@ -34,7 +69,7 @@ func getServer(appConfig *config.AppConfig, serverURL string) (string, error) {
 
 	// If only one server configured, use it as default
 	if len(clientConfig.Servers) == 1 {
-		for url := range clientConfig.Servers {
+		for url, _ := range clientConfig.Servers {
 			return url, nil
 		}
 	}

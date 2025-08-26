@@ -164,16 +164,24 @@ The data directory can be customized by setting the %s environment variable.`,
 
 				if !noLogs {
 					ui.Info("Waiting for manager API to become available...")
-
+					token := os.Getenv(constants.EnvVarAPIToken)
+					if token == "" {
+						ui.Error("Failed to get API token")
+						return
+					}
 					// Wait for API to become available and stream init logs
-					if err := streamManagerInitLogs(ctx); err != nil {
+					if err := streamManagerInitLogs(ctx, token); err != nil {
 						ui.Warn("Failed to stream manager initialization logs: %v", err)
 						ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
 					}
 				}
 			}
 
-			ui.Info("You can now connect to this server with:\n%s", apiToken)
+			apiDomainMessage := "<server-url>"
+			if apiDomain != "" {
+				apiDomainMessage = apiDomain
+			}
+			ui.Info("You can now add this server to the haloy cli with:\n haloy server add %s %s", apiDomainMessage, apiToken)
 
 		},
 	}
