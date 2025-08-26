@@ -418,7 +418,7 @@ When you deploy, Haloy:
 
 ### Set Token In App Configuration
 
-Override the default token for specific apps or environments:
+An alternative option is to set the API token in the app configuration file:
 
 ```yaml
 name: "my-app"
