@@ -20,7 +20,7 @@ import (
 )
 
 // startHaloyManager runs the docker command to start haloy-manager.
-func startHaloyManager(ctx context.Context, dataDir, managerConfigDir string, devMode bool, debug bool) error {
+func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
 	image := "ghcr.io/ameistad/haloy-manager:latest"
 	if devMode {
 		image = "haloy-manager:latest" // Use local image in dev mode
@@ -36,7 +36,7 @@ func startHaloyManager(ctx context.Context, dataDir, managerConfigDir string, de
 		"--name", constants.ManagerContainerName,
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.CertificatesHTTPProviderPort, constants.CertificatesHTTPProviderPort),
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.APIServerPort, constants.APIServerPort),
-		"--volume", fmt.Sprintf("%s:%s:ro", managerConfigDir, managerConfigDir), // /etc/haloy or ~/.config/haloy
+		"--volume", fmt.Sprintf("%s:%s:ro", configDir, configDir), // /etc/haloy or ~/.config/haloy
 		"--volume", fmt.Sprintf("%s:%s:rw", dataDir, dataDir), // /var/lib/haloy or ~/.local/share/haloy
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		"--user", fmt.Sprintf("%d:%d", uid, gid),
@@ -46,12 +46,12 @@ func startHaloyManager(ctx context.Context, dataDir, managerConfigDir string, de
 		"--network", constants.DockerNetwork,
 		// Path environment variables so we can use paths functions and get the same results as on the host system.
 		"--env", fmt.Sprintf("%s=%s", constants.EnvVarDataDir, dataDir),
-		"--env", fmt.Sprintf("%s=%s", constants.EnvVarConfigDir, managerConfigDir),
+		"--env", fmt.Sprintf("%s=%s", constants.EnvVarConfigDir, configDir),
 		"--env", fmt.Sprintf("%s=%s", constants.EnvVarSystemInstall, fmt.Sprintf("%t", config.IsSystemMode())),
 	}
 
 	// using godotenv to add env variables from .env because --env-file does not support quotes in values.
-	envFile := filepath.Join(managerConfigDir, constants.ConfigEnvFileName)
+	envFile := filepath.Join(configDir, constants.ConfigEnvFileName)
 	env, err := godotenv.Read(envFile)
 	if err != nil {
 		return fmt.Errorf("failed to read env file: %w", err)
@@ -153,7 +153,7 @@ func containerExists(ctx context.Context, role string) (bool, error) {
 	return output != "", nil
 }
 
-func startServices(ctx context.Context, dataDir, managerConfigDir string, devMode, restart, debug bool) error {
+func startServices(ctx context.Context, dataDir, configDir string, devMode, restart, debug bool) error {
 	// Check if containers exist
 	managerExists, err := containerExists(ctx, config.ManagerLabelRole)
 	if err != nil {
@@ -192,7 +192,7 @@ func startServices(ctx context.Context, dataDir, managerConfigDir string, devMod
 	}
 
 	// Start the services
-	if err := startHaloyManager(ctx, dataDir, managerConfigDir, devMode, debug); err != nil {
+	if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
 		return err
 	}
 

@@ -9,10 +9,104 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
 )
+
+func APIDomain() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "domain <url> <email>",
+		Short: "Set the API domain",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			url := args[0]
+			email := args[1]
+
+			if url == "" {
+				ui.Error("Domain URL cannot be empty")
+				return
+			}
+
+			if email == "" {
+				ui.Error("Email cannot be empty")
+				return
+			}
+
+			normalizedURL, err := helpers.NormalizeServerURL(url)
+			if err != nil {
+				ui.Error("Invalid domain URL: %v", err)
+				return
+			}
+
+			if err := helpers.IsValidDomain(normalizedURL); err != nil {
+				ui.Error("Invalid domain URL: %v", err)
+				return
+			}
+
+			if !helpers.IsValidEmail(email) {
+				ui.Error("Invalid email format: %s", email)
+				return
+			}
+
+			configDir, err := config.ConfigDir()
+			if err != nil {
+				ui.Error("Failed to determine config directory: %v\n", err)
+				return
+			}
+
+			managerConfigPath := filepath.Join(configDir, constants.ManagerConfigFileName)
+			managerConfig, err := config.LoadManagerConfig(managerConfigPath)
+			if err != nil {
+				ui.Error("Failed to load manager configuration: %v\n", err)
+				return
+			}
+
+			// Set the API domain and email in the manager configuration
+			managerConfig.API.Domain = normalizedURL
+			managerConfig.Certificates.AcmeEmail = email
+
+			// Save the updated manager configuration
+			if err := config.SaveManagerConfig(managerConfig, managerConfigPath); err != nil {
+				ui.Error("Failed to save manager configuration: %v\n", err)
+				return
+			}
+
+			ui.Info("Updated configuration:")
+			ui.Info("  Domain: %s", normalizedURL)
+			ui.Info("  Email: %s", email)
+			ui.Info("Restarting Haloy Manager...")
+
+			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
+			defer cancel()
+			dataDir, err := config.DataDir()
+			if err != nil {
+				ui.Error("Failed to determine data directory: %v\n", err)
+				return
+			}
+			if err := startHaloyManager(ctx, dataDir, configDir, false, false); err != nil {
+				ui.Error("%s", err)
+				return
+			}
+
+			ui.Info("Waiting for manager API to become available...")
+			token := os.Getenv(constants.EnvVarAPIToken)
+			if token == "" {
+				ui.Error("Failed to get API token")
+				return
+			}
+			if err := streamManagerInitLogs(ctx, token); err != nil {
+				ui.Warn("Failed to stream manager initialization logs: %v", err)
+				ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
+			}
+
+			ui.Success("API domain and email set successfully")
+		},
+	}
+
+	return cmd
+}
 
 func APITokenCmd() *cobra.Command {
 	var raw bool
