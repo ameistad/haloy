@@ -19,7 +19,7 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 
 ### 1. Install and Initialize the Haloy Manager on Your Server
 
-1. Install `haloyadm` (system-wide installation):
+1. Install `haloyadm`:
     ```bash
     sudo curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
     ```
@@ -32,6 +32,11 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
     💡 **Optional**: Secure the Haloy API with a domain during initialization:
     ```bash
     sudo haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
+    ```
+
+    If you don't have a domain ready now, you can set this later with:
+    ```bash
+    sudo haloyadm api domain haloy.yourserver.com you@email.com
     ```
 
 > [!NOTE]
@@ -74,29 +79,16 @@ The next step is to install the `haloy` CLI tool that will interact with the hal
     ``` 
 
 > [!TIP]
-> **Token Management**: You can configure multiple servers and manage tokens flexibly:
-> ```bash
-> # Add multiple servers
-> haloy server add https://production.haloy.dev <prod-token>
-> haloy server add https://staging.haloy.dev <staging-token>
-> 
-> # Or use app-specific tokens in your config
-> # api_token_env: "MY_CUSTOM_TOKEN"
-> ```
-> 
-> See [Authentication & Token Management](#authentication--token-management) for advanced usage patterns.
+> See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
 
 ### 3. Create `haloy.yaml`
 In your application's project directory, create a `haloy.yaml` file:
 
 ```yaml
-# Server URL (optional if running haloy on the server)
 server: haloy.yourserver.com
-
-# Unique name for your application
 name: "my-app"
 
-# Docker image to deploy
+# Docker image
 image:
   repository: "ghcr.io/your-username/my-app"
   tag: "latest"
@@ -105,14 +97,11 @@ image:
 domains:
   - domain: "my-app.com"
     aliases:
-      - "www.my-app.com"
+      - "www.my-app.com" # Redirects to my-app.com
 
 # Email for Let's Encrypt registration
 acme_email: "you@email.com"
 ```
-
-> [!NOTE]
-> The configuration file doesn't have to live in your project directory and you can name it whatever you like, but if you don't use haloy.yaml you have to specify the path to the file. For example `haloy deploy my-app.yaml`. 
 
 For all available options, see the full [Configuration Options](#configuration-options) table below.
 

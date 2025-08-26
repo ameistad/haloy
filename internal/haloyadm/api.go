@@ -21,6 +21,14 @@ func APIDomainCmd() *cobra.Command {
 		Short: "Set the API domain",
 		Args:  cobra.ExactArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
+			if err := checkDirectoryAccess(RequiredAccess{
+				Config: true,
+				Data:   true,
+			}); err != nil {
+				ui.Error("%s", err)
+				return
+			}
+
 			url := args[0]
 			email := args[1]
 
@@ -63,6 +71,10 @@ func APIDomainCmd() *cobra.Command {
 				return
 			}
 
+			if managerConfig == nil {
+				managerConfig = &config.ManagerConfig{}
+			}
+
 			// Set the API domain and email in the manager configuration
 			managerConfig.API.Domain = normalizedURL
 			managerConfig.Certificates.AcmeEmail = email
@@ -80,11 +92,25 @@ func APIDomainCmd() *cobra.Command {
 
 			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
 			defer cancel()
+
 			dataDir, err := config.DataDir()
 			if err != nil {
 				ui.Error("Failed to determine data directory: %v\n", err)
 				return
 			}
+
+			managerExists, err := containerExists(ctx, config.ManagerLabelRole)
+			if err != nil {
+				ui.Error("Failed to determine if Haloy Manager is already running, check out the logs with docker logs haloy-manager")
+				return
+			}
+
+			if managerExists {
+				if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
+					ui.Error("failed to stop existing haloy-manager: %s", err)
+				}
+			}
+
 			if err := startHaloyManager(ctx, dataDir, configDir, false, false); err != nil {
 				ui.Error("%s", err)
 				return
