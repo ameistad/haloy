@@ -15,7 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func APIDomain() *cobra.Command {
+func APIDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "domain <url> <email>",
 		Short: "Set the API domain",
@@ -274,6 +274,7 @@ func APICmd() *cobra.Command {
 		Short: "API related commands",
 	}
 
+	cmd.AddCommand(APIDomainCmd())
 	cmd.AddCommand(APITokenCmd())
 	cmd.AddCommand(APINewTokenCmd())
 	cmd.AddCommand(APIURLCmd())
