@@ -6,6 +6,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/ameistad/haloy/internal/logging"
 )
 
 func (s *APIServer) handleStopApp() http.HandlerFunc {
@@ -29,7 +30,10 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 		}
 		defer cli.Close()
 
-		stoppedIDs, err := docker.StopContainers(ctx, cli, appName, "")
+		// Create a new logger without deployment ID because we'll stop all apps independent of their deployment id.
+		logger := logging.NewLogger(s.logLevel, s.logBroker)
+
+		stoppedIDs, err := docker.StopContainers(ctx, cli, logger, appName, "")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -37,7 +41,7 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 
 		var removedIDs []string
 		if removeContainers {
-			removedIDs, err = docker.RemoveContainers(ctx, cli, appName, "")
+			removedIDs, err = docker.RemoveContainers(ctx, cli, logger, appName, "")
 			if err != nil {
 				// TODO: Log error but don't fail the request if containers were stopped
 			}

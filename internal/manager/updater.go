@@ -9,7 +9,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/client"
@@ -113,10 +112,7 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 
 			err := u.cli.ContainerStop(ctx, failedContainer.ContainerID, container.StopOptions{})
 			if err != nil {
-				ui.Error(fmt.Sprintf(
-					"Critical: Failed to stop container %s. Manual intervention may be required. Check docker logs and container status.",
-					helpers.SafeIDPrefix(failedContainer.ContainerID),
-				), err)
+				logger.Error("Failed to stop container", "container_id", helpers.SafeIDPrefix(failedContainer.ContainerID), "error", err)
 			} else {
 				logger.Info("Stop command issued successfully for container - check logs with docker logs",
 					"container_id", helpers.SafeIDPrefix(failedContainer.ContainerID))
@@ -189,11 +185,11 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 	// - stop old containers, remove and log the result.
 	// - log successful deployment for app.
 	if app != nil {
-		_, err := docker.StopContainers(ctx, u.cli, app.appName, app.deploymentID)
+		_, err := docker.StopContainers(ctx, u.cli, logger, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to stop old containers: %w", err)
 		}
-		_, err = docker.RemoveContainers(ctx, u.cli, app.appName, app.deploymentID)
+		_, err = docker.RemoveContainers(ctx, u.cli, logger, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}

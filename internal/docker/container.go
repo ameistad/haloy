@@ -13,7 +13,6 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/secrets"
 	"github.com/ameistad/haloy/internal/storage"
-	"github.com/ameistad/haloy/internal/ui"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -139,10 +138,14 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 	return result, nil
 }
 
-func StopContainers(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
+func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
 	containerList, err := GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
 		return stoppedIDs, err
+	}
+
+	if len(containerList) == 0 {
+		return stoppedIDs, nil
 	}
 
 	for _, containerInfo := range containerList {
@@ -151,13 +154,13 @@ func StopContainers(ctx context.Context, cli *client.Client, appName, ignoreDepl
 			continue
 		}
 
-		timeout := 20
+		timeout := 60
 		stopOptions := container.StopOptions{
 			Timeout: &timeout,
 		}
 		err := cli.ContainerStop(ctx, containerInfo.ID, stopOptions)
 		if err != nil {
-			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
+			logger.Error("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		} else {
 			stoppedIDs = append(stoppedIDs, containerInfo.ID)
 		}
@@ -171,7 +174,7 @@ type RemoveContainersResult struct {
 }
 
 // RemoveContainers attempts to remove old containers for a given app and ignoring a specific deployment.
-func RemoveContainers(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string) (removedIDs []string, err error) {
+func RemoveContainers(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string) (removedIDs []string, err error) {
 	containerList, err := GetAppContainers(ctx, cli, true, appName)
 	if err != nil {
 		return removedIDs, err
@@ -185,7 +188,7 @@ func RemoveContainers(ctx context.Context, cli *client.Client, appName, ignoreDe
 
 		err := cli.ContainerRemove(ctx, containerInfo.ID, container.RemoveOptions{Force: true})
 		if err != nil {
-			ui.Warn("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
+			logger.Error("Error removing container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
 		} else {
 			removedIDs = append(removedIDs, containerInfo.ID)
 		}
