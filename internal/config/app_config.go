@@ -150,6 +150,14 @@ func FindConfigFile(path string) (string, error) {
 		}
 	}
 
+	// Get the directory name for the error (use base name if path is ".")
+	dirName := path
+	if path == "." {
+		if cwd, err := os.Getwd(); err == nil {
+			dirName = filepath.Base(cwd)
+		}
+	}
+
 	return "", fmt.Errorf("no haloy config file found in directory %s (looking for: %s)",
 		path, strings.Join(supportedConfigNames, ", "))
 }
