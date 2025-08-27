@@ -145,7 +145,6 @@ func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger
 		return stoppedIDs, err
 	}
 
-	// Filter containers that need to be stopped
 	var containersToStop []container.Summary
 	for _, containerInfo := range containerList {
 		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
@@ -155,11 +154,8 @@ func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger
 	}
 
 	if len(containersToStop) == 0 {
-		logger.Debug("No containers found to stop", "app", appName)
 		return stoppedIDs, nil
 	}
-
-	logger.Info("Found containers to stop", "app", appName, "count", len(containersToStop))
 
 	// Create a context with reasonable timeout for the entire operation
 	stopCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -170,7 +166,7 @@ func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger
 		return stopContainersSequential(stopCtx, cli, logger, containersToStop)
 	}
 
-	// For larger numbers, use controlled concurrency
+	logger.Info(fmt.Sprintf("Stopping %d containers. This might take a moment...", len(containersToStop)))
 	return stopContainersConcurrent(stopCtx, cli, logger, containersToStop)
 }
 
@@ -179,15 +175,9 @@ func stopContainersSequential(ctx context.Context, cli *client.Client, logger *s
 	var errors []error
 
 	for _, containerInfo := range containers {
-		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
-
-		logger.Info("Stopping container", "container_id", helpers.SafeIDPrefix(containerInfo.ID), "deployment_id", deploymentID)
-
 		if err := stopSingleContainer(ctx, cli, logger, containerInfo.ID); err != nil {
-			logger.Error("Failed to stop container", "container_id", helpers.SafeIDPrefix(containerInfo.ID), "error", err)
 			errors = append(errors, err)
 		} else {
-			logger.Info("Successfully stopped container", "container_id", helpers.SafeIDPrefix(containerInfo.ID))
 			stoppedIDs = append(stoppedIDs, containerInfo.ID)
 		}
 	}
@@ -215,9 +205,6 @@ func stopContainersConcurrent(ctx context.Context, cli *client.Client, logger *s
 			semaphore <- struct{}{}        // Acquire
 			defer func() { <-semaphore }() // Release
 
-			deploymentID := container.Labels[config.LabelDeploymentID]
-			logger.Info("Stopping container", "container_id", helpers.SafeIDPrefix(container.ID), "deployment_id", deploymentID)
-
 			err := stopSingleContainer(ctx, cli, logger, container.ID)
 			resultChan <- result{containerID: container.ID, error: err}
 		}(containerInfo)
@@ -230,10 +217,8 @@ func stopContainersConcurrent(ctx context.Context, cli *client.Client, logger *s
 	for range len(containers) {
 		res := <-resultChan
 		if res.error != nil {
-			logger.Error("Failed to stop container", "container_id", helpers.SafeIDPrefix(res.containerID), "error", res.error)
 			errors = append(errors, res.error)
 		} else {
-			logger.Info("Successfully stopped container", "container_id", helpers.SafeIDPrefix(res.containerID))
 			stoppedIDs = append(stoppedIDs, res.containerID)
 		}
 	}

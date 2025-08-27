@@ -180,15 +180,22 @@ func RunManager(debug bool) {
 				latestDomains[appName] = e.Labels.Domains
 			}
 
+			capturedEventAction := eventAction
+
+			// updateAction will be used in the debouncer
 			updateAction := func() {
 				currentDeploymentID := latestDeploymentID[appName]
 				currentDomains := latestDomains[appName]
+				// currentEventAction := latestEventAction[appName]
+				currentEventAction := capturedEventAction // Use the captured action to avoid issues with rapid events
+
 				// Skip if we've already processed this deployment successfully
 				if lastProcessedDeployment[appName] == currentDeploymentID {
 					logger.Debug("Skipping already processed deployment",
 						"app", appName,
 						"deploymentID", currentDeploymentID,
-						"eventAction", latestEventAction[appName])
+						"eventAction", currentEventAction,
+					)
 					return
 				}
 
@@ -203,7 +210,7 @@ func RunManager(debug bool) {
 					appName:           appName,
 					domains:           currentDomains,
 					deploymentID:      currentDeploymentID,
-					dockerEventAction: latestEventAction[appName],
+					dockerEventAction: currentEventAction,
 				}
 
 				if err := app.Validate(); err != nil {
@@ -216,7 +223,7 @@ func RunManager(debug bool) {
 					return
 				}
 
-				if latestEventAction[appName] == events.ActionStart {
+				if currentEventAction == events.ActionStart {
 					lastProcessedDeployment[appName] = currentDeploymentID
 					canonicalDomains := make([]string, len(currentDomains))
 					for i, domain := range currentDomains {
