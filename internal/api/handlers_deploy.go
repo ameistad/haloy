@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/deploy"
@@ -82,12 +83,27 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 			return
 		}
 
-		// Handle incoming logs
+		// Send initial keepalive to establish connection
+		if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
+			return
+		}
+		flusher.Flush()
+
+		// Handle incoming logs with keepalive
 		ctx := r.Context()
+		keepaliveTicker := time.NewTicker(30 * time.Second)
+		defer keepaliveTicker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
+
+			case <-keepaliveTicker.C:
+				// Send keepalive comment every 30 seconds
+				if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
+					return
+				}
+				flusher.Flush()
 
 			case logEntry, ok := <-logChan:
 				if !ok {
