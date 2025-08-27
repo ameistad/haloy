@@ -67,7 +67,7 @@ If no path is provided, the current directory is used.`,
 			}
 
 			ui.Info("Starting deployment for application: %s using server %s", appConfig.Name, targetServer)
-			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
 			api := apiclient.New(targetServer, token)

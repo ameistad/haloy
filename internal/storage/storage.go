@@ -37,6 +37,12 @@ func New() (*DB, error) {
 	if _, err := database.Exec("PRAGMA journal_mode = WAL"); err != nil {
 		return nil, fmt.Errorf("failed to set journal mode: %w", err)
 	}
+	if _, err := database.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		return nil, fmt.Errorf("failed to set busy timeout: %w", err)
+	}
+	if _, err := database.Exec("PRAGMA cache_size = 10000"); err != nil {
+		return nil, fmt.Errorf("failed to set cache size: %w", err)
+	}
 
 	return &DB{database}, nil
 }
