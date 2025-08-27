@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
@@ -185,11 +186,13 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 	// - stop old containers, remove and log the result.
 	// - log successful deployment for app.
 	if app != nil {
-		_, err := docker.StopContainers(ctx, u.cli, logger, app.appName, app.deploymentID)
+		stopCtx, cancelStop := context.WithTimeout(ctx, 10*time.Minute)
+		defer cancelStop()
+		_, err := docker.StopContainers(stopCtx, u.cli, logger, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to stop old containers: %w", err)
 		}
-		_, err = docker.RemoveContainers(ctx, u.cli, logger, app.appName, app.deploymentID)
+		_, err = docker.RemoveContainers(stopCtx, u.cli, logger, app.appName, app.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to remove old containers: %w", err)
 		}

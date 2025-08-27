@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -146,7 +147,15 @@ func (c *APIClient) post(ctx context.Context, path string, request, response int
 
 // Generic streaming method that handles any SSE endpoint
 func (c *APIClient) stream(ctx context.Context, path string, handler func(data string) (bool, error)) error {
-	streamingClient := &http.Client{Timeout: 0}
+
+	// Create transport that forces HTTP/1.1 to avoid HTTP/2 stream cancellation
+	streamingTransport := &http.Transport{
+		ForceAttemptHTTP2: false, // Force HTTP/1.1
+		TLSNextProto:      make(map[string]func(authority string, c *tls.Conn) http.RoundTripper),
+		IdleConnTimeout:   0,     // No idle timeout
+		DisableKeepAlives: false, // Keep connections alive
+	}
+	streamingClient := &http.Client{Timeout: 0, Transport: streamingTransport}
 
 	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -156,6 +165,7 @@ func (c *APIClient) stream(ctx context.Context, path string, handler func(data s
 
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Connection", "keep-alive")
 	c.setAuthHeader(req)
 
 	resp, err := streamingClient.Do(req)

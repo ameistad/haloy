@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	maintenanceInterval = 12 * time.Hour  // Interval for periodic maintenance tasks
-	eventDebounceDelay  = 3 * time.Second // Delay for debouncing container events
-	updateTimeout       = 2 * time.Minute // Max time for a single update operation
+	maintenanceInterval = 12 * time.Hour   // Interval for periodic maintenance tasks
+	eventDebounceDelay  = 3 * time.Second  // Delay for debouncing container events
+	updateTimeout       = 15 * time.Minute // Max time for a single update operation
 )
 
 type ContainerEvent struct {

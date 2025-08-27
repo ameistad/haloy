@@ -139,33 +139,132 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 }
 
 func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
-	containerList, err := GetAppContainers(ctx, cli, false, appName)
+	// Get all containers including stopped ones to be thorough
+	containerList, err := GetAppContainers(ctx, cli, true, appName)
 	if err != nil {
 		return stoppedIDs, err
 	}
 
-	if len(containerList) == 0 {
+	// Filter containers that need to be stopped
+	var containersToStop []container.Summary
+	for _, containerInfo := range containerList {
+		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
+		if deploymentID != ignoreDeploymentID {
+			containersToStop = append(containersToStop, containerInfo)
+		}
+	}
+
+	if len(containersToStop) == 0 {
+		logger.Debug("No containers found to stop", "app", appName)
 		return stoppedIDs, nil
 	}
 
-	for _, containerInfo := range containerList {
-		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
-		if deploymentID == ignoreDeploymentID {
-			continue
-		}
+	logger.Info("Found containers to stop", "app", appName, "count", len(containersToStop))
 
-		timeout := 60
-		stopOptions := container.StopOptions{
-			Timeout: &timeout,
-		}
-		err := cli.ContainerStop(ctx, containerInfo.ID, stopOptions)
-		if err != nil {
-			logger.Error("Error stopping container %s: %v\n", helpers.SafeIDPrefix(containerInfo.ID), err)
+	// Create a context with reasonable timeout for the entire operation
+	stopCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	// For small numbers of containers, sequential is simpler and more reliable
+	if len(containersToStop) <= 3 {
+		return stopContainersSequential(stopCtx, cli, logger, containersToStop)
+	}
+
+	// For larger numbers, use controlled concurrency
+	return stopContainersConcurrent(stopCtx, cli, logger, containersToStop)
+}
+
+func stopContainersSequential(ctx context.Context, cli *client.Client, logger *slog.Logger, containers []container.Summary) ([]string, error) {
+	var stoppedIDs []string
+	var errors []error
+
+	for _, containerInfo := range containers {
+		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
+
+		logger.Info("Stopping container", "container_id", helpers.SafeIDPrefix(containerInfo.ID), "deployment_id", deploymentID)
+
+		if err := stopSingleContainer(ctx, cli, logger, containerInfo.ID); err != nil {
+			logger.Error("Failed to stop container", "container_id", helpers.SafeIDPrefix(containerInfo.ID), "error", err)
+			errors = append(errors, err)
 		} else {
+			logger.Info("Successfully stopped container", "container_id", helpers.SafeIDPrefix(containerInfo.ID))
 			stoppedIDs = append(stoppedIDs, containerInfo.ID)
 		}
 	}
-	return stoppedIDs, nil
+
+	var err error
+	if len(errors) > 0 {
+		err = fmt.Errorf("failed to stop %d out of %d containers", len(errors), len(containers))
+	}
+
+	return stoppedIDs, err
+}
+
+func stopContainersConcurrent(ctx context.Context, cli *client.Client, logger *slog.Logger, containers []container.Summary) ([]string, error) {
+	type result struct {
+		containerID string
+		error       error
+	}
+
+	resultChan := make(chan result, len(containers))
+	semaphore := make(chan struct{}, 3) // Limit to 3 concurrent stops
+
+	// Start all goroutines
+	for _, containerInfo := range containers {
+		go func(container container.Summary) {
+			semaphore <- struct{}{}        // Acquire
+			defer func() { <-semaphore }() // Release
+
+			deploymentID := container.Labels[config.LabelDeploymentID]
+			logger.Info("Stopping container", "container_id", helpers.SafeIDPrefix(container.ID), "deployment_id", deploymentID)
+
+			err := stopSingleContainer(ctx, cli, logger, container.ID)
+			resultChan <- result{containerID: container.ID, error: err}
+		}(containerInfo)
+	}
+
+	// Collect all results
+	var stoppedIDs []string
+	var errors []error
+
+	for range len(containers) {
+		res := <-resultChan
+		if res.error != nil {
+			logger.Error("Failed to stop container", "container_id", helpers.SafeIDPrefix(res.containerID), "error", res.error)
+			errors = append(errors, res.error)
+		} else {
+			logger.Info("Successfully stopped container", "container_id", helpers.SafeIDPrefix(res.containerID))
+			stoppedIDs = append(stoppedIDs, res.containerID)
+		}
+	}
+
+	var err error
+	if len(errors) > 0 {
+		err = fmt.Errorf("failed to stop %d out of %d containers", len(errors), len(containers))
+	}
+
+	return stoppedIDs, err
+}
+
+func stopSingleContainer(ctx context.Context, cli *client.Client, logger *slog.Logger, containerID string) error {
+	// First try a graceful stop
+	timeout := 20
+	stopOptions := container.StopOptions{Timeout: &timeout}
+
+	err := cli.ContainerStop(ctx, containerID, stopOptions)
+	if err == nil {
+		return nil
+	}
+
+	logger.Warn("Graceful stop failed, attempting force kill", "container_id", helpers.SafeIDPrefix(containerID), "error", err)
+
+	// If graceful stop fails, force kill
+	killErr := cli.ContainerKill(ctx, containerID, "SIGKILL")
+	if killErr != nil {
+		return fmt.Errorf("both stop and kill failed - stop: %v, kill: %v", err, killErr)
+	}
+
+	return nil
 }
 
 type RemoveContainersResult struct {

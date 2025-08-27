@@ -67,6 +67,9 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("X-Accel-Buffering", "no") // Nginx/HAProxy
+		w.Header().Set("X-Buffering", "no")       // General proxy buffering
+		w.Header().Set("Transfer-Encoding", "chunked")
 
 		// Subscribe to logs for this deployment ID
 		// Don't pass request context - use background context with manual cleanup
