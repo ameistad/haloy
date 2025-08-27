@@ -159,5 +159,5 @@ func FindConfigFile(path string) (string, error) {
 	}
 
 	return "", fmt.Errorf("no haloy config file found in directory %s (looking for: %s)",
-		path, strings.Join(supportedConfigNames, ", "))
+		dirName, strings.Join(supportedConfigNames, ", "))
 }
