@@ -52,8 +52,7 @@ type AppStatusResponse struct {
 }
 
 type StopAppResponse struct {
-	StoppedIDs []string `json:"stoppedIds"`
-	RemovedIDs []string `json:"removed_ids,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type VersionResponse struct {

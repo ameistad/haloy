@@ -63,15 +63,7 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			if len(response.StoppedIDs) > 0 {
-				ui.Success("Successfully stopped %d container(s) for app '%s'", len(response.StoppedIDs), appConfig.Name)
-			} else {
-				ui.Info("No running containers found for app '%s'", appConfig.Name)
-			}
-
-			if removeContainersFlag && len(response.RemovedIDs) > 0 {
-				ui.Success("Successfully removed %d container(s) for app '%s'", len(response.RemovedIDs), appConfig.Name)
-			}
+			ui.Success("%s", response.Message)
 		},
 	}
 

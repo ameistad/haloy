@@ -19,39 +19,44 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 
 		removeContainers := r.URL.Query().Get("remove-containers") == "true"
 
-		ctx := r.Context()
-		ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
-		defer cancel()
-
-		cli, err := docker.NewClient(ctx)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer cli.Close()
-
-		// Create a new logger without deployment ID because we'll stop all apps independent of their deployment id.
 		logger := logging.NewLogger(s.logLevel, s.logBroker)
 
-		stoppedIDs, err := docker.StopContainers(ctx, cli, logger, appName, "")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var removedIDs []string
-		if removeContainers {
-			removedIDs, err = docker.RemoveContainers(ctx, cli, logger, appName, "")
+		go func() {
+			ctx := context.Background()
+			cli, err := docker.NewClient(ctx)
 			if err != nil {
-				// TODO: Log error but don't fail the request if containers were stopped
+				logger.Error("Failed to create Docker client for stop operation", "app", appName, "error", err)
+				return
 			}
-		}
+			defer cli.Close()
+
+			logger.Info("Stopping containers", "app", appName)
+			stoppedIDs, err := docker.StopContainers(ctx, cli, logger, appName, "")
+			if err != nil {
+				logger.Error("Failed to stop containers", "app", appName, "error", err)
+				return
+			}
+			logger.Info("Successfully stopped containers", "app", appName, "stopped_count", len(stoppedIDs), "container_ids", stoppedIDs)
+
+			if removeContainers {
+				logger.Info("Removing containers", "app", appName)
+				removedIDs, err := docker.RemoveContainers(ctx, cli, logger, appName, "")
+				if err != nil {
+					logger.Error("Failed to remove containers", "app", appName, "error", err)
+					return
+				}
+				logger.Info("Successfully removed containers", "app", appName, "removed_count", len(removedIDs), "container_ids", removedIDs)
+			}
+
+			logger.Info("Stop operation completed", "app", appName)
+		}()
 
 		response := apitypes.StopAppResponse{
-			StoppedIDs: stoppedIDs,
-			RemovedIDs: removedIDs,
+			Message: "Stop operation started. Use 'haloy logs' to monitor progress.",
 		}
 
-		writeJSON(w, http.StatusOK, response)
+		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
+			logger.Error("Failed to write response", "error", err)
+		}
 	}
 }

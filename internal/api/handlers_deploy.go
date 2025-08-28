@@ -2,11 +2,8 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/deploy"
@@ -28,7 +25,6 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			return
 		}
 
-		// Start deployment in background
 		go func() {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
@@ -64,77 +60,18 @@ func (s *APIServer) handleDeploymentLogs() http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("X-Accel-Buffering", "no") // Nginx/HAProxy
-		w.Header().Set("X-Buffering", "no")       // General proxy buffering
-		w.Header().Set("Transfer-Encoding", "chunked")
-
 		// Subscribe to logs for this deployment ID
 		// Don't pass request context - use background context with manual cleanup
 		logChan := s.logBroker.SubscribeDeployment(deploymentID)
-		defer s.logBroker.UnsubscribeDeployment(deploymentID)
 
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "streaming not supported", http.StatusInternalServerError)
-			return
+		streamConfig := sseStreamConfig{
+			logChan: logChan,
+			cleanup: func() { s.logBroker.UnsubscribeDeployment(deploymentID) },
+			shouldTerminate: func(logEntry logging.LogEntry) bool {
+				return logEntry.IsDeploymentComplete || logEntry.IsDeploymentFailed
+			},
 		}
 
-		// Send initial keepalive to establish connection
-		if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
-			return
-		}
-		flusher.Flush()
-
-		// Handle incoming logs with keepalive
-		ctx := r.Context()
-		keepaliveTicker := time.NewTicker(30 * time.Second)
-		defer keepaliveTicker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-
-			case <-keepaliveTicker.C:
-				// Send keepalive comment every 30 seconds
-				if _, err := w.Write([]byte(": keepalive\n\n")); err != nil {
-					return
-				}
-				flusher.Flush()
-
-			case logEntry, ok := <-logChan:
-				if !ok {
-					return
-				}
-
-				if err := writeSSEMessage(w, logEntry); err != nil {
-					return
-				}
-				flusher.Flush()
-
-				// If deployment is complete or failed, end the stream
-				if logEntry.IsDeploymentComplete || logEntry.IsDeploymentFailed {
-					return
-				}
-			}
-		}
+		streamSSELogs(w, r, streamConfig)
 	}
-}
-
-// writeSSEMessage writes a log entry as Server-Sent Event
-func writeSSEMessage(w http.ResponseWriter, entry logging.LogEntry) error {
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("failed to marshal log entry: %w", err)
-	}
-
-	_, err = fmt.Fprintf(w, "data: %s\n\n", data)
-	if err != nil {
-		return fmt.Errorf("failed to write SSE data: %w", err)
-	}
-
-	return nil
 }
