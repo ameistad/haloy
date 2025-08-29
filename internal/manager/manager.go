@@ -111,10 +111,6 @@ func RunManager(debug bool) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Channel for Docker events
-	eventsChan := make(chan ContainerEvent)
-	errorsChan := make(chan error)
-
 	// Channel for signaling cert updates needing HAProxy reload
 	certUpdateSignal := make(chan string, 5)
 
@@ -149,6 +145,8 @@ func RunManager(debug bool) {
 	debouncer := helpers.NewDebouncer(eventDebounceDelay)
 
 	// Docker event listener
+	eventsChan := make(chan ContainerEvent)
+	errorsChan := make(chan error)
 	go listenForDockerEvents(ctx, cli, eventsChan, errorsChan, logger)
 
 	maintenanceTicker := time.NewTicker(maintenanceInterval)
