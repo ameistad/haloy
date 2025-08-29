@@ -28,7 +28,7 @@ import (
 
 const (
 	maintenanceInterval = 12 * time.Hour   // Interval for periodic maintenance tasks
-	eventDebounceDelay  = 3 * time.Second  // Delay for debouncing container events
+	eventDebounceDelay  = 5 * time.Second  // Delay for debouncing container events
 	updateTimeout       = 15 * time.Minute // Max time for a single update operation
 )
 
@@ -141,74 +141,39 @@ func RunManager(debug bool) {
 		logging.AttrManagerInitComplete, true, // signal that the initialization is complete
 	)
 
-	// To prevent multiple updates in quick succession
-	debouncer := helpers.NewDebouncer(eventDebounceDelay)
-
 	// Docker event listener
 	eventsChan := make(chan ContainerEvent)
 	errorsChan := make(chan error)
 	go listenForDockerEvents(ctx, cli, eventsChan, errorsChan, logger)
 
+	debouncedEventsChan := make(chan debouncedAppEvent)
+	defer close(debouncedEventsChan)
+
+	appDebouncer := newAppDebouncer(eventDebounceDelay, debouncedEventsChan, logger)
+	defer appDebouncer.stop()
+
 	maintenanceTicker := time.NewTicker(maintenanceInterval)
 	defer maintenanceTicker.Stop()
-
-	// Use the latest event when we debounce.
-	latestDeploymentID := make(map[string]string)
-	latestEventAction := make(map[string]events.Action)
-	latestDomains := make(map[string][]config.Domain)
-	lastProcessedDeployment := make(map[string]string) // Avoid processing the same deployment multiple times
 
 	// Main event loop
 	for {
 		select {
-		case <-sigChan:
-			logger.Info("Received shutdown signal, stopping manager...")
-			if certManager != nil {
-				certManager.Stop()
-			}
-			cancel()
-			return
+
 		case e := <-eventsChan:
-			appName := e.Labels.AppName // The app name that triggered the event.
-			deploymentID := e.Labels.DeploymentID
-			eventAction := e.Event.Action
-			if deploymentID >= latestDeploymentID[appName] {
-				latestDeploymentID[appName] = deploymentID
-				latestEventAction[appName] = eventAction
-				latestDomains[appName] = e.Labels.Domains
-			}
+			appDebouncer.captureEvent(e.Labels.AppName, e)
 
-			capturedEventAction := eventAction
+		case de := <-debouncedEventsChan:
+			go func() {
+				deploymentLogger := logging.NewDeploymentLogger(de.DeploymentID, logLevel, logBroker)
 
-			// updateAction will be used in the debouncer
-			updateAction := func() {
-				currentDeploymentID := latestDeploymentID[appName]
-				currentDomains := latestDomains[appName]
-				// currentEventAction := latestEventAction[appName]
-				currentEventAction := capturedEventAction // Use the captured action to avoid issues with rapid events
-
-				// Skip if we've already processed this deployment successfully
-				if lastProcessedDeployment[appName] == currentDeploymentID {
-					logger.Debug("Skipping already processed deployment",
-						"app", appName,
-						"deploymentID", currentDeploymentID,
-						"eventAction", currentEventAction,
-					)
-					return
-				}
-
-				// Create a deployment-specific logger that will stream to SSE clients
-				deploymentLogger := logging.NewDeploymentLogger(currentDeploymentID, logLevel, logBroker)
-
-				// New context with timeout
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, updateTimeout)
 				defer cancelUpdate()
 
 				app := &TriggeredByApp{
-					appName:           appName,
-					domains:           currentDomains,
-					deploymentID:      currentDeploymentID,
-					dockerEventAction: currentEventAction,
+					appName:           de.AppName,
+					domains:           de.Domains,
+					deploymentID:      de.DeploymentID,
+					dockerEventAction: de.EventAction,
 				}
 
 				if err := app.Validate(); err != nil {
@@ -216,23 +181,22 @@ func RunManager(debug bool) {
 					return
 				}
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
-					logging.LogDeploymentFailed(deploymentLogger, currentDeploymentID, appName,
+					logging.LogDeploymentFailed(deploymentLogger, de.DeploymentID, de.AppName,
 						"Deployment failed", err)
 					return
 				}
 
-				if currentEventAction == events.ActionStart {
-					lastProcessedDeployment[appName] = currentDeploymentID
-					canonicalDomains := make([]string, len(currentDomains))
-					for i, domain := range currentDomains {
+				// If we captured a start event from the debounced events it indicates that this is a new deployment
+				// and we'll signal the logger that the deployment is done.
+				if de.CapturedStartEvent {
+					canonicalDomains := make([]string, len(de.Domains))
+					for i, domain := range de.Domains {
 						canonicalDomains[i] = domain.Canonical
 					}
-					logging.LogDeploymentComplete(deploymentLogger, canonicalDomains, currentDeploymentID, appName,
-						fmt.Sprintf("Successfully deployed %s", appName))
+					logging.LogDeploymentComplete(deploymentLogger, canonicalDomains, de.DeploymentID, de.AppName,
+						fmt.Sprintf("Successfully deployed %s", de.AppName))
 				}
-			}
-
-			debouncer.Debounce(appName, updateAction)
+			}()
 
 		case domainUpdated := <-certUpdateSignal:
 			logger.Info("Received cert update signal", "domain", domainUpdated)
@@ -242,11 +206,10 @@ func RunManager(debug bool) {
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, 60*time.Second)
 				defer cancelUpdate()
 
-				u := updater
 				// Update only needs to apply config, not full build/check
 				// We assume the deployment state triggering the cert update is still valid.
-				currentDeployments := u.deploymentManager.Deployments()
-				if err := u.haproxyManager.ApplyConfig(updateCtx, logger, currentDeployments); err != nil {
+				currentDeployments := updater.deploymentManager.Deployments()
+				if err := updater.haproxyManager.ApplyConfig(updateCtx, logger, currentDeployments); err != nil {
 					logger.Error("Background HAProxy update failed",
 						"reason", "cert update",
 						"domain", domainUpdated,
@@ -254,8 +217,6 @@ func RunManager(debug bool) {
 				}
 			}()
 
-		case err := <-errorsChan:
-			logger.Error("Error from docker events", "error", err)
 		case <-maintenanceTicker.C:
 			logger.Info("Performing periodic maintenance...")
 			_, err := docker.PruneImages(ctx, cli, logger)
@@ -266,13 +227,21 @@ func RunManager(debug bool) {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)
 				defer cancelDeployment()
 
-				// Perform a background update to ensure the system is in sync
-				// This will check the running containers and update HAProxy and renew and cleanup certificates if needed.
-				u := updater
-				if err := u.Update(deploymentCtx, logger, TriggerPeriodicRefresh, nil); err != nil {
+				if err := updater.Update(deploymentCtx, logger, TriggerPeriodicRefresh, nil); err != nil {
 					logger.Error("Background update failed", "error", err)
 				}
 			}()
+
+		case err := <-errorsChan:
+			logger.Error("Error from docker events", "error", err)
+
+		case <-sigChan:
+			logger.Info("Received shutdown signal, stopping manager...")
+			if certManager != nil {
+				certManager.Stop()
+			}
+			cancel()
+			return
 		}
 	}
 }
@@ -317,7 +286,7 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
 					if err != nil {
 						logger.Error("Error parsing container labels", "error", err)
-						return
+						continue
 					}
 
 					logger.Debug("Container is eligible",

@@ -73,7 +73,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.
 		}
 
 		if !IsAppContainer(container) {
-			logger.Debug("Container not eligible for haloy management", "container_id", containerSummary.ID)
+			logger.Debug("Container not eligible for haloy management", "name", container.Name, "container_id", containerSummary.ID)
 			continue
 		}
 
