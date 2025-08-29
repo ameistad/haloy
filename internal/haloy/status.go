@@ -64,7 +64,7 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			containerIDs := make([]string, len(status.ContainerIDs))
+			containerIDs := make([]string, 0, len(status.ContainerIDs))
 			for _, id := range status.ContainerIDs {
 				containerIDs = append(containerIDs, helpers.SafeIDPrefix(id))
 			}
