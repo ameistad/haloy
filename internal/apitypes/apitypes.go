@@ -48,7 +48,8 @@ type AppStatusResponse struct {
 	State        string
 	DeploymentID string
 	ContainerIDs []string
-	// TODO: env vars, domains
+	Domains      []config.Domain
+	// TODO: env vars
 }
 
 type StopAppResponse struct {

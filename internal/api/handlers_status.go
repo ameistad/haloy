@@ -62,6 +62,7 @@ func getResponse(containers []container.Summary) (apitypes.AppStatusResponse, er
 	type deploymentData struct {
 		containerIDs []string
 		states       []string
+		domains      []config.Domain
 	}
 
 	deploymentMap := make(map[string]*deploymentData)
@@ -78,12 +79,14 @@ func getResponse(containers []container.Summary) (apitypes.AppStatusResponse, er
 			deploymentMap[labels.DeploymentID] = &deploymentData{
 				containerIDs: []string{},
 				states:       []string{},
+				domains:      []config.Domain{},
 			}
 		}
 
 		// Add container data to deployment
 		deploymentMap[labels.DeploymentID].containerIDs = append(deploymentMap[labels.DeploymentID].containerIDs, c.ID)
 		deploymentMap[labels.DeploymentID].states = append(deploymentMap[labels.DeploymentID].states, strings.ToLower(c.State))
+		deploymentMap[labels.DeploymentID].domains = append(deploymentMap[labels.DeploymentID].domains, labels.Domains...)
 
 		// Track latest deployment
 		if labels.DeploymentID > latestDeploymentID {
@@ -105,6 +108,7 @@ func getResponse(containers []container.Summary) (apitypes.AppStatusResponse, er
 		State:        overallState,
 		DeploymentID: latestDeploymentID,
 		ContainerIDs: latestDeployment.containerIDs,
+		Domains:      latestDeployment.domains,
 	}, nil
 }
 

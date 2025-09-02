@@ -69,11 +69,17 @@ If no path is provided, the current directory is used.`,
 				containerIDs = append(containerIDs, helpers.SafeIDPrefix(id))
 			}
 
+			canonicalDomains := make([]string, 0, len(status.Domains))
+			for _, domain := range status.Domains {
+				canonicalDomains = append(canonicalDomains, domain.Canonical)
+			}
+
 			state := displayState(status.State)
 			formattedOutput := []string{
 				fmt.Sprintf("State: %s", state),
 				fmt.Sprintf("Deployment ID: %s", status.DeploymentID),
 				fmt.Sprintf("Running container(s): %s", strings.Join(containerIDs, ", ")),
+				fmt.Sprintf("Domain(s): %s", strings.Join(canonicalDomains, ", ")),
 			}
 
 			ui.Section(fmt.Sprintf("Status for %s", appConfig.Name), formattedOutput)
