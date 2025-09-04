@@ -45,11 +45,10 @@ type SetSecretRequest struct {
 }
 
 type AppStatusResponse struct {
-	State        string
-	DeploymentID string
-	ContainerIDs []string
-	Domains      []config.Domain
-	// TODO: env vars
+	State        string          `json:"state"`
+	DeploymentID string          `json:"deploymentId"`
+	ContainerIDs []string        `json:"containerIds"`
+	Domains      []config.Domain `json:"domains"` // TODO: env vars
 }
 
 type StopAppResponse struct {
