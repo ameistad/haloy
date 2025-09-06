@@ -67,7 +67,7 @@ func APIDomainCmd() *cobra.Command {
 			haloydConfigPath := filepath.Join(configDir, constants.HaloydConfigFileName)
 			haloydConfig, err := config.LoadHaloydConfig(haloydConfigPath)
 			if err != nil {
-				ui.Error("Failed to load manager configuration: %v\n", err)
+				ui.Error("Failed to load haloyd configuration: %v\n", err)
 				return
 			}
 
@@ -75,7 +75,7 @@ func APIDomainCmd() *cobra.Command {
 				haloydConfig = &config.HaloydConfig{}
 			}
 
-			// Set the API domain and email in the manager configuration
+			// Set the API domain and email in the haloyd configuration
 			haloydConfig.API.Domain = normalizedURL
 			haloydConfig.Certificates.AcmeEmail = email
 

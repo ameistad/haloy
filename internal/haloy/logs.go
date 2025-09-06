@@ -15,8 +15,8 @@ func LogsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "logs [config-path]",
-		Short: "Stream logs from the haloy manager",
-		Long: `Stream all logs from the haloy manager in real-time.
+		Short: "Stream logs from haloy server",
+		Long: `Stream all logs from haloy server in real-time.
 
 		The path can be:
 - A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
@@ -52,7 +52,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 				return
 			}
 
-			ui.Info("Connecting to haloy manager at %s", targetServer)
+			ui.Info("Connecting to haloy server at %s", targetServer)
 			ui.Info("Streaming all logs... (Press Ctrl+C to stop)")
 
 			ctx, cancel := context.WithCancel(context.Background())

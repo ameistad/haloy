@@ -63,14 +63,14 @@ func LoadHaloydConfig(path string) (*HaloydConfig, error) {
 
 	k := koanf.New(".")
 	if err := k.Load(file.Provider(path), parser); err != nil {
-		return nil, fmt.Errorf("failed to load manager config file: %w", err)
+		return nil, fmt.Errorf("failed to load haloyd config file: %w", err)
 	}
 
-	var managerConfig HaloydConfig
-	if err := k.UnmarshalWithConf("", &managerConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal manager config: %w", err)
+	var haloydConfig HaloydConfig
+	if err := k.UnmarshalWithConf("", &haloydConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal haloyd config: %w", err)
 	}
-	return &managerConfig, nil
+	return &haloydConfig, nil
 }
 
 func SaveHaloydConfig(config *HaloydConfig, path string) error {

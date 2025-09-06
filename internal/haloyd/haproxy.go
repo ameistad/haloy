@@ -22,19 +22,19 @@ import (
 )
 
 type HAProxyManager struct {
-	cli           *client.Client
-	managerConfig *config.HaloydConfig
-	configDir     string
-	debug         bool
-	updateMutex   sync.Mutex // Mutex protects config writing and reload signaling
+	cli          *client.Client
+	haloydConfig *config.HaloydConfig
+	configDir    string
+	debug        bool
+	updateMutex  sync.Mutex // Mutex protects config writing and reload signaling
 }
 
-func NewHAProxyManager(cli *client.Client, managerConfig *config.HaloydConfig, configDir string, debug bool) *HAProxyManager {
+func NewHAProxyManager(cli *client.Client, haloydConfig *config.HaloydConfig, configDir string, debug bool) *HAProxyManager {
 	return &HAProxyManager{
-		cli:           cli,
-		managerConfig: managerConfig,
-		configDir:     configDir,
-		debug:         debug,
+		cli:          cli,
+		haloydConfig: haloydConfig,
+		configDir:    configDir,
+		debug:        debug,
 	}
 }
 
@@ -95,8 +95,8 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 	const indent = "    "
 
 	// Add ACLs for api
-	if hpm.managerConfig != nil && hpm.managerConfig.API.Domain != "" {
-		apiDomain := hpm.managerConfig.API.Domain
+	if hpm.haloydConfig != nil && hpm.haloydConfig.API.Domain != "" {
+		apiDomain := hpm.haloydConfig.API.Domain
 		apiACLName := generateACLName("haloy_api", apiDomain, "acl")
 
 		httpsFrontend += fmt.Sprintf("%sacl %s hdr(host) -i %s\n", indent, apiACLName, apiDomain)
@@ -108,7 +108,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 
 		backends += "backend haloy_api\n"
 		backends += fmt.Sprintf("%smode http\n", indent)
-		backends += fmt.Sprintf("%s# Forward to the manager container API server\n", indent)
+		backends += fmt.Sprintf("%s# Forward to the haloyd API server\n", indent)
 		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-For %%[src]\n", indent)
 		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-Proto https\n", indent)
 		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-Port %%[dst_port]\n", indent)

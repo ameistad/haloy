@@ -14,7 +14,7 @@ const (
 	AttrDeploymentSuccess  = "deploymentSuccess"
 
 	// Manager attributes
-	AttrManagerInitComplete = "managerInitComplete"
+	AttrHaloydInitComplete = "haloydInitComplete"
 
 	// App attributes
 	AttrAppName = "appName"

@@ -310,7 +310,7 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			isDeploymentFailed = attr.Value.Bool()
 		case AttrDeploymentSuccess:
 			isDeploymentSuccess = attr.Value.Bool()
-		case AttrManagerInitComplete:
+		case AttrHaloydInitComplete:
 			isManagerInitComplete = attr.Value.Bool()
 		case AttrAppName, AttrApp: // Handle both "appName" and "app"
 			appName = attr.Value.String()
@@ -340,7 +340,7 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 			isDeploymentFailed = a.Value.Bool()
 		case AttrDeploymentSuccess:
 			isDeploymentSuccess = a.Value.Bool()
-		case AttrManagerInitComplete:
+		case AttrHaloydInitComplete:
 			isManagerInitComplete = a.Value.Bool()
 		case AttrAppName, AttrApp: // Handle both "appName" and "app"
 			appName = a.Value.String()

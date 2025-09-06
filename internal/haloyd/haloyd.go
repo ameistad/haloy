@@ -51,7 +51,7 @@ func RunManager(debug bool) {
 	logBroker := logging.NewLogBroker()
 	logger := logging.NewLogger(logLevel, logBroker)
 
-	logger.Info("Haloy manager started",
+	logger.Info("haloyd started",
 		"version", constants.Version,
 		"network", constants.DockerNetwork,
 		"debug", debug)
@@ -138,7 +138,7 @@ func RunManager(debug bool) {
 	}
 
 	logger.Info("Haloy manager initialized",
-		logging.AttrManagerInitComplete, true, // signal that the initialization is complete
+		logging.AttrHaloydInitComplete, true, // signal that the initialization is complete
 	)
 
 	// Docker event listener
