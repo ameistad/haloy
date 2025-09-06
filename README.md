@@ -17,14 +17,14 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 - Docker installed on your server
 - Docker image for your app
 
-### 1. Install and Initialize the Haloy Manager on Your Server
+### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Server
 
 1. Install `haloyadm`:
     ```bash
     sudo curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
     ```
 
-2. Initialize the `haloy-manager` and `HAProxy`:
+2. Initialize `haloyd` and `HAProxy`:
     ```bash
     sudo haloyadm init
     ```
@@ -119,8 +119,8 @@ haloy status
 Haloy consists of several components:
 
 1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
-1. **Haloy Admin CLI** (`haloyadm`) - Command-line interface to administrate haloy-manager and secrets.
-1. **Haloy Manager** - Service discovery and configuration management
+1. **Haloy Admin CLI** (`haloyadm`) - Command-line interface to administrate haloyd and secrets.
+1. **Haloy Daemon (haloyd)** - Service discovery and configuration management
 1. **HAProxy** - Load balancer and SSL termination
 1. **Application Containers** - Your deployed applications
 
@@ -139,7 +139,7 @@ Haloy supports YAML, JSON, and TOML formats:
 |-----|------|----------|-------------|
 | `name` | string | **Yes** | Unique application name |
 | `image` | object | **Yes** | Docker image configuration |
-| `server` | string | No | Haloy manager API URL |
+| `server` | string | No | Haloy server API URL |
 | `api_token_env` | string | No | Environment variable containing API token (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
 | `domains` | array | No | Domain configuration |
 | `acme_email` | string | No | Let's Encrypt email (required with domains) |
@@ -356,7 +356,7 @@ Haloy uses standard system directories:
 **System Installation (default):**
 ```
 /etc/haloy/              # Configuration
-├── manager.yaml         # Manager settings
+├── haloyd.yaml          # Haloyd settings
 ├── .env                 # API tokens
 
 /var/lib/haloy/          # Data

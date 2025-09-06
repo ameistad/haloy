@@ -35,7 +35,7 @@ func SecretsRollCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "roll",
 		Short: "Generate a new encryption key and re-encrypt all secrets.",
-		Long:  "Generate a new encryption key, re-encrypt all secrets with it, and restart haloy-manager.",
+		Long:  "Generate a new encryption key, re-encrypt all secrets with it, and restart haloyd.",
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), secretsRollTimeout)
 			defer cancel()
@@ -118,19 +118,19 @@ func SecretsRollCmd() *cobra.Command {
 				return
 			}
 
-			// Restart haloy-manager
-			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
-				ui.Error("Failed to stop haloy-manager container: %v", err)
+			// Restart haloyd
+			if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
+				ui.Error("Failed to stop haloyd container: %v", err)
 				return
 			}
-			if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
-				ui.Error("Failed to restart haloy-manager: %v", err)
+			if err := startHaloyd(ctx, dataDir, configDir, devMode, debug); err != nil {
+				ui.Error("Failed to restart haloyd: %v", err)
 				return
 			}
 			ui.Success("All secrets rolled successfully")
 		},
 	}
-	cmd.Flags().BoolVar(&devMode, "dev", false, "Restart in development mode using the local haloy-manager image")
-	cmd.Flags().BoolVar(&debug, "debug", false, "Restart haloy-manager in debug mode")
+	cmd.Flags().BoolVar(&devMode, "dev", false, "Restart in development mode using the local haloyd image")
+	cmd.Flags().BoolVar(&debug, "debug", false, "Restart haloyd in debug mode")
 	return cmd
 }

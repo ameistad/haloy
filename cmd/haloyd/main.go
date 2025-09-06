@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/ameistad/haloy/internal/constants"
-	"github.com/ameistad/haloy/internal/manager"
+	"github.com/ameistad/haloy/internal/haloyd"
 )
 
 func main() {
@@ -15,5 +15,5 @@ func main() {
 	debugEnv := os.Getenv(constants.EnvVarDebug) == "true"
 	debug := *debugFlag || debugEnv
 
-	manager.RunManager(debug)
+	haloyd.RunManager(debug)
 }

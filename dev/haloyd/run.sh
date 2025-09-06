@@ -21,7 +21,7 @@ else
 fi
 
 docker run -it --rm \
-  --name haloy-manager-dev \
+  --name haloyd-dev \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v "$CERT_STORAGE":/cert-storage:rw \
   -v "$LOGS":/logs:rw \
@@ -31,4 +31,4 @@ docker run -it --rm \
   -p 9999:9999 \
   -e HALOY_DEBUG=true \
   -e HALOY_API_TOKEN="${DEV_API_TOKEN}" \
-  haloy-manager-dev
+  haloyd-dev

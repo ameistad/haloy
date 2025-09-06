@@ -21,7 +21,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-w -s -X 'github.com/ameistad/haloy/internal/version.Version=${VERSION}'" \
     -a \
-    -o /haloy-manager ./cmd/manager
+    -o /haloyd ./cmd/haloyd
 
 # Docker CLI stage
 FROM alpine:latest AS docker-cli
@@ -40,9 +40,9 @@ RUN adduser -D -s /bin/sh appuser
 COPY --from=docker-cli /tmp/docker /usr/local/bin/docker
 
 # Copy the binary
-COPY --from=builder /haloy-manager /usr/local/bin/haloy-manager
+COPY --from=builder /haloyd /usr/local/bin/haloyd
 
 # Change to non-root user
 USER appuser
 
-ENTRYPOINT ["/usr/local/bin/haloy-manager"]
+ENTRYPOINT ["/usr/local/bin/haloyd"]

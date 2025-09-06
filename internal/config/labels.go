@@ -21,13 +21,13 @@ const (
 	LabelDomainCanonical = "dev.haloy.domain.%d"
 	// Use fmt.Sprintf(LabelDomainAlias, domainIndex, aliasIndex) to get "dev.haloy.domain.<domainIndex>.alias.<aliasIndex>"
 	LabelDomainAlias = "dev.haloy.domain.%d.alias.%d"
-	// Used to identify the role of the container (e.g., "haproxy", "manager", etc.)
+	// Used to identify the role of the container (e.g., "haproxy", "haloyd", etc.)
 	LabelRole = "dev.haloy.role"
 )
 
 const (
 	HAProxyLabelRole = "haproxy"
-	ManagerLabelRole = "manager"
+	HaloydLabelRole  = "haloyd"
 	AppLabelRole     = "app"
 )
 

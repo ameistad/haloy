@@ -48,9 +48,9 @@ Installation modes:
 
 This command will:
 - Create the data directory (default: /var/lib/haloy)
-- Create the config directory for the manager (default: /etc/haloy)
+- Create the config directory for haloyd (default: /etc/haloy)
 - Create the Docker network for Haloy services
-- Start HAProxy and haloy-manager containers (unless --no-services is used)
+- Start HAProxy and haloyd containers (unless --no-services is used)
 
 The data directory can be customized by setting the %s environment variable.`,
 			constants.EnvVarDataDir,
@@ -93,11 +93,11 @@ The data directory can be customized by setting the %s environment variable.`,
 
 			configDir, err := config.ConfigDir()
 			if err != nil {
-				ui.Error("Failed to determine manager config directory: %v\n", err)
+				ui.Error("Failed to determine haloyd config directory: %v\n", err)
 				return
 			}
 
-			if err := validateAndPrepareDirectory(configDir, "Manager Config", override); err != nil {
+			if err := validateAndPrepareDirectory(configDir, "Haloyd Config", override); err != nil {
 				ui.Error("%v\n", err)
 				return
 			}
@@ -148,13 +148,13 @@ The data directory can be customized by setting the %s environment variable.`,
 			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
 			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
 			if apiDomain != "" {
-				successMsg += fmt.Sprintf("🌐 Manager domain: %s\n", apiDomain)
+				successMsg += fmt.Sprintf("🌐 haloyd domain: %s\n", apiDomain)
 			}
 			ui.Success("%s", successMsg)
 
 			cleanupOnFailure = false
 
-			// Start the haloy-manager container and haproxy container, stream logs if requested.
+			// Start the haloyd container and haproxy container, stream logs if requested.
 			if !skipServices {
 				ui.Info("Starting Haloy services...")
 				if err := startServices(ctx, dataDir, configDir, devMode, override, debug); err != nil {
@@ -163,16 +163,16 @@ The data directory can be customized by setting the %s environment variable.`,
 				}
 
 				if !noLogs {
-					ui.Info("Waiting for manager API to become available...")
+					ui.Info("Waiting for haloyd API to become available...")
 					token := os.Getenv(constants.EnvVarAPIToken)
 					if token == "" {
 						ui.Error("Failed to get API token")
 						return
 					}
 					// Wait for API to become available and stream init logs
-					if err := streamManagerInitLogs(ctx, token); err != nil {
-						ui.Warn("Failed to stream manager initialization logs: %v", err)
-						ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
+					if err := streamHaloydInitLogs(ctx, token); err != nil {
+						ui.Warn("Failed to stream haloyd initialization logs: %v", err)
+						ui.Info("Manager is starting in the background. Check logs with: docker logs haloyd")
 					}
 				}
 			}
@@ -186,13 +186,13 @@ The data directory can be customized by setting the %s environment variable.`,
 		},
 	}
 
-	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloy-manager containers")
-	cmd.Flags().BoolVar(&override, "override", false, "Remove and recreate existing data directory. Any existing haloy-manager or haproxy containers will be restarted.")
-	cmd.Flags().StringVar(&apiDomain, "api-domain", "", "Domain for the Haloy manager API (e.g., api.yourserver.com)")
+	cmd.Flags().BoolVar(&skipServices, "no-services", false, "Skip starting HAProxy and haloyd containers")
+	cmd.Flags().BoolVar(&override, "override", false, "Remove and recreate existing data directory. Any existing haloyd or haproxy containers will be restarted.")
+	cmd.Flags().StringVar(&apiDomain, "api-domain", "", "Domain for the haloyd API (e.g., api.yourserver.com)")
 	cmd.Flags().StringVar(&acmeEmail, "acme-email", "", "Email address for Let's Encrypt certificate registration")
-	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
+	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloyd image")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
-	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream manager initialization logs")
+	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream haloyd initialization logs")
 	cmd.Flags().BoolVar(&localInstall, "local-install", false, "Install in user directories instead of system directories")
 
 	return cmd
@@ -329,17 +329,17 @@ func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir str
 	}
 
 	if domain != "" {
-		managerConfig := &config.ManagerConfig{}
-		managerConfig.API.Domain = domain
-		managerConfig.Certificates.AcmeEmail = acmeEmail
+		haloydConfig := &config.HaloydConfig{}
+		haloydConfig.API.Domain = domain
+		haloydConfig.Certificates.AcmeEmail = acmeEmail
 
-		if err := managerConfig.Validate(); err != nil {
-			return fmt.Errorf("invalid manager config: %w", err)
+		if err := haloydConfig.Validate(); err != nil {
+			return fmt.Errorf("invalid haloyd config: %w", err)
 		}
 
-		managerConfigPath := filepath.Join(configDir, constants.ManagerConfigFileName)
-		if err := config.SaveManagerConfig(managerConfig, managerConfigPath); err != nil {
-			return fmt.Errorf("failed to save manager config: %w", err)
+		haloydConfigPath := filepath.Join(configDir, constants.HaloydConfigFileName)
+		if err := config.SaveHaloydConfig(haloydConfig, haloydConfigPath); err != nil {
+			return fmt.Errorf("failed to save haloyd config: %w", err)
 		}
 	}
 	return nil

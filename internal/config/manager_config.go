@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type ManagerConfig struct {
+type HaloydConfig struct {
 	API struct {
 		Domain string `json:"domain" yaml:"domain" toml:"domain"`
 	} `json:"api" yaml:"api" toml:"api"`
@@ -22,13 +22,13 @@ type ManagerConfig struct {
 	} `json:"certificates" yaml:"certificates" toml:"certificates"`
 }
 
-// Normalize sets default values for ManagerConfig
-func (mc *ManagerConfig) Normalize() *ManagerConfig {
+// Normalize sets default values for HaloydConfig
+func (mc *HaloydConfig) Normalize() *HaloydConfig {
 	// Add any defaults if needed in the future
 	return mc
 }
 
-func (mc *ManagerConfig) Validate() error {
+func (mc *HaloydConfig) Validate() error {
 	if mc.API.Domain != "" {
 		if err := helpers.IsValidDomain(mc.API.Domain); err != nil {
 			return fmt.Errorf("invalid domain format: %w", err)
@@ -46,7 +46,7 @@ func (mc *ManagerConfig) Validate() error {
 	return nil
 }
 
-func LoadManagerConfig(path string) (*ManagerConfig, error) {
+func LoadHaloydConfig(path string) (*HaloydConfig, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -66,14 +66,14 @@ func LoadManagerConfig(path string) (*ManagerConfig, error) {
 		return nil, fmt.Errorf("failed to load manager config file: %w", err)
 	}
 
-	var managerConfig ManagerConfig
+	var managerConfig HaloydConfig
 	if err := k.UnmarshalWithConf("", &managerConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal manager config: %w", err)
 	}
 	return &managerConfig, nil
 }
 
-func SaveManagerConfig(config *ManagerConfig, path string) error {
+func SaveHaloydConfig(config *HaloydConfig, path string) error {
 	ext := filepath.Ext(path)
 	var data []byte
 	var err error

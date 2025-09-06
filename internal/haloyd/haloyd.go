@@ -1,4 +1,4 @@
-package manager
+package haloyd
 
 import (
 	"context"
@@ -82,8 +82,8 @@ func RunManager(debug bool) {
 		logger.Error("Failed to get manager config directory", "error", err)
 		return
 	}
-	configFilePath := filepath.Join(configDir, constants.ManagerConfigFileName)
-	managerConfig, err := config.LoadManagerConfig(configFilePath)
+	configFilePath := filepath.Join(configDir, constants.HaloydConfigFileName)
+	managerConfig, err := config.LoadHaloydConfig(configFilePath)
 	if err != nil {
 		logger.Error("Failed to load configuration file", "error", err)
 		return

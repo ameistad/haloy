@@ -25,7 +25,7 @@ func StartCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the haloy services",
-		Long:  "Start the haloy services, including HAProxy and haloy-manager.",
+		Long:  "Start the haloy services, including HAProxy and haloyd.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
@@ -57,7 +57,7 @@ func StartCmd() *cobra.Command {
 			}
 
 			if !noLogs {
-				ui.Info("Waiting for manager API to become available...")
+				ui.Info("Waiting for haloyd API to become available...")
 				token := os.Getenv(constants.EnvVarAPIToken)
 				if token == "" {
 					ui.Error("Failed to get API token")
@@ -65,17 +65,17 @@ func StartCmd() *cobra.Command {
 				}
 
 				// Wait for API to become available and stream init logs
-				if err := streamManagerInitLogs(ctx, token); err != nil {
-					ui.Warn("Failed to stream manager initialization logs: %v", err)
-					ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
+				if err := streamHaloydInitLogs(ctx, token); err != nil {
+					ui.Warn("Failed to stream haloyd initialization logs: %v", err)
+					ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
 				}
 			}
 		},
 	}
-	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloy-manager image")
+	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloyd image")
 	cmd.Flags().BoolVar(&restart, "restart", false, "Restart services if they are already running")
 	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
-	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream manager initialization logs")
+	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream haloyd initialization logs")
 
 	return cmd
 }

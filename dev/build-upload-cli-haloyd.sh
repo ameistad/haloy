@@ -49,21 +49,21 @@ if [ -f "$CLI_ADM_BINARY_NAME" ]; then
     rm "$CLI_ADM_BINARY_NAME"
 fi
 
-docker build --platform linux/amd64 -t haloy-manager -t haloy-manager:latest -t ghcr.io/ameistad/haloy-manager:latest -f ../build/manager/Dockerfile ../
+docker build --platform linux/amd64 -t haloyd -t haloyd:latest -t ghcr.io/ameistad/haloyd:latest -f ../build/haloyd/Dockerfile ../
 
-docker save -o haloy-manager.tar haloy-manager
+docker save -o haloyd.tar haloyd
 
 if [ "$HOSTNAME" = "localhost" ] || [ "$HOSTNAME" = "127.0.0.1" ]; then
     echo "Loading Docker image locally..."
-    docker load -i haloy-manager.tar && rm haloy-manager.tar
+    docker load -i haloyd.tar && rm haloyd.tar
 else
-    scp haloy-manager.tar ${USERNAME}@"$HOSTNAME":/tmp/haloy-manager.tar
+    scp haloyd.tar ${USERNAME}@"$HOSTNAME":/tmp/haloyd.tar
     echo "Loading Docker image on remote server..."
-    if ssh ${USERNAME}@"$HOSTNAME" "docker load -i /tmp/haloy-manager.tar && rm /tmp/haloy-manager.tar"; then
+    if ssh ${USERNAME}@"$HOSTNAME" "docker load -i /tmp/haloyd.tar && rm /tmp/haloyd.tar"; then
         echo "Successfully loaded Docker image and removed tarball on remote server."
     else
         echo "Warning: There was an issue with loading the Docker image or removing the tarball on the remote server."
-        echo "You may need to manually check and clean up /tmp/haloy-manager.tar on ${HOSTNAME}"
+        echo "You may need to manually check and clean up /tmp/haloyd.tar on ${HOSTNAME}"
     fi
-    rm haloy-manager.tar
+    rm haloyd.tar
 fi

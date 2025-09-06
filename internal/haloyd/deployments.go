@@ -1,4 +1,4 @@
-package manager
+package haloyd
 
 import (
 	"context"
@@ -38,14 +38,14 @@ type DeploymentManager struct {
 	deployments      map[string]Deployment
 	compareResult    compareResult
 	deploymentsMutex sync.RWMutex
-	managerConfig    *config.ManagerConfig
+	haloydConfig     *config.HaloydConfig
 }
 
-func NewDeploymentManager(cli *client.Client, managerConfig *config.ManagerConfig) *DeploymentManager {
+func NewDeploymentManager(cli *client.Client, haloydConfig *config.HaloydConfig) *DeploymentManager {
 	return &DeploymentManager{
-		cli:           cli,
-		deployments:   make(map[string]Deployment),
-		managerConfig: managerConfig,
+		cli:          cli,
+		deployments:  make(map[string]Deployment),
+		haloydConfig: haloydConfig,
 	}
 }
 
@@ -183,7 +183,7 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 			if domain.Canonical != "" {
 				email := deployment.Labels.ACMEEmail
 				if email == "" {
-					email = dm.managerConfig.Certificates.AcmeEmail // Use default email if not set
+					email = dm.haloydConfig.Certificates.AcmeEmail // Use default email if not set
 				}
 
 				if email == "" {
@@ -206,11 +206,11 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 	}
 
 	// We'll add the domain set in the manager config file if it exists.
-	if dm.managerConfig != nil && dm.managerConfig.API.Domain != "" && dm.managerConfig.Certificates.AcmeEmail != "" {
+	if dm.haloydConfig != nil && dm.haloydConfig.API.Domain != "" && dm.haloydConfig.Certificates.AcmeEmail != "" {
 		apiDomain := CertificatesDomain{
-			Canonical: dm.managerConfig.API.Domain,
+			Canonical: dm.haloydConfig.API.Domain,
 			Aliases:   []string{},
-			Email:     dm.managerConfig.Certificates.AcmeEmail,
+			Email:     dm.haloydConfig.Certificates.AcmeEmail,
 		}
 		certDomains = append(certDomains, apiDomain)
 	}

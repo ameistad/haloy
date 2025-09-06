@@ -9,7 +9,7 @@ import (
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "haloyadm",
-		Short: "Commands to manage the haloy-manager",
+		Short: "Commands to manage the haloyd",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			config.LoadEnvFiles() // load environment variables in .env for all commands.
 		},

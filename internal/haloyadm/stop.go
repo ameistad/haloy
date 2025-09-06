@@ -17,15 +17,15 @@ func StopCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the haloy services",
-		Long:  "Stop the haloy services, including HAProxy and haloy-manager.",
+		Long:  "Stop the haloy services, including HAProxy and haloyd.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 
 			ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
 			defer cancel()
 
-			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
-				ui.Error("Failed to stop haloy-manager: %v", err)
+			if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
+				ui.Error("Failed to stop haloyd: %v", err)
 				return
 			}
 

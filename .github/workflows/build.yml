@@ -56,18 +56,18 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ghcr.io/${{ github.repository }}-manager
+          images: ghcr.io/${{ github.repository }}-haloyd
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,format=long
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push manager image
+      - name: Build and push haloyd image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./build/manager/Dockerfile
+          file: ./build/haloyd/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

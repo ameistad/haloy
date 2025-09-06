@@ -13,7 +13,7 @@ func (s *APIServer) handleHealth() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		response := apitypes.HealthResponse{
 			Status:  "ok",
-			Service: "haloy-manager",
+			Service: "haloyd",
 			Version: constants.Version,
 		}
 

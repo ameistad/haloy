@@ -94,7 +94,7 @@ func (c *APIClient) get(ctx context.Context, path string, v any) error {
 }
 
 // ExecuteCommand sends a command to the API
-func (c *APIClient) post(ctx context.Context, path string, request, response interface{}) error {
+func (c *APIClient) post(ctx context.Context, path string, request, response any) error {
 
 	if err := c.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
@@ -197,8 +197,7 @@ func (c *APIClient) stream(ctx context.Context, path string, handler func(data s
 		}
 
 		// Parse SSE data lines
-		if strings.HasPrefix(line, "data: ") {
-			data := strings.TrimPrefix(line, "data: ")
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
 
 			// Call the handler function to process the data
 			shouldStop, err := handler(data)
@@ -339,7 +338,7 @@ func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID strin
 	})
 }
 
-// Version retrieves the version information of the manager and HAProxy
+// Version retrieves the version information of haloyd and HAProxy
 func (c *APIClient) Version(ctx context.Context) (*apitypes.VersionResponse, error) {
 	var response apitypes.VersionResponse
 	if err := c.get(ctx, "version", &response); err != nil {
@@ -348,7 +347,7 @@ func (c *APIClient) Version(ctx context.Context) (*apitypes.VersionResponse, err
 	return &response, nil
 }
 
-// StreamLogs streams all manager logs
+// StreamLogs streams all logs from haloyd
 func (c *APIClient) StreamLogs(ctx context.Context) error {
 	return c.stream(ctx, "logs", func(data string) (bool, error) {
 		var logEntry logging.LogEntry
@@ -363,7 +362,7 @@ func (c *APIClient) StreamLogs(ctx context.Context) error {
 	})
 }
 
-func (c *APIClient) StreamManagerInitLogs(ctx context.Context) error {
+func (c *APIClient) StreamHaloydInitLogs(ctx context.Context) error {
 	return c.stream(ctx, "logs", func(data string) (bool, error) {
 		var logEntry logging.LogEntry
 		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
@@ -372,7 +371,7 @@ func (c *APIClient) StreamManagerInitLogs(ctx context.Context) error {
 
 		c.displayGeneralLogEntry(logEntry)
 
-		// Stop streaming when manager init is complete
+		// Stop streaming when haloyd init is complete
 		return logEntry.IsManagerInitComplete, nil
 	})
 }

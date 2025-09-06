@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,11 +20,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// startHaloyManager runs the docker command to start haloy-manager.
-func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
-	image := "ghcr.io/ameistad/haloy-manager:latest"
+// startHaloyd runs the docker command to start haloyd.
+func startHaloyd(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
+	image := "ghcr.io/ameistad/haloyd:latest"
 	if devMode {
-		image = "haloy-manager:latest" // Use local image in dev mode
+		image = "haloyd:latest" // Use local image in dev mode
 	}
 
 	uid := os.Getuid()
@@ -33,7 +34,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 	args := []string{
 		"run",
 		"--detach",
-		"--name", constants.ManagerContainerName,
+		"--name", constants.HaloydContainerName,
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.CertificatesHTTPProviderPort, constants.CertificatesHTTPProviderPort),
 		"--publish", fmt.Sprintf("127.0.0.1:%s:%s", constants.APIServerPort, constants.APIServerPort),
 		"--volume", fmt.Sprintf("%s:%s:ro", configDir, configDir), // /etc/haloy or ~/.config/haloy
@@ -41,7 +42,7 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 		"--volume", "/var/run/docker.sock:/var/run/docker.sock:rw",
 		"--user", fmt.Sprintf("%d:%d", uid, gid),
 		"--group-add", dockerGID,
-		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.ManagerLabelRole),
+		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.HaloydLabelRole),
 		"--restart", "unless-stopped",
 		"--network", constants.DockerNetwork,
 		// Path environment variables so we can use paths functions and get the same results as on the host system.
@@ -73,9 +74,9 @@ func startHaloyManager(ctx context.Context, dataDir, configDir string, devMode b
 
 	if err := cmd.Run(); err != nil {
 		if stderr.Len() > 0 {
-			return fmt.Errorf("failed to start haloy-manager: %s", stderr.String())
+			return fmt.Errorf("failed to start haloyd: %s", stderr.String())
 		}
-		return fmt.Errorf("failed to start haloy-manager: %w", err)
+		return fmt.Errorf("failed to start haloyd: %w", err)
 	}
 	return nil
 }
@@ -155,9 +156,9 @@ func containerExists(ctx context.Context, role string) (bool, error) {
 
 func startServices(ctx context.Context, dataDir, configDir string, devMode, restart, debug bool) error {
 	// Check if containers exist
-	managerExists, err := containerExists(ctx, config.ManagerLabelRole)
+	haloydExists, err := containerExists(ctx, config.HaloydLabelRole)
 	if err != nil {
-		return fmt.Errorf("failed to check haloy-manager container: %w", err)
+		return fmt.Errorf("failed to check haloyd container: %w", err)
 	}
 
 	haproxyExists, err := containerExists(ctx, config.HAProxyLabelRole)
@@ -167,8 +168,8 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 
 	// If containers exist and restart flag is not set, return error
 	if !restart {
-		if managerExists {
-			return fmt.Errorf("haloy-manager container already exists, use --restart flag to restart it")
+		if haloydExists {
+			return fmt.Errorf("haloyd container already exists, use --restart flag to restart it")
 		}
 		if haproxyExists {
 			return fmt.Errorf("haloy-haproxy container already exists, use --restart flag to restart it")
@@ -177,10 +178,10 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 
 	// If restart flag is set, stop existing containers
 	if restart {
-		if managerExists {
-			ui.Info("Manager is already running. Restarting...")
-			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
-				return fmt.Errorf("failed to stop existing haloy-manager: %w", err)
+		if haloydExists {
+			ui.Info("haloyd is already running. Restarting...")
+			if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
+				return fmt.Errorf("failed to stop existing haloyd: %w", err)
 			}
 		}
 		if haproxyExists {
@@ -192,7 +193,7 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 	}
 
 	// Start the services
-	if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
+	if err := startHaloyd(ctx, dataDir, configDir, devMode, debug); err != nil {
 		return err
 	}
 
@@ -255,16 +256,10 @@ func ensureNetwork(ctx context.Context) error {
 
 	// Check if the network exists.
 	networks := strings.Split(strings.TrimSpace(out.String()), "\n")
-	networkExists := false
-	for _, n := range networks {
-		if n == constants.DockerNetwork {
-			networkExists = true
-			break
-		}
-	}
+	networkExists := slices.Contains(networks, constants.DockerNetwork)
 
 	if networkExists {
-		return nil // Already exists.
+		return nil
 	}
 
 	// Create the network if it doesn't exist.
@@ -282,25 +277,25 @@ func ensureNetwork(ctx context.Context) error {
 	return nil
 }
 
-// streamManagerInitLogs waits for the API to become available and streams initialization logs
-func streamManagerInitLogs(ctx context.Context, token string) error {
+// streamHaloydInitLogs waits for the API to become available and streams initialization logs
+func streamHaloydInitLogs(ctx context.Context, token string) error {
 	apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
 	api := apiclient.New(apiURL, token)
 
-	ui.Info("Connecting to manager API...")
+	ui.Info("Connecting to haloyd API...")
 
 	waitCtx, waitCancel := context.WithTimeout(ctx, apiWaitTimeout)
 	defer waitCancel()
 
 	if err := waitForAPI(waitCtx, api); err != nil {
-		return fmt.Errorf("manager API not available: %w", err)
+		return fmt.Errorf("Haloyd API not available: %w", err)
 	}
 
-	ui.Info("Streaming manager initialization logs...")
+	ui.Info("Streaming haloyd initialization logs...")
 
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
-	return api.StreamManagerInitLogs(streamCtx)
+	return api.StreamHaloydInitLogs(streamCtx)
 }
 
 // waitForAPI polls the API health endpoint until it's available

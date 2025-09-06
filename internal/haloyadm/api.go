@@ -64,23 +64,23 @@ func APIDomainCmd() *cobra.Command {
 				return
 			}
 
-			managerConfigPath := filepath.Join(configDir, constants.ManagerConfigFileName)
-			managerConfig, err := config.LoadManagerConfig(managerConfigPath)
+			haloydConfigPath := filepath.Join(configDir, constants.HaloydConfigFileName)
+			haloydConfig, err := config.LoadHaloydConfig(haloydConfigPath)
 			if err != nil {
 				ui.Error("Failed to load manager configuration: %v\n", err)
 				return
 			}
 
-			if managerConfig == nil {
-				managerConfig = &config.ManagerConfig{}
+			if haloydConfig == nil {
+				haloydConfig = &config.HaloydConfig{}
 			}
 
 			// Set the API domain and email in the manager configuration
-			managerConfig.API.Domain = normalizedURL
-			managerConfig.Certificates.AcmeEmail = email
+			haloydConfig.API.Domain = normalizedURL
+			haloydConfig.Certificates.AcmeEmail = email
 
 			// Save the updated manager configuration
-			if err := config.SaveManagerConfig(managerConfig, managerConfigPath); err != nil {
+			if err := config.SaveHaloydConfig(haloydConfig, haloydConfigPath); err != nil {
 				ui.Error("Failed to save manager configuration: %v\n", err)
 				return
 			}
@@ -99,19 +99,19 @@ func APIDomainCmd() *cobra.Command {
 				return
 			}
 
-			managerExists, err := containerExists(ctx, config.ManagerLabelRole)
+			managerExists, err := containerExists(ctx, config.HaloydLabelRole)
 			if err != nil {
-				ui.Error("Failed to determine if Haloy Manager is already running, check out the logs with docker logs haloy-manager")
+				ui.Error("Failed to determine if Haloy Manager is already running, check out the logs with docker logs haloyd")
 				return
 			}
 
 			if managerExists {
-				if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
-					ui.Error("failed to stop existing haloy-manager: %s", err)
+				if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
+					ui.Error("failed to stop existing haloyd: %s", err)
 				}
 			}
 
-			if err := startHaloyManager(ctx, dataDir, configDir, false, false); err != nil {
+			if err := startHaloyd(ctx, dataDir, configDir, false, false); err != nil {
 				ui.Error("%s", err)
 				return
 			}
@@ -122,9 +122,9 @@ func APIDomainCmd() *cobra.Command {
 				ui.Error("Failed to get API token")
 				return
 			}
-			if err := streamManagerInitLogs(ctx, token); err != nil {
+			if err := streamHaloydInitLogs(ctx, token); err != nil {
 				ui.Warn("Failed to stream manager initialization logs: %v", err)
-				ui.Info("Manager is starting in the background. Check logs with: docker logs haloy-manager")
+				ui.Info("Manager is starting in the background. Check logs with: docker logs haloyd")
 			}
 
 			ui.Success("API domain and email set successfully")
@@ -200,8 +200,8 @@ func APIURLCmd() *cobra.Command {
 				return err
 			}
 
-			configFilePath := filepath.Join(configDir, constants.ManagerConfigFileName)
-			managerConfig, err := config.LoadManagerConfig(configFilePath)
+			configFilePath := filepath.Join(configDir, constants.HaloydConfigFileName)
+			managerConfig, err := config.LoadHaloydConfig(configFilePath)
 			if err != nil {
 				if raw {
 					fmt.Fprintln(os.Stderr, err)
@@ -242,7 +242,7 @@ func APINewTokenCmd() *cobra.Command {
 	var debug bool
 	cmd := &cobra.Command{
 		Use:   "generate-token",
-		Short: "Generate a new API token and restart the haloy-manager",
+		Short: "Generate a new API token and restart the haloyd",
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), newTokenTimeout)
 			defer cancel()
@@ -275,22 +275,22 @@ func APINewTokenCmd() *cobra.Command {
 				return
 			}
 
-			// Restart haloy-manager
-			if err := stopContainer(ctx, config.ManagerLabelRole); err != nil {
-				ui.Error("Failed to stop haloy-manager container: %v", err)
+			// Restart haloyd
+			if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
+				ui.Error("Failed to stop haloyd container: %v", err)
 				return
 			}
-			if err := startHaloyManager(ctx, dataDir, configDir, devMode, debug); err != nil {
-				ui.Error("Failed to restart haloy-manager: %v", err)
+			if err := startHaloyd(ctx, dataDir, configDir, devMode, debug); err != nil {
+				ui.Error("Failed to restart haloyd: %v", err)
 				return
 			}
 
-			ui.Success("Generated new API token and restarted haloy-manager")
+			ui.Success("Generated new API token and restarted haloyd")
 			ui.Info("New API token: %s\n", token)
 		},
 	}
-	cmd.Flags().BoolVar(&devMode, "dev", false, "Restart in development mode using the local haloy-manager image")
-	cmd.Flags().BoolVar(&debug, "debug", false, "Restart haloy-manager in debug mode")
+	cmd.Flags().BoolVar(&devMode, "dev", false, "Restart in development mode using the local haloyd image")
+	cmd.Flags().BoolVar(&debug, "debug", false, "Restart haloyd in debug mode")
 	return cmd
 }
 

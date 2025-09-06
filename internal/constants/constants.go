@@ -5,7 +5,7 @@ import "os"
 const (
 	Version                  = "0.1.0"
 	HAProxyVersion           = "3.2"
-	ManagerContainerName     = "haloy-manager"
+	HaloydContainerName      = "haloyd"
 	HAProxyContainerName     = "haloy-haproxy"
 	DockerNetwork            = "haloy-public"
 	DefaultDeploymentsToKeep = 6
@@ -38,7 +38,7 @@ const (
 	CertStorageDir   = "cert-storage"
 
 	// File names
-	ManagerConfigFileName = "manager.yaml"
+	HaloydConfigFileName  = "haloyd.yaml"
 	ClientConfigFileName  = "client.yaml"
 	ConfigEnvFileName     = ".env"
 	HAProxyConfigFileName = "haproxy.cfg"

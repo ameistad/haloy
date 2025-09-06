@@ -1,4 +1,4 @@
-package manager
+package haloyd
 
 import (
 	"bytes"
@@ -23,13 +23,13 @@ import (
 
 type HAProxyManager struct {
 	cli           *client.Client
-	managerConfig *config.ManagerConfig
+	managerConfig *config.HaloydConfig
 	configDir     string
 	debug         bool
 	updateMutex   sync.Mutex // Mutex protects config writing and reload signaling
 }
 
-func NewHAProxyManager(cli *client.Client, managerConfig *config.ManagerConfig, configDir string, debug bool) *HAProxyManager {
+func NewHAProxyManager(cli *client.Client, managerConfig *config.HaloydConfig, configDir string, debug bool) *HAProxyManager {
 	return &HAProxyManager{
 		cli:           cli,
 		managerConfig: managerConfig,
@@ -113,7 +113,7 @@ func (hpm *HAProxyManager) generateConfig(deployments map[string]Deployment) (by
 		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-Proto https\n", indent)
 		backends += fmt.Sprintf("%shttp-request set-header X-Forwarded-Port %%[dst_port]\n", indent)
 		backends += fmt.Sprintf("%shttp-request set-header Host %%[req.hdr(host)]\n", indent)
-		backends += fmt.Sprintf("%sserver haloy-manager haloy-manager:%s check\n", indent, constants.APIServerPort)
+		backends += fmt.Sprintf("%sserver haloyd haloyd:%s check\n", indent, constants.APIServerPort)
 		backends += "\n"
 	}
 
@@ -194,7 +194,7 @@ func (hpm *HAProxyManager) getContainerID(ctx context.Context, logger *slog.Logg
 	maxRetries := 30
 	retryInterval := time.Second
 
-	for retry := 0; retry < maxRetries; retry++ {
+	for retry := range maxRetries {
 		if ctx.Err() != nil {
 			return "", fmt.Errorf("context canceled while waiting for HAProxy container: %w", ctx.Err())
 		}
