@@ -205,7 +205,7 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 		}
 	}
 
-	// We'll add the domain set in the manager config file if it exists.
+	// We'll add the domain set in the haloyd config file if it exists.
 	if dm.haloydConfig != nil && dm.haloydConfig.API.Domain != "" && dm.haloydConfig.Certificates.AcmeEmail != "" {
 		apiDomain := CertificatesDomain{
 			Canonical: dm.haloydConfig.API.Domain,
