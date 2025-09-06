@@ -187,7 +187,7 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 				}
 
 				if email == "" {
-					return nil, fmt.Errorf("ACME email for domain %s not found in manager config or labels", domain.Canonical)
+					return nil, fmt.Errorf("ACME email for domain %s not found in haloyd config or labels", domain.Canonical)
 				}
 
 				newDomain := CertificatesDomain{

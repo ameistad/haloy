@@ -372,7 +372,7 @@ func (c *APIClient) StreamHaloydInitLogs(ctx context.Context) error {
 		c.displayGeneralLogEntry(logEntry)
 
 		// Stop streaming when haloyd init is complete
-		return logEntry.IsManagerInitComplete, nil
+		return logEntry.IsHaloydInitComplete, nil
 	})
 }
 

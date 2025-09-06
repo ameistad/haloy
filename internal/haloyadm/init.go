@@ -172,7 +172,7 @@ The data directory can be customized by setting the %s environment variable.`,
 					// Wait for API to become available and stream init logs
 					if err := streamHaloydInitLogs(ctx, token); err != nil {
 						ui.Warn("Failed to stream haloyd initialization logs: %v", err)
-						ui.Info("Manager is starting in the background. Check logs with: docker logs haloyd")
+						ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
 					}
 				}
 			}

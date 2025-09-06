@@ -10,17 +10,17 @@ import (
 
 // LogEntry represents a structured log entry for streaming logs
 type LogEntry struct {
-	Level                 string         `json:"level"`
-	Message               string         `json:"message"`
-	Timestamp             time.Time      `json:"timestamp"`
-	DeploymentID          string         `json:"deploymentID,omitempty"`
-	AppName               string         `json:"appName,omitempty"`
-	Domains               []string       `json:"domains,omitempty"`
-	Fields                map[string]any `json:"fields,omitempty"`
-	IsDeploymentComplete  bool           `json:"isDeploymentComplete,omitempty"`
-	IsDeploymentFailed    bool           `json:"isDeploymentFailed,omitempty"`
-	IsDeploymentSuccess   bool           `json:"isDeploymentSuccess,omitempty"`
-	IsManagerInitComplete bool           `json:"isManagerInitComplete,omitempty"`
+	Level                string         `json:"level"`
+	Message              string         `json:"message"`
+	Timestamp            time.Time      `json:"timestamp"`
+	DeploymentID         string         `json:"deploymentID,omitempty"`
+	AppName              string         `json:"appName,omitempty"`
+	Domains              []string       `json:"domains,omitempty"`
+	Fields               map[string]any `json:"fields,omitempty"`
+	IsDeploymentComplete bool           `json:"isDeploymentComplete,omitempty"`
+	IsDeploymentFailed   bool           `json:"isDeploymentFailed,omitempty"`
+	IsDeploymentSuccess  bool           `json:"isDeploymentSuccess,omitempty"`
+	IsHaloydInitComplete bool           `json:"isHaloydInitComplete,omitempty"`
 }
 
 // StreamPublisher defines the interface for publishing log entries to streams
@@ -295,7 +295,7 @@ func NewStreamHandler(publisher StreamPublisher, next slog.Handler) slog.Handler
 func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 	// Extract deployment ID and other fields
 	var deploymentID, appName string
-	var isDeploymentComplete, isDeploymentFailed, isDeploymentSuccess, isManagerInitComplete bool
+	var isDeploymentComplete, isDeploymentFailed, isDeploymentSuccess, isHaloydInitComplete bool
 	var domains []string
 	fields := make(map[string]any)
 
@@ -311,7 +311,7 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 		case AttrDeploymentSuccess:
 			isDeploymentSuccess = attr.Value.Bool()
 		case AttrHaloydInitComplete:
-			isManagerInitComplete = attr.Value.Bool()
+			isHaloydInitComplete = attr.Value.Bool()
 		case AttrAppName, AttrApp: // Handle both "appName" and "app"
 			appName = attr.Value.String()
 		case AttrDomains:
@@ -341,7 +341,7 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 		case AttrDeploymentSuccess:
 			isDeploymentSuccess = a.Value.Bool()
 		case AttrHaloydInitComplete:
-			isManagerInitComplete = a.Value.Bool()
+			isHaloydInitComplete = a.Value.Bool()
 		case AttrAppName, AttrApp: // Handle both "appName" and "app"
 			appName = a.Value.String()
 		case AttrDomains:
@@ -362,17 +362,17 @@ func (sh *StreamHandler) Handle(ctx context.Context, rec slog.Record) error {
 
 	// Create single log entry that routes automatically
 	entry := LogEntry{
-		Level:                 rec.Level.String(),
-		Message:               rec.Message,
-		Timestamp:             rec.Time,
-		DeploymentID:          deploymentID,
-		AppName:               appName,
-		Domains:               domains,
-		Fields:                fields,
-		IsDeploymentComplete:  isDeploymentComplete,
-		IsDeploymentFailed:    isDeploymentFailed,
-		IsDeploymentSuccess:   isDeploymentSuccess,
-		IsManagerInitComplete: isManagerInitComplete,
+		Level:                rec.Level.String(),
+		Message:              rec.Message,
+		Timestamp:            rec.Time,
+		DeploymentID:         deploymentID,
+		AppName:              appName,
+		Domains:              domains,
+		Fields:               fields,
+		IsDeploymentComplete: isDeploymentComplete,
+		IsDeploymentFailed:   isDeploymentFailed,
+		IsDeploymentSuccess:  isDeploymentSuccess,
+		IsHaloydInitComplete: isHaloydInitComplete,
 	}
 
 	// Single publish call handles all routing

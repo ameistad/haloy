@@ -15,5 +15,5 @@ func main() {
 	debugEnv := os.Getenv(constants.EnvVarDebug) == "true"
 	debug := *debugFlag || debugEnv
 
-	haloyd.RunManager(debug)
+	haloyd.Run(debug)
 }

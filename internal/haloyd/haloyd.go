@@ -38,7 +38,7 @@ type ContainerEvent struct {
 	Labels    *config.ContainerLabels
 }
 
-func RunManager(debug bool) {
+func Run(debug bool) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -236,7 +236,7 @@ func RunManager(debug bool) {
 			logger.Error("Error from docker events", "error", err)
 
 		case <-sigChan:
-			logger.Info("Received shutdown signal, stopping manager...")
+			logger.Info("Received shutdown signal, stopping haloyd...")
 			if certManager != nil {
 				certManager.Stop()
 			}

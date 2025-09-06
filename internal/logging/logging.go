@@ -13,7 +13,7 @@ const (
 	AttrDeploymentFailed   = "deploymentFailed"
 	AttrDeploymentSuccess  = "deploymentSuccess"
 
-	// Manager attributes
+	// haloyd attributes
 	AttrHaloydInitComplete = "haloydInitComplete"
 
 	// App attributes
