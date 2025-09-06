@@ -182,7 +182,7 @@ func (dm *DeploymentManager) GetCertificateDomains() ([]CertificatesDomain, erro
 		for _, domain := range deployment.Labels.Domains {
 			if domain.Canonical != "" {
 				email := deployment.Labels.ACMEEmail
-				if email == "" {
+				if dm.haloydConfig != nil && email == "" {
 					email = dm.haloydConfig.Certificates.AcmeEmail // Use default email if not set
 				}
 
