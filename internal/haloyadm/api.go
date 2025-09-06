@@ -79,16 +79,16 @@ func APIDomainCmd() *cobra.Command {
 			haloydConfig.API.Domain = normalizedURL
 			haloydConfig.Certificates.AcmeEmail = email
 
-			// Save the updated manager configuration
+			// Save the updated haloyd configuration
 			if err := config.SaveHaloydConfig(haloydConfig, haloydConfigPath); err != nil {
-				ui.Error("Failed to save manager configuration: %v\n", err)
+				ui.Error("Failed to save haloyd configuration: %v\n", err)
 				return
 			}
 
 			ui.Info("Updated configuration:")
 			ui.Info("  Domain: %s", normalizedURL)
 			ui.Info("  Email: %s", email)
-			ui.Info("Restarting Haloy Manager...")
+			ui.Info("Restarting haloyd...")
 
 			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
 			defer cancel()
@@ -99,13 +99,13 @@ func APIDomainCmd() *cobra.Command {
 				return
 			}
 
-			managerExists, err := containerExists(ctx, config.HaloydLabelRole)
+			haloydExists, err := containerExists(ctx, config.HaloydLabelRole)
 			if err != nil {
-				ui.Error("Failed to determine if Haloy Manager is already running, check out the logs with docker logs haloyd")
+				ui.Error("Failed to determine if haloyd is already running, check out the logs with docker logs haloyd")
 				return
 			}
 
-			if managerExists {
+			if haloydExists {
 				if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
 					ui.Error("failed to stop existing haloyd: %s", err)
 				}
@@ -116,15 +116,15 @@ func APIDomainCmd() *cobra.Command {
 				return
 			}
 
-			ui.Info("Waiting for manager API to become available...")
+			ui.Info("Waiting for haloyd API to become available...")
 			token := os.Getenv(constants.EnvVarAPIToken)
 			if token == "" {
 				ui.Error("Failed to get API token")
 				return
 			}
 			if err := streamHaloydInitLogs(ctx, token); err != nil {
-				ui.Warn("Failed to stream manager initialization logs: %v", err)
-				ui.Info("Manager is starting in the background. Check logs with: docker logs haloyd")
+				ui.Warn("Failed to stream haloyd initialization logs: %v", err)
+				ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
 			}
 
 			ui.Success("API domain and email set successfully")
@@ -201,7 +201,7 @@ func APIURLCmd() *cobra.Command {
 			}
 
 			configFilePath := filepath.Join(configDir, constants.HaloydConfigFileName)
-			managerConfig, err := config.LoadHaloydConfig(configFilePath)
+			haloydConfig, err := config.LoadHaloydConfig(configFilePath)
 			if err != nil {
 				if raw {
 					fmt.Fprintln(os.Stderr, err)
@@ -211,7 +211,7 @@ func APIURLCmd() *cobra.Command {
 				return err
 			}
 
-			if managerConfig == nil || managerConfig.API.Domain == "" {
+			if haloydConfig == nil || haloydConfig.API.Domain == "" {
 				err := fmt.Errorf("API URL not found")
 				if raw {
 					fmt.Fprintln(os.Stderr, err)
@@ -222,9 +222,9 @@ func APIURLCmd() *cobra.Command {
 			}
 
 			if raw {
-				fmt.Print(managerConfig.API.Domain)
+				fmt.Print(haloydConfig.API.Domain)
 			} else {
-				ui.Info("API URL: %s\n", managerConfig.API.Domain)
+				ui.Info("API URL: %s\n", haloydConfig.API.Domain)
 			}
 			return nil
 		},

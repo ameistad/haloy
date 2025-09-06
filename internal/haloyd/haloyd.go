@@ -79,11 +79,11 @@ func RunManager(debug bool) {
 	}
 	configDir, err := config.ConfigDir()
 	if err != nil {
-		logger.Error("Failed to get manager config directory", "error", err)
+		logger.Error("Failed to get haloyd config directory", "error", err)
 		return
 	}
 	configFilePath := filepath.Join(configDir, constants.HaloydConfigFileName)
-	managerConfig, err := config.LoadHaloydConfig(configFilePath)
+	haloydConfig, err := config.LoadHaloydConfig(configFilePath)
 	if err != nil {
 		logger.Error("Failed to load configuration file", "error", err)
 		return
@@ -114,7 +114,7 @@ func RunManager(debug bool) {
 	// Channel for signaling cert updates needing HAProxy reload
 	certUpdateSignal := make(chan string, 5)
 
-	deploymentManager := NewDeploymentManager(cli, managerConfig)
+	deploymentManager := NewDeploymentManager(cli, haloydConfig)
 	certManagerConfig := CertificatesManagerConfig{
 		CertDir:          filepath.Join(dataDir, constants.CertStorageDir),
 		HTTPProviderPort: constants.CertificatesHTTPProviderPort,
@@ -124,7 +124,7 @@ func RunManager(debug bool) {
 	if err != nil {
 		logging.LogFatal(logger, "Failed to create certificate manager", "error", err)
 	}
-	haproxyManager := NewHAProxyManager(cli, managerConfig, filepath.Join(dataDir, constants.HAProxyConfigDir), debug)
+	haproxyManager := NewHAProxyManager(cli, haloydConfig, filepath.Join(dataDir, constants.HAProxyConfigDir), debug)
 	updaterConfig := UpdaterConfig{
 		Cli:               cli,
 		DeploymentManager: deploymentManager,
@@ -137,7 +137,7 @@ func RunManager(debug bool) {
 		logger.Error("Initial update failed", "error", err)
 	}
 
-	logger.Info("Haloy manager initialized",
+	logger.Info("haloyd successfully initialized",
 		logging.AttrHaloydInitComplete, true, // signal that the initialization is complete
 	)
 
