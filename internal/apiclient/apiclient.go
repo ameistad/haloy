@@ -393,7 +393,7 @@ func (c *APIClient) displayDeploymentLogEntry(entry logging.LogEntry) {
 	c.displayMessage(message, entry)
 }
 
-// displayGeneralLogEntry formats and displays a general manager log entry
+// displayGeneralLogEntry formats and displays a general log entry
 func (c *APIClient) displayGeneralLogEntry(entry logging.LogEntry) {
 	message := entry.Message
 
@@ -433,21 +433,27 @@ func (c *APIClient) displayMultiLineError(level, message, errorStr string) {
 	switch strings.ToUpper(level) {
 	case "ERROR":
 		ui.Error("%s", message)
-		for _, line := range strings.Split(errorStr, "\n") {
+		scanner := bufio.NewScanner(strings.NewReader(errorStr))
+		for scanner.Scan() {
+			line := scanner.Text()
 			if strings.TrimSpace(line) != "" {
 				ui.Error("    %s", line)
 			}
 		}
 	case "WARN":
 		ui.Warn("%s", message)
-		for _, line := range strings.Split(errorStr, "\n") {
+		scanner := bufio.NewScanner(strings.NewReader(errorStr))
+		for scanner.Scan() {
+			line := scanner.Text()
 			if strings.TrimSpace(line) != "" {
 				ui.Warn("    %s", line)
 			}
 		}
 	default:
 		ui.Info("%s", message)
-		for _, line := range strings.Split(errorStr, "\n") {
+		scanner := bufio.NewScanner(strings.NewReader(errorStr))
+		for scanner.Scan() {
+			line := scanner.Text()
 			if strings.TrimSpace(line) != "" {
 				fmt.Printf("    %s\n", line)
 			}

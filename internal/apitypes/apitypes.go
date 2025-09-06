@@ -56,6 +56,6 @@ type StopAppResponse struct {
 }
 
 type VersionResponse struct {
-	Version        string `json:"manager"`
+	Version        string `json:"haloyd"`
 	HAProxyVersion string `json:"haproxy"`
 }

@@ -16,8 +16,8 @@ func VersionCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "version",
-		Short: "Show the version of the haloy manager and HAProxy",
-		Long:  "Display the current version of the haloy manager and the HAProxy version it is using.",
+		Short: "Show the current version of haloyd and HAProxy",
+		Long:  "Display the current version of haloyd and the HAProxy version it is using.",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
 				configPath = args[0]
@@ -54,7 +54,7 @@ func VersionCmd() *cobra.Command {
 			if cliVersion == response.Version {
 				ui.Success("haloy version %s running with HAProxy version %s", cliVersion, response.HAProxyVersion)
 			} else {
-				ui.Warn("haloy version %s does not match server version %s", cliVersion, response.Version)
+				ui.Warn("haloy version %s does not match haloyd (server) version %s", cliVersion, response.Version)
 				ui.Warn("HAProxy version: %s", response.HAProxyVersion)
 			}
 		},
