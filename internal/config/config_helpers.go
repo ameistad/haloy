@@ -101,57 +101,54 @@ func getKnownFields(structType reflect.Type, format string) []string {
 
 // collectFields recursively collects field names from a struct type
 func collectFields(structType reflect.Type, format string, prefix string, fields *[]string) {
-	// Handle pointer types
 	if structType.Kind() == reflect.Ptr {
 		structType = structType.Elem()
 	}
-
-	// Only process struct types
 	if structType.Kind() != reflect.Struct {
 		return
 	}
 
 	for i := 0; i < structType.NumField(); i++ {
 		field := structType.Field(i)
-
-		// Skip unexported fields
 		if !field.IsExported() {
 			continue
 		}
 
-		// Get the field name for this format
-		fieldName := getFieldTagName(field, format)
-		if fieldName == "" || fieldName == "-" {
-			continue
-		}
-
-		// Build the full field path
-		fullFieldName := fieldName
-		if prefix != "" {
-			fullFieldName = prefix + "." + fieldName
-		}
-
-		// Add this field to the list
-		*fields = append(*fields, fullFieldName)
-
-		// Handle nested structs
 		fieldType := field.Type
 		if fieldType.Kind() == reflect.Ptr {
 			fieldType = fieldType.Elem()
 		}
 
+		//  Check for embedding.
+		if field.Anonymous && fieldType.Kind() == reflect.Struct {
+			// If it's an embedded struct, recurse into it with the SAME prefix
+			// to "promote" its fields to the parent's level.
+			collectFields(fieldType, format, prefix, fields)
+			// Then, skip the rest of the loop for this field.
+			continue
+		}
+
+		//  If it's NOT an embedded struct, proceed as normal.
+		fieldName := getFieldTagName(field, format)
+		if fieldName == "" || fieldName == "-" {
+			continue
+		}
+
+		fullFieldName := fieldName
+		if prefix != "" {
+			fullFieldName = prefix + "." + fieldName
+		}
+		*fields = append(*fields, fullFieldName)
+
+		//  Recurse into nested (but not embedded) structs/slices.
 		if fieldType.Kind() == reflect.Struct {
-			// Recursively collect fields from nested struct
 			collectFields(fieldType, format, fullFieldName, fields)
 		} else if fieldType.Kind() == reflect.Slice {
-			// Handle slice of structs (like []EnvVar, []Domain)
 			elemType := fieldType.Elem()
 			if elemType.Kind() == reflect.Ptr {
 				elemType = elemType.Elem()
 			}
 			if elemType.Kind() == reflect.Struct {
-				// For slices of structs, we collect the element fields
-				// This allows validation of "env.name", "env.value", "domains.domain", etc.
 				collectFields(elemType, format, fullFieldName, fields)
 			}
 		}
