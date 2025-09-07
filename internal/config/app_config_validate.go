@@ -11,34 +11,61 @@ import (
 )
 
 func (ac *AppConfig) Validate(format string) error {
+	if ac.Name == "" {
+		return fmt.Errorf("app 'name' is required")
+	}
 
 	if !isValidAppName(ac.Name) {
 		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
 	}
 
-	if err := ac.Image.Validate(); err != nil {
+	if ac.Server != "" && len(ac.Targets) > 0 {
+		return fmt.Errorf("configuration cannot contain both 'server' and 'targets'; please use one method")
+	}
+
+	// If using targets, validate each merged target configuration
+	if len(ac.Targets) > 0 {
+		for name, overrides := range ac.Targets {
+			mergedConfig := ac.mergeWithTarget(overrides)
+			if err := mergedConfig.TargetConfig.Validate(format); err != nil {
+				return fmt.Errorf("validation failed for target '%s': %w", name, err)
+			}
+		}
+	} else {
+		if err := ac.TargetConfig.Validate(format); err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+}
+
+func (tc *TargetConfig) Validate(format string) error {
+
+	if err := tc.Image.Validate(); err != nil {
 		return fmt.Errorf("invalid image: %w", err)
 	}
 
-	if len(ac.Domains) > 0 {
-		for _, domain := range ac.Domains {
+	if len(tc.Domains) > 0 {
+		for _, domain := range tc.Domains {
 			if err := domain.Validate(); err != nil {
 				return err
 			}
 		}
 	}
 
-	if ac.ACMEEmail != "" && !helpers.IsValidEmail(ac.ACMEEmail) {
-		return fmt.Errorf("%s is invalid '%s'; must be a valid email address", getFieldNameForFormat(*ac, "ACMEEmail", format), ac.ACMEEmail)
+	if tc.ACMEEmail != "" && !helpers.IsValidEmail(tc.ACMEEmail) {
+		return fmt.Errorf("%s is invalid '%s'; must be a valid email address", getFieldNameForFormat(*tc, "ACMEEmail", format), tc.ACMEEmail)
 	}
 
-	for j, envVar := range ac.Env {
+	for j, envVar := range tc.Env {
 		if err := envVar.Validate(format); err != nil {
 			return fmt.Errorf("env[%d]: %w", j, err)
 		}
 	}
 
-	for _, volume := range ac.Volumes {
+	for _, volume := range tc.Volumes {
 		// Expected format: /host/path:/container/path[:options]
 		parts := strings.Split(volume, ":")
 		if len(parts) < 2 || len(parts) > 3 {
@@ -54,21 +81,20 @@ func (ac *AppConfig) Validate(format string) error {
 		}
 	}
 
-	if ac.HealthCheckPath != "" {
-		if ac.HealthCheckPath[0] != '/' {
-			return fmt.Errorf("%s must start with a slash", getFieldNameForFormat(*ac, "HealthCheckPath", format))
+	if tc.HealthCheckPath != "" {
+		if tc.HealthCheckPath[0] != '/' {
+			return fmt.Errorf("%s must start with a slash", getFieldNameForFormat(*tc, "HealthCheckPath", format))
 		}
 	}
 
-	if ac.Replicas != nil {
-		if int(*ac.Replicas) < 1 {
+	if tc.Replicas != nil {
+		if int(*tc.Replicas) < 1 {
 			return errors.New("replicas must be at least 1")
 		}
 	}
 
 	return nil
 }
-
 func isValidAppName(name string) bool {
 	// Only allow alphanumeric, hyphens, and underscores
 	matched, err := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)

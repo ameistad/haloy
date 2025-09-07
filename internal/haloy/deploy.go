@@ -18,6 +18,7 @@ func DeployAppCmd() *cobra.Command {
 	var configPath string
 	var server string
 	var noLogs bool
+	var target string
 
 	cmd := &cobra.Command{
 		Use:   "deploy [config-path]",
@@ -45,66 +46,76 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			if len(appConfig.PreDeploy) > 0 {
-				for _, hookCmd := range appConfig.PreDeploy {
-					if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
-						ui.Error("Pre-deploy hook failed: %v", err)
-						return
+			deployJobs, err := appConfig.Expand(target)
+			if err != nil {
+				ui.Error("Failed to process deployment targets: %v", err)
+				return
+			}
+
+			for _, job := range deployJobs {
+				ui.Info("Deploying target: %s", job.TargetName)
+
+				if len(job.Config.PreDeploy) > 0 {
+					for _, hookCmd := range job.Config.PreDeploy {
+						if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+							ui.Error("Pre-deploy hook failed: %v", err)
+							return
+						}
+					}
+				}
+				targetServer, err := getServer(job.Config, "")
+				if err != nil {
+					ui.Error("%v", err)
+					return
+				}
+
+				token, err := getToken(job.Config, targetServer)
+				if err != nil {
+					ui.Error("%v", err)
+					return
+				}
+				ui.Info("Starting deployment for application: %s using server %s", job.Config.Name, targetServer)
+				ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+				defer cancel()
+
+				api := apiclient.New(targetServer, token)
+				resp, err := api.Deploy(ctx, *job.Config, format)
+				if err != nil {
+					ui.Error("Deployment request failed: %v", err)
+					return
+				}
+				if resp == nil {
+					ui.Error("No response from server")
+					return
+				}
+
+				if !noLogs {
+					// No timout for streaming logs
+					streamCtx, streamCancel := context.WithCancel(context.Background())
+					defer streamCancel()
+
+					// Stream deployment logs using the APIClient
+					if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID); err != nil {
+						ui.Warn("Failed to stream deployment logs: %v", err)
+					}
+				}
+
+				if len(job.Config.PostDeploy) > 0 {
+					for _, hookCmd := range job.Config.PostDeploy {
+						if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+							ui.Warn("Post-deploy hook failed: %v", err)
+						}
 					}
 				}
 			}
 
-			targetServer, err := getServer(appConfig, server)
-			if err != nil {
-				ui.Error("%v", err)
-				return
-			}
-
-			token, err := getToken(appConfig, targetServer)
-			if err != nil {
-				ui.Error("%v", err)
-				return
-			}
-
-			ui.Info("Starting deployment for application: %s using server %s", appConfig.Name, targetServer)
-			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-			defer cancel()
-
-			api := apiclient.New(targetServer, token)
-			resp, err := api.Deploy(ctx, *appConfig, format)
-			if err != nil {
-				ui.Error("Deployment request failed: %v", err)
-				return
-			}
-			if resp == nil {
-				ui.Error("No response from server")
-				return
-			}
-
-			if !noLogs {
-				// No timout for streaming logs
-				streamCtx, streamCancel := context.WithCancel(context.Background())
-				defer streamCancel()
-
-				// Stream deployment logs using the APIClient
-				if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID); err != nil {
-					ui.Warn("Failed to stream deployment logs: %v", err)
-				}
-			}
-
-			if len(appConfig.PostDeploy) > 0 {
-				for _, hookCmd := range appConfig.PostDeploy {
-					if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
-						ui.Warn("Post-deploy hook failed: %v", err)
-					}
-				}
-			}
 		},
 	}
 
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&server, "server", "s", "", "Haloy server URL (overrides config)")
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
+	cmd.Flags().StringVarP(&target, "target", "t", "", "Deploy to a specific target")
 
 	return cmd
 }

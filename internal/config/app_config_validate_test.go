@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/ameistad/haloy/internal/helpers"
@@ -12,13 +11,15 @@ func intPtr(i int) *int { return &i }
 // baseAppConfig can be used by multiple test functions
 func baseAppConfig(name string) AppConfig {
 	return AppConfig{
-		Name:  name,
-		Image: Image{Repository: "example.com/repo", Tag: "latest"},
-		// Add a default domain to prevent "no domains defined" error in unrelated tests
-		Domains:         []Domain{{Canonical: fmt.Sprintf("%s.example.com", name)}},
-		ACMEEmail:       "test@example.com",
-		Replicas:        intPtr(1),
-		HealthCheckPath: "/",
+		Name: name,
+		TargetConfig: TargetConfig{ // Initialize the embedded struct by its type name
+			Image: Image{
+				Repository: "example.com/repo",
+				Tag:        "latest",
+			},
+			Server: "test.server.com",
+			// ... initialize other fields from TargetConfig here
+		},
 	}
 }
 

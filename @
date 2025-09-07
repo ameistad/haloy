@@ -26,119 +26,22 @@ type TargetConfig struct {
 	Replicas          *int     `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
 	Volumes           []string `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
 	NetworkMode       string   `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
-	PreDeploy         []string `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
-	PostDeploy        []string `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
 }
 
 type AppConfig struct {
 	Name string `json:"name" yaml:"name" toml:"name"`
-	// This tag tells the unmarshaler to treat TargetConfig's
+	// This tag tells koanf's unmarshaler to treat TargetConfig's
 	// fields as if they were part of AppConfig directly.
 	TargetConfig `mapstructure:",squash"`
 
-	Targets map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
+	Targets    map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
+	PreDeploy  []string                 `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
+	PostDeploy []string                 `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
 }
 
-type DeploymentJob struct {
+type DeploymentPlan struct {
 	TargetName string
 	Config     *AppConfig
-}
-
-func (ac *AppConfig) Expand(targetFlag string) ([]DeploymentJob, error) {
-	if len(ac.Targets) > 0 {
-		var targetsToDeploy []string
-		if targetFlag != "" {
-			if _, exists := ac.Targets[targetFlag]; !exists {
-				return nil, fmt.Errorf("target '%s' not found in configuration", targetFlag)
-			}
-			targetsToDeploy = []string{targetFlag}
-		} else {
-			for name := range ac.Targets {
-				targetsToDeploy = append(targetsToDeploy, name)
-			}
-		}
-		var deploymentJobs []DeploymentJob
-		for _, name := range targetsToDeploy {
-			overrides := ac.Targets[name]
-			config := ac.mergeWithTarget(overrides)
-			deploymentJobs = append(deploymentJobs, DeploymentJob{
-				TargetName: name,
-				Config:     config,
-			})
-		}
-
-		return deploymentJobs, nil
-
-	}
-	if ac.Server != "" {
-		finalConfig := *ac
-		finalConfig.Targets = nil
-		return []DeploymentJob{{
-			TargetName: "default",
-			Config:     &finalConfig,
-		}}, nil
-	}
-
-	return nil, fmt.Errorf("no server or targets are defined in the configuration")
-}
-
-// mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.
-func (ac *AppConfig) mergeWithTarget(override *TargetConfig) *AppConfig {
-	final := *ac
-
-	if override == nil {
-		final.Targets = nil
-		return &final
-	}
-
-	// Apply overrides from the target. Target values take precedence.
-	if override.Image.Repository != "" {
-		final.Image = override.Image
-	}
-	if override.Server != "" {
-		final.Server = override.Server
-	}
-	if override.APITokenEnv != "" {
-		final.APITokenEnv = override.APITokenEnv
-	}
-	if override.Domains != nil {
-		final.Domains = override.Domains
-	}
-	if override.ACMEEmail != "" {
-		final.ACMEEmail = override.ACMEEmail
-	}
-	if override.Env != nil {
-		final.Env = override.Env
-	}
-	if override.DeploymentsToKeep != nil {
-		final.DeploymentsToKeep = override.DeploymentsToKeep
-	}
-	if override.HealthCheckPath != "" {
-		final.HealthCheckPath = override.HealthCheckPath
-	}
-	if override.Port != "" {
-		final.Port = override.Port
-	}
-	if override.Replicas != nil {
-		final.Replicas = override.Replicas
-	}
-	if override.Volumes != nil {
-		final.Volumes = override.Volumes
-	}
-	if override.NetworkMode != "" {
-		final.NetworkMode = override.NetworkMode
-	}
-	if override.PreDeploy != nil {
-		final.PreDeploy = override.PreDeploy
-	}
-	if override.PostDeploy != nil {
-		final.PostDeploy = override.PostDeploy
-	}
-
-	// The final, merged config has no concept of targets.
-	final.Targets = nil
-
-	return &final
 }
 
 func (ac *AppConfig) Normalize() *AppConfig {
