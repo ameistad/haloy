@@ -19,7 +19,15 @@ func APIDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "domain <url> <email>",
 		Short: "Set the API domain",
-		Args:  cobra.ExactArgs(2),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) < 2 {
+				return fmt.Errorf("not enough arguments: expected 2 (domain URL and email), got %d\n\nUsage:\n  %s\n", len(args), cmd.UseLine())
+			}
+			if len(args) > 2 {
+				return fmt.Errorf("too many arguments: expected 2 (domain URL and email), got %d\n\nUsage:\n  %s\n", len(args), cmd.UseLine())
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := checkDirectoryAccess(RequiredAccess{
 				Config: true,
