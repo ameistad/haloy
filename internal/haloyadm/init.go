@@ -164,13 +164,8 @@ The data directory can be customized by setting the %s environment variable.`,
 
 				if !noLogs {
 					ui.Info("Waiting for haloyd API to become available...")
-					token := os.Getenv(constants.EnvVarAPIToken)
-					if token == "" {
-						ui.Error("Failed to get API token")
-						return
-					}
 					// Wait for API to become available and stream init logs
-					if err := streamHaloydInitLogs(ctx, token); err != nil {
+					if err := streamHaloydInitLogs(ctx, apiToken); err != nil {
 						ui.Warn("Failed to stream haloyd initialization logs: %v", err)
 						ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
 					}
@@ -181,7 +176,8 @@ The data directory can be customized by setting the %s environment variable.`,
 			if apiDomain != "" {
 				apiDomainMessage = apiDomain
 			}
-			ui.Info("You can now add this server to the haloy cli with:\n haloy server add %s %s", apiDomainMessage, apiToken)
+			ui.Info("You can now add this server to the haloy cli with:")
+			ui.Info(" haloy server add %s %s", apiDomainMessage, apiToken)
 
 		},
 	}
