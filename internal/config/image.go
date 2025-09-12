@@ -42,20 +42,20 @@ func (is *Image) ImageRef() string {
 
 func (i *Image) Validate() error {
 	if strings.TrimSpace(i.Repository) == "" {
-		return fmt.Errorf("source.image.repository is required")
+		return fmt.Errorf("image.repository is required")
 	}
 	if strings.ContainsAny(i.Repository, " \t\n\r") {
-		return fmt.Errorf("source.image.repository '%s' contains whitespace", i.Repository)
+		return fmt.Errorf("image.repository '%s' contains whitespace", i.Repository)
 	}
 
 	if i.Source != "" {
 		if i.Source != ImageSourceRegistry && i.Source != ImageSourceLocal {
-			return fmt.Errorf("source.image.source '%s' is invalid (must be 'registry' or 'local')", i.Source)
+			return fmt.Errorf("image.source '%s' is invalid (must be 'registry' or 'local')", i.Source)
 		}
 	}
 
 	if strings.ContainsAny(i.Tag, " \t\n\r") {
-		return fmt.Errorf("source.image.tag '%s' contains whitespace", i.Tag)
+		return fmt.Errorf("image.tag '%s' contains whitespace", i.Tag)
 	}
 
 	// Validate RegistryAuth if present
@@ -63,7 +63,7 @@ func (i *Image) Validate() error {
 		reg := i.RegistryAuth
 		// Server is now optional; if empty, it will be parsed from Repository at runtime.
 		if strings.TrimSpace(reg.Server) != "" && strings.ContainsAny(reg.Server, " \t\n\r") {
-			return fmt.Errorf("source.image.registry.server '%s' contains whitespace", reg.Server)
+			return fmt.Errorf("image.registry.server '%s' contains whitespace", reg.Server)
 		}
 		// Validate Username
 		if err := validateRegistryAuthSource("username", reg.Username); err != nil {
@@ -80,13 +80,13 @@ func (i *Image) Validate() error {
 func validateRegistryAuthSource(field string, ras RegistryAuthSource) error {
 	validTypes := map[string]bool{"env": true, "secret": true, "plain": true}
 	if strings.TrimSpace(ras.Type) == "" {
-		return fmt.Errorf("source.image.registry.%s.type is required", field)
+		return fmt.Errorf("image.registry.%s.type is required", field)
 	}
 	if !validTypes[ras.Type] {
-		return fmt.Errorf("source.image.registry.%s.type '%s' is invalid (must be 'env', 'secret', or 'plain')", field, ras.Type)
+		return fmt.Errorf("image.registry.%s.type '%s' is invalid (must be 'env', 'secret', or 'plain')", field, ras.Type)
 	}
 	if strings.TrimSpace(ras.Value) == "" {
-		return fmt.Errorf("source.image.registry.%s.value is required", field)
+		return fmt.Errorf("image.registry.%s.value is required", field)
 	}
 	return nil
 }
