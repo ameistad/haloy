@@ -31,10 +31,8 @@ func (ac *AppConfig) Validate(format string) error {
 				return fmt.Errorf("validation failed for target '%s': %w", name, err)
 			}
 		}
-		return nil
-	}
-
-	if ac.Server != "" {
+		// Single target with embedded TargetConfig
+	} else {
 		if err := ac.TargetConfig.Validate(format); err != nil {
 			return err
 		}
