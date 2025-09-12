@@ -31,18 +31,19 @@ func (ac *AppConfig) Validate(format string) error {
 				return fmt.Errorf("validation failed for target '%s': %w", name, err)
 			}
 		}
-	} else {
+		return nil
+	}
+
+	if ac.Server != "" {
 		if err := ac.TargetConfig.Validate(format); err != nil {
 			return err
 		}
 	}
 
 	return nil
-
 }
 
 func (tc *TargetConfig) Validate(format string) error {
-
 	if err := tc.Image.Validate(); err != nil {
 		return fmt.Errorf("invalid image: %w", err)
 	}
@@ -95,6 +96,7 @@ func (tc *TargetConfig) Validate(format string) error {
 
 	return nil
 }
+
 func isValidAppName(name string) bool {
 	// Only allow alphanumeric, hyphens, and underscores
 	matched, err := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
