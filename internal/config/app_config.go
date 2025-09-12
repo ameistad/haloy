@@ -1,9 +1,7 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -190,16 +189,10 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 		return nil, "", err
 	}
 
-	k := koanf.New("/")
+	k := koanf.New(".")
 	if err := k.Load(file.Provider(configFile), parser); err != nil {
 		return nil, "", fmt.Errorf("failed to load config file: %w", err)
 	}
-
-	// Debug: Print what koanf actually loaded
-	log.Printf("Koanf keys: %v", k.Keys())
-	log.Printf("Image repository from koanf: %v", k.Get("image.repository"))
-	log.Printf("Image data from koanf: %v", k.Get("image"))
-	log.Printf("All data from koanf: %v", k.All())
 
 	configKeys := k.Keys()
 	appConfigType := reflect.TypeOf(AppConfig{})
@@ -207,8 +200,19 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 	if err := checkUnknownFields(appConfigType, configKeys, format); err != nil {
 		return nil, "", err
 	}
+	decoderConfig := &mapstructure.DecoderConfig{
+		TagName: format,
+		Result:  &appConfig,
+		// This ensures that embedded structs with inline tags work properly
+		Squash: true,
+	}
 
-	if err := k.UnmarshalWithConf("", &appConfig, koanf.UnmarshalConf{Tag: format}); err != nil {
+	unmarshalConf := koanf.UnmarshalConf{
+		Tag:           format,
+		DecoderConfig: decoderConfig,
+	}
+
+	if err := k.UnmarshalWithConf("", &appConfig, unmarshalConf); err != nil {
 		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -217,8 +221,7 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 	}
 
 	appConfig = appConfig.Normalize()
-	b, _ := json.MarshalIndent(appConfig, "", "  ")
-	log.Printf("Normalized AppConfig: %s\n", b)
+
 	if err := appConfig.Validate(format); err != nil {
 		return nil, format, err
 	}
