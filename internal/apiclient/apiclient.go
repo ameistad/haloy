@@ -95,7 +95,6 @@ func (c *APIClient) get(ctx context.Context, path string, v any) error {
 
 // ExecuteCommand sends a command to the API
 func (c *APIClient) post(ctx context.Context, path string, request, response any) error {
-
 	if err := c.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}
@@ -147,7 +146,6 @@ func (c *APIClient) post(ctx context.Context, path string, request, response any
 
 // Generic streaming method that handles any SSE endpoint
 func (c *APIClient) stream(ctx context.Context, path string, handler func(data string) (bool, error)) error {
-
 	// Create transport that forces HTTP/1.1 to avoid HTTP/2 stream cancellation
 	streamingTransport := &http.Transport{
 		ForceAttemptHTTP2: false, // Force HTTP/1.1
@@ -220,8 +218,8 @@ func (c *APIClient) stream(ctx context.Context, path string, handler func(data s
 	return nil
 }
 
-func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig, format string) (*apitypes.DeployResponse, error) {
-	request := apitypes.DeployRequest{AppConfig: appConfig, ConfigFormat: format}
+func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig, deploymentID, format string) (*apitypes.DeployResponse, error) {
+	request := apitypes.DeployRequest{AppConfig: appConfig, DeploymentID: deploymentID, ConfigFormat: format}
 	var response apitypes.DeployResponse
 	err := c.post(ctx, "deploy", request, &response)
 	return &response, err
@@ -236,10 +234,11 @@ func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apity
 	return &response, nil
 }
 
-func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID string) (*apitypes.RollbackResponse, error) {
+func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID, newDeploymentID string) (*apitypes.RollbackResponse, error) {
 	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
+	request := apitypes.RollbackRequest{NewDeploymentID: newDeploymentID}
 	var response apitypes.RollbackResponse
-	if err := c.post(ctx, path, nil, &response); err != nil {
+	if err := c.post(ctx, path, request, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -321,7 +320,7 @@ func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainer
 }
 
 // StreamDeploymentLogs streams logs for a specific deployment
-func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID string) error {
+func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID string, logCh chan<- logging.LogEntry) error {
 	path := fmt.Sprintf("deploy/%s/logs", deploymentID)
 
 	return c.stream(ctx, path, func(data string) (bool, error) {
@@ -330,8 +329,7 @@ func (c *APIClient) StreamDeploymentLogs(ctx context.Context, deploymentID strin
 			return false, fmt.Errorf("failed to parse log entry: %w", err)
 		}
 
-		// Display deployment log (no deployment ID prefix needed)
-		c.displayDeploymentLogEntry(logEntry)
+		logCh <- logEntry
 
 		// Stop streaming when deployment is complete
 		return logEntry.IsDeploymentComplete, nil
@@ -377,7 +375,7 @@ func (c *APIClient) StreamHaloydInitLogs(ctx context.Context) error {
 }
 
 // displayDeploymentLogEntry formats and displays a deployment-specific log entry
-func (c *APIClient) displayDeploymentLogEntry(entry logging.LogEntry) {
+func (c *APIClient) DisplayDeploymentLogEntry(entry logging.LogEntry) {
 	message := entry.Message
 
 	// Handle multi-line errors

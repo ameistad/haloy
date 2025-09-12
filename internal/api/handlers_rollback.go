@@ -23,8 +23,14 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			http.Error(w, "Target deployment ID is required", http.StatusBadRequest)
 			return
 		}
-		newDeploymentID := deploy.CreateDeploymentID()
-		deploymentLogger := logging.NewDeploymentLogger(newDeploymentID, s.logLevel, s.logBroker)
+		var req apitypes.RollbackRequest
+
+		if err := decodeJSON(r.Body, &req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		deploymentLogger := logging.NewDeploymentLogger(req.NewDeploymentID, s.logLevel, s.logBroker)
 
 		// Start rollback in background
 		go func() {
@@ -39,14 +45,14 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			}
 			defer cli.Close()
 
-			if err := deploy.RollbackApp(ctx, cli, appName, targetDeploymentID, newDeploymentID, deploymentLogger); err != nil {
+			if err := deploy.RollbackApp(ctx, cli, appName, targetDeploymentID, req.NewDeploymentID, deploymentLogger); err != nil {
 				deploymentLogger.Error("Deployment failed", "app", appName, "error", err)
 				return
 			}
-			deploymentLogger.Info("Rollback initiated", "app", appName, "deploymentID", newDeploymentID)
+			deploymentLogger.Info("Rollback initiated", "app", appName, "deploymentID", req.NewDeploymentID)
 		}()
 
-		response := apitypes.RollbackResponse{DeploymentID: newDeploymentID}
+		response := apitypes.RollbackResponse{DeploymentID: req.NewDeploymentID}
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)
 		}

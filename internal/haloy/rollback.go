@@ -7,6 +7,7 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -66,12 +67,21 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 				return
 			}
 
+			newDeploymentID := createDeploymentID()
+
+			logCh := make(chan logging.LogEntry)
+			go func() {
+				for logEntry := range logCh {
+					ui.DisplayDeploymentLogEntry(logEntry)
+				}
+			}()
+
 			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
 			api := apiclient.New(targetServer, token)
-			resp, err := api.Rollback(ctx, appConfig.Name, targetDeploymentID)
+			resp, err := api.Rollback(ctx, appConfig.Name, targetDeploymentID, newDeploymentID)
 			if err != nil {
 				ui.Error("Rollback failed: %v", err)
 				return
@@ -81,7 +91,7 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 				// No timeout for streaming logs
 				streamCtx, streamCancel := context.WithCancel(context.Background())
 				defer streamCancel()
-				if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID); err != nil {
+				if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID, logCh); err != nil {
 					ui.Warn("Failed to stream rollback logs: %v", err)
 				}
 			}

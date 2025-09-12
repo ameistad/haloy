@@ -14,16 +14,15 @@ import (
 // handleDeploy returns an http.HandlerFunc for deploying an app.
 func (s *APIServer) handleDeploy() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		deploymentID := deploy.CreateDeploymentID()
-
-		// Create deployment-specific logger using the factory
-		deploymentLogger := logging.NewDeploymentLogger(deploymentID, s.logLevel, s.logBroker)
 		var req apitypes.DeployRequest
 
 		if err := decodeJSON(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		// Create deployment-specific logger using the factory
+		deploymentLogger := logging.NewDeploymentLogger(req.DeploymentID, s.logLevel, s.logBroker)
 
 		go func() {
 			ctx := context.Background()
@@ -37,13 +36,13 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			}
 			defer cli.Close()
 
-			if err := deploy.DeployApp(ctx, cli, deploymentID, req.AppConfig, req.ConfigFormat, deploymentLogger); err != nil {
-				logging.LogDeploymentFailed(deploymentLogger, deploymentID, req.AppConfig.Name, "Deployment failed", err)
+			if err := deploy.DeployApp(ctx, cli, req.DeploymentID, req.AppConfig, req.ConfigFormat, deploymentLogger); err != nil {
+				logging.LogDeploymentFailed(deploymentLogger, req.DeploymentID, req.AppConfig.Name, "Deployment failed", err)
 				return
 			}
 		}()
 
-		response := apitypes.DeployResponse{DeploymentID: deploymentID}
+		response := apitypes.DeployResponse{DeploymentID: req.DeploymentID}
 
 		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
 			log.Printf("Error writing JSON response: %v", err)

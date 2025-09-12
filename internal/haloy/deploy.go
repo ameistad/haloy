@@ -10,6 +10,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +52,13 @@ If no path is provided, the current directory is used.`,
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
 			}
+			deploymentID := createDeploymentID()
+			logCh := make(chan logging.LogEntry)
+			go func() {
+				for logEntry := range logCh {
+					ui.DisplayDeploymentLogEntry(logEntry)
+				}
+			}()
 
 			for _, job := range deployJobs {
 				ui.Info("Deploying target: %s", job.TargetName)
@@ -79,7 +87,7 @@ If no path is provided, the current directory is used.`,
 				defer cancel()
 
 				api := apiclient.New(targetServer, token)
-				resp, err := api.Deploy(ctx, *job.Config, format)
+				resp, err := api.Deploy(ctx, *job.Config, deploymentID, format)
 				if err != nil {
 					ui.Error("Deployment request failed: %v", err)
 					return
@@ -95,7 +103,7 @@ If no path is provided, the current directory is used.`,
 					defer streamCancel()
 
 					// Stream deployment logs using the APIClient
-					if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID); err != nil {
+					if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID, logCh); err != nil {
 						ui.Warn("Failed to stream deployment logs: %v", err)
 					}
 				}
@@ -108,7 +116,6 @@ If no path is provided, the current directory is used.`,
 					}
 				}
 			}
-
 		},
 	}
 

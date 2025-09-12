@@ -5,20 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/docker"
 	"github.com/docker/docker/client"
 )
 
-func CreateDeploymentID() string {
-	now := time.Now()
-	// Use seconds precision + last 2 digits of nanoseconds for uniqueness
-	timestamp := now.Format("20060102150405")
-	nanos := fmt.Sprintf("%02d", (now.Nanosecond()/10000000)%100) // Last 2 digits of centiseconds
-	return timestamp + nanos
-}
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, configFormat string, logger *slog.Logger) error {
 	normalizedAppConfig := appConfig.Normalize()
 	if err := normalizedAppConfig.Validate(configFormat); err != nil {
