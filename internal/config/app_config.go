@@ -195,6 +195,12 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 		return nil, "", fmt.Errorf("failed to load config file: %w", err)
 	}
 
+	// Debug: Print what koanf actually loaded
+	log.Printf("Koanf keys: %v", k.Keys())
+	log.Printf("Image repository from koanf: %v", k.Get("image.repository"))
+	log.Printf("Image data from koanf: %v", k.Get("image"))
+	log.Printf("All data from koanf: %v", k.All())
+
 	configKeys := k.Keys()
 	appConfigType := reflect.TypeOf(AppConfig{})
 
