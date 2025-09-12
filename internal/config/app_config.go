@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -209,16 +211,19 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 	}
 
 	appConfig = appConfig.Normalize()
-
+	b, _ := json.MarshalIndent(appConfig, "", "  ")
+	log.Printf("Normalized AppConfig: %s\n", b)
 	if err := appConfig.Validate(format); err != nil {
-		return nil, format, fmt.Errorf("config validation failed: %w", err)
+		return nil, format, err
 	}
 
 	return appConfig, format, nil
 }
 
-var supportedExtensions = []string{".json", ".yaml", ".yml", ".toml"}
-var supportedConfigNames = []string{"haloy.json", "haloy.yaml", "haloy.yml", "haloy.toml"}
+var (
+	supportedExtensions  = []string{".json", ".yaml", ".yml", ".toml"}
+	supportedConfigNames = []string{"haloy.json", "haloy.yaml", "haloy.yml", "haloy.toml"}
+)
 
 // FindConfigFile finds a haloy config file based on the given path
 // It supports:
