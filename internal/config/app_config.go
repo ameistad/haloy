@@ -36,7 +36,7 @@ type AppConfig struct {
 	Name string `json:"name" yaml:"name" toml:"name"`
 	// This tag tells the unmarshaler to treat TargetConfig's
 	// fields as if they were part of AppConfig directly.
-	TargetConfig `mapstructure:",squash"`
+	TargetConfig `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
 
 	Targets map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
 }
