@@ -2,16 +2,19 @@ package haloy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -52,70 +55,17 @@ If no path is provided, the current directory is used.`,
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
 			}
+
 			deploymentID := createDeploymentID()
-			logCh := make(chan logging.LogEntry)
-			go func() {
-				for logEntry := range logCh {
-					ui.DisplayDeploymentLogEntry(logEntry)
-				}
-			}()
+
+			var wg sync.WaitGroup
 
 			for _, job := range deployJobs {
-				ui.Info("Deploying target: %s", job.TargetName)
-
-				if len(job.Config.PreDeploy) > 0 {
-					for _, hookCmd := range job.Config.PreDeploy {
-						if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
-							ui.Error("Pre-deploy hook failed: %v", err)
-							return
-						}
-					}
-				}
-				targetServer, err := getServer(job.Config, "")
-				if err != nil {
-					ui.Error("%v", err)
-					return
-				}
-
-				token, err := getToken(job.Config, targetServer)
-				if err != nil {
-					ui.Error("%v", err)
-					return
-				}
-				ui.Info("Starting deployment for application: %s using server %s", job.Config.Name, targetServer)
-				ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-				defer cancel()
-
-				api := apiclient.New(targetServer, token)
-				resp, err := api.Deploy(ctx, *job.Config, deploymentID, format)
-				if err != nil {
-					ui.Error("Deployment request failed: %v", err)
-					return
-				}
-				if resp == nil {
-					ui.Error("No response from server")
-					return
-				}
-
-				if !noLogs {
-					// No timout for streaming logs
-					streamCtx, streamCancel := context.WithCancel(context.Background())
-					defer streamCancel()
-
-					// Stream deployment logs using the APIClient
-					if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID, logCh); err != nil {
-						ui.Warn("Failed to stream deployment logs: %v", err)
-					}
-				}
-
-				if len(job.Config.PostDeploy) > 0 {
-					for _, hookCmd := range job.Config.PostDeploy {
-						if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
-							ui.Warn("Post-deploy hook failed: %v", err)
-						}
-					}
-				}
+				wg.Add(1)
+				go deployJob(job, &wg, configPath, deploymentID, format, noLogs, len(deployJobs) > 1)
 			}
+
+			wg.Wait()
 		},
 	}
 
@@ -125,6 +75,81 @@ If no path is provided, the current directory is used.`,
 	cmd.Flags().StringVarP(&target, "target", "t", "", "Deploy to a specific target")
 
 	return cmd
+}
+
+func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploymentID, format string, noLogs, showTargetName bool) {
+	defer wg.Done()
+	prefix := ""
+	if showTargetName {
+		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", job.TargetName))
+	}
+	pui := &ui.PrefixedUI{Prefix: prefix}
+
+	pui.Info("Deployment started for %s", job.Config.Name)
+
+	if len(job.Config.PreDeploy) > 0 {
+		for _, hookCmd := range job.Config.PreDeploy {
+			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+				pui.Error("Pre-deploy hook failed: %v", err)
+				return
+			}
+		}
+	}
+
+	targetServer, err := getServer(job.Config, "")
+	if err != nil {
+		pui.Error("%v", err)
+		return
+	}
+
+	token, err := getToken(job.Config, targetServer)
+	if err != nil {
+		pui.Error("%v", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+	defer cancel()
+
+	api := apiclient.New(targetServer, token)
+	resp, err := api.Deploy(ctx, *job.Config, deploymentID, format)
+	if err != nil {
+		pui.Error("Deployment request failed: %v", err)
+		return
+	}
+	if resp == nil {
+		pui.Error("No response from server")
+		return
+	}
+
+	if !noLogs {
+		// No timout for streaming logs
+		streamCtx, streamCancel := context.WithCancel(context.Background())
+		defer streamCancel()
+
+		streamPath := fmt.Sprintf("deploy/%s/logs", deploymentID)
+
+		streamHandler := func(data string) bool {
+			var logEntry logging.LogEntry
+			if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+				pui.Error("failed to ummarshal json: %v", err)
+				return false // we don't stop on errors.
+			}
+
+			// If deployment is complete we'll return true to signal stream should stop
+			return logEntry.IsDeploymentComplete
+		}
+
+		api.Stream(streamCtx, streamPath, streamHandler)
+	}
+
+	if len(job.Config.PostDeploy) > 0 {
+		for _, hookCmd := range job.Config.PostDeploy {
+			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+				ui.Warn("Post-deploy hook failed: %v", err)
+			}
+		}
+	}
 }
 
 // executeHook runs a single hook command in the specified working directory.

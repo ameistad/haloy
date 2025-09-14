@@ -21,18 +21,23 @@ var (
 )
 
 // Styles
-var s = lipgloss.NewStyle()
-var titleStyle = s.Bold(true).Foreground(White)
+var (
+	s          = lipgloss.NewStyle()
+	titleStyle = s.Bold(true).Foreground(White)
+)
 
 func Basic(format string, a ...any) {
 	printStyledLines("", s.Foreground(White), format, a...)
 }
+
 func Info(format string, a ...any) {
 	printStyledLines(s.Foreground(Blue).Render("●"), s.Foreground(White), format, a...)
 }
+
 func Success(format string, a ...any) {
 	printStyledLines(s.Foreground(Green).Render("●"), s.Foreground(White).Bold(true), format, a...)
 }
+
 func Debug(format string, a ...any) {
 	printStyledLines(s.Foreground(Purple).Render("◆"), s.Foreground(White), format, a...)
 }
@@ -50,7 +55,6 @@ var lineStyle = lipgloss.NewStyle().
 	TabWidth(5)
 
 func Section(title string, textLines []string) {
-
 	fmt.Println(titleStyle.BorderStyle(lipgloss.NormalBorder()).BorderForeground(White).BorderBottom(true).Render(title))
 	for _, line := range textLines {
 		fmt.Println(lineStyle.Render(line))
@@ -58,7 +62,6 @@ func Section(title string, textLines []string) {
 }
 
 func Table(headers []string, rows [][]string) {
-
 	cellStyle := lipgloss.NewStyle().Padding(0, 1)
 
 	t := table.New().
@@ -88,4 +91,32 @@ func printStyledLines(prefix string, style lipgloss.Style, format string, a ...a
 			fmt.Println(prefixedLine)
 		}
 	}
+}
+
+type PrefixedUI struct {
+	Prefix string
+}
+
+func (p *PrefixedUI) Info(format string, a ...any) {
+	if p.Prefix != "" {
+		format = "%s" + format
+		a = append([]any{p.Prefix}, a...)
+	}
+	Info(format, a...)
+}
+
+func (p *PrefixedUI) Error(format string, a ...any) {
+	if p.Prefix != "" {
+		format = "%s" + format
+		a = append([]any{p.Prefix}, a...)
+	}
+	Error(format, a...)
+}
+
+func (p *PrefixedUI) Success(format string, a ...any) {
+	if p.Prefix != "" {
+		format = "%s" + format
+		a = append([]any{p.Prefix}, a...)
+	}
+	Success(format, a...)
 }

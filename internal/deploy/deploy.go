@@ -16,12 +16,14 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	if err := normalizedAppConfig.Validate(configFormat); err != nil {
 		return fmt.Errorf("app config validation failed: %w", err)
 	}
+
 	imageRef := appConfig.Image.ImageRef()
 
 	err := docker.EnsureImageUpToDate(ctx, cli, logger, appConfig.Image)
 	if err != nil {
 		return err
 	}
+
 	newImageRef, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to tag image: %w", err)
