@@ -136,6 +136,8 @@ func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploym
 				return false // we don't stop on errors.
 			}
 
+			ui.DisplayLogEntry(logEntry, prefix)
+
 			// If deployment is complete we'll return true to signal stream should stop
 			return logEntry.IsDeploymentComplete
 		}
@@ -158,10 +160,6 @@ func executeHook(command string, workDir string) error {
 	if len(parts) == 0 {
 		return fmt.Errorf("empty hook command")
 	}
-	// prog := parts[0]
-	// args := parts[1:]
-
-	// cmd := exec.Command(prog, args...)
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = workDir
 	cmd.Stdout = os.Stdout

@@ -2,9 +2,11 @@ package haloy
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -59,10 +61,16 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 			defer cancel()
 
 			api := apiclient.New(targetServer, token)
-			if err := api.StreamLogs(ctx); err != nil {
-				ui.Error("Failed to stream logs: %v", err)
-				return
+			streamHandler := func(data string) bool {
+				var logEntry logging.LogEntry
+				if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+					ui.Error("failed to parse log entry: %v", err)
+				}
+
+				// Never stop streaming for general logs
+				return false
 			}
+			api.Stream(ctx, "logs", streamHandler)
 		},
 	}
 

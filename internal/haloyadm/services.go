@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,6 +17,7 @@ import (
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/joho/godotenv"
 )
@@ -295,7 +297,20 @@ func streamHaloydInitLogs(ctx context.Context, token string) error {
 
 	streamCtx, streamCancel := context.WithCancel(ctx)
 	defer streamCancel()
-	return api.StreamHaloydInitLogs(streamCtx)
+
+	streamHandler := func(data string) bool {
+		var logEntry logging.LogEntry
+		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+			ui.Error("failed to parse log entry: %v", err)
+			return false
+		}
+
+		ui.DisplayLogEntry(logEntry, "")
+
+		// Stop streaming when haloyd init is complete
+		return logEntry.IsHaloydInitComplete
+	}
+	return api.Stream(streamCtx, "logs", streamHandler)
 }
 
 // waitForAPI polls the API health endpoint until it's available

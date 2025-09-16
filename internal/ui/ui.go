@@ -84,8 +84,8 @@ func Table(headers []string, rows [][]string) {
 
 func printStyledLines(prefix string, style lipgloss.Style, format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
-	lines := strings.Split(msg, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(msg, "\n")
+	for line := range lines {
 		if line != "" {
 			prefixedLine := fmt.Sprintf("%s %s", prefix, style.Render(line))
 			fmt.Println(prefixedLine)

@@ -2,6 +2,8 @@ package haloy
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
@@ -81,7 +83,7 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 			defer cancel()
 
 			api := apiclient.New(targetServer, token)
-			resp, err := api.Rollback(ctx, appConfig.Name, targetDeploymentID, newDeploymentID)
+			_, err = api.Rollback(ctx, appConfig.Name, targetDeploymentID, newDeploymentID)
 			if err != nil {
 				ui.Error("Rollback failed: %v", err)
 				return
@@ -91,9 +93,22 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 				// No timeout for streaming logs
 				streamCtx, streamCancel := context.WithCancel(context.Background())
 				defer streamCancel()
-				if err := api.StreamDeploymentLogs(streamCtx, resp.DeploymentID, logCh); err != nil {
-					ui.Warn("Failed to stream rollback logs: %v", err)
+				streamPath := fmt.Sprintf("deploy/%s/logs", newDeploymentID)
+
+				streamHandler := func(data string) bool {
+					var logEntry logging.LogEntry
+					if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+						ui.Error("failed to ummarshal json: %v", err)
+						return false // we don't stop on errors.
+					}
+
+					ui.DisplayLogEntry(logEntry, "")
+
+					// If deployment is complete we'll return true to signal stream should stop
+					return logEntry.IsDeploymentComplete
 				}
+
+				api.Stream(streamCtx, streamPath, streamHandler)
 			}
 		},
 	}
