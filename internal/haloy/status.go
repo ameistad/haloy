@@ -103,6 +103,6 @@ func displayState(state string) string {
 	case "stopped":
 		return lipgloss.NewStyle().Foreground(ui.Red).Render("Stopped")
 	default:
-		return lipgloss.NewStyle().Foreground(ui.LightGray).Italic(true).Render(strings.Title(state))
+		return lipgloss.NewStyle().Foreground(ui.LightGray).Italic(true).Render(state)
 	}
 }

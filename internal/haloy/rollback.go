@@ -200,8 +200,8 @@ func displayRollbackTargets(appName string, targets []deploytypes.RollbackTarget
 	for _, target := range targets {
 
 		date := "N/A"
-		if formattedDate, err := helpers.FormatDateString(target.DeploymentID); err == nil {
-			date = formattedDate
+		if deploymentTime, err := helpers.GetTimestampFromDeploymentID(target.DeploymentID); err == nil {
+			date = helpers.FormatTime(deploymentTime)
 		}
 
 		status := ""

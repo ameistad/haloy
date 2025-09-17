@@ -3,7 +3,25 @@ package helpers
 import (
 	"fmt"
 	"time"
+
+	"github.com/oklog/ulid"
 )
+
+// GetTimestampFromDeploymentID extracts time.Time from an ULID
+func GetTimestampFromDeploymentID(deploymentID string) (time.Time, error) {
+	parsedULID, err := ulid.Parse(deploymentID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid deployment ID: %v", err)
+	}
+
+	return ulid.Time(parsedULID.Time()), nil
+}
+
+// FormatTime formats a time.Time in a simple, CLI-friendly format
+// similar to Docker and Kubernetes tools (e.g., "2 minutes ago", "3 hours ago", "2 days ago")
+func FormatTime(t time.Time) string {
+	return FormatTimeWithLocation(t, time.Local)
+}
 
 // FormatDateString formats a date string in a simple, CLI-friendly format
 // similar to Docker and Kubernetes tools (e.g., "2 minutes ago", "3 hours ago", "2 days ago")
@@ -11,8 +29,23 @@ func FormatDateString(dateString string) (string, error) {
 	return FormatDateStringWithLocation(dateString, time.Local)
 }
 
-// FormatDateStringWithTime allows injecting the current time.
-// This is primarily useful for testing with predictable time values.
+// FormatTimeWithLocation formats a time.Time for the specified timezone
+func FormatTimeWithLocation(t time.Time, loc *time.Location) string {
+	// Convert to specified location
+	tInLoc := t.In(loc)
+	nowInLoc := time.Now().In(loc)
+	elapsed := nowInLoc.Sub(tInLoc)
+
+	// Handle future dates
+	if elapsed < 0 {
+		elapsed = -elapsed
+		return formatDuration(elapsed) + " from now"
+	}
+
+	// Format like Docker/Kubernetes
+	return formatDuration(elapsed) + " ago"
+}
+
 // FormatDateStringWithLocation formats a date string for the specified timezone
 func FormatDateStringWithLocation(dateString string, loc *time.Location) (string, error) {
 	var t time.Time
@@ -37,19 +70,8 @@ func FormatDateStringWithLocation(dateString string, loc *time.Location) (string
 		return "", fmt.Errorf("failed to parse date string %q: %w", dateString, err)
 	}
 
-	// Convert to specified location
-	tInLoc := t.In(loc)
-	nowInLoc := time.Now().In(loc)
-	elapsed := nowInLoc.Sub(tInLoc)
-
-	// Handle future dates
-	if elapsed < 0 {
-		elapsed = -elapsed
-		return formatDuration(elapsed) + " from now", nil
-	}
-
-	// Format like Docker/Kubernetes
-	return formatDuration(elapsed) + " ago", nil
+	// Delegate to FormatTimeWithLocation for the actual formatting
+	return FormatTimeWithLocation(t, loc), nil
 }
 
 func formatDuration(d time.Duration) string {
