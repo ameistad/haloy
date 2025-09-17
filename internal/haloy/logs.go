@@ -67,6 +67,13 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 					ui.Error("failed to parse log entry: %v", err)
 				}
 
+				prefix := ""
+				if logEntry.DeploymentID != "" {
+					prefix = logEntry.DeploymentID
+				}
+
+				ui.DisplayLogEntry(logEntry, prefix)
+
 				// Never stop streaming for general logs
 				return false
 			}
