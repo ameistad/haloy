@@ -70,7 +70,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 
 				prefix := ""
 				if logEntry.DeploymentID != "" {
-					prefix = fmt.Sprintf("%s ", logEntry.DeploymentID[:8])
+					prefix = fmt.Sprintf("[id: %s] ->", logEntry.DeploymentID[:8])
 				}
 
 				ui.DisplayLogEntry(logEntry, prefix)
