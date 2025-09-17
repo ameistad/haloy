@@ -36,7 +36,6 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 				logger.Error("Failed to stop containers", "app", appName, "error", err)
 				return
 			}
-			logger.Info("Successfully stopped containers", "app", appName, "stopped_count", len(stoppedIDs), "container_ids", stoppedIDs)
 
 			if removeContainers {
 				logger.Info("Removing containers", "app", appName)
@@ -48,7 +47,7 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 				logger.Info("Successfully removed containers", "app", appName, "removed_count", len(removedIDs), "container_ids", removedIDs)
 			}
 
-			logger.Info("Stop operation completed", "app", appName)
+			logger.Info("Successfully stopped containers", "app", appName, "stopped_count", len(stoppedIDs), "container_ids", stoppedIDs)
 		}()
 
 		response := apitypes.StopAppResponse{
