@@ -2,6 +2,7 @@ package haloy
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,14 +11,12 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/oklog/ulid"
 )
 
 func createDeploymentID() string {
-	now := time.Now()
-	// Use seconds precision + last 2 digits of nanoseconds for uniqueness
-	timestamp := now.Format("20060102150405")
-	nanos := fmt.Sprintf("%02d", (now.Nanosecond()/10000000)%100) // Last 2 digits of centiseconds
-	return timestamp + nanos
+	entropy := ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
 }
 
 func getToken(appConfig *config.AppConfig, url string) (string, error) {
