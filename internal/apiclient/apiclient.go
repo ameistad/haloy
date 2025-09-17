@@ -57,7 +57,7 @@ func (c *APIClient) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-func (c *APIClient) get(ctx context.Context, path string, v any) error {
+func (c *APIClient) Get(ctx context.Context, path string, v any) error {
 	if err := c.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}
@@ -89,8 +89,7 @@ func (c *APIClient) get(ctx context.Context, path string, v any) error {
 	return nil
 }
 
-// ExecuteCommand sends a command to the API
-func (c *APIClient) post(ctx context.Context, path string, request, response any) error {
+func (c *APIClient) Post(ctx context.Context, path string, request, response any) error {
 	if err := c.HealthCheck(ctx); err != nil {
 		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
 	}

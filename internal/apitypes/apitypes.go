@@ -17,10 +17,6 @@ type DeployRequest struct {
 	ConfigFormat string           `json:"configFormat,omitempty"`
 }
 
-type DeployResponse struct {
-	DeploymentID string `json:"deploymentId"`
-}
-
 type RollbackRequest struct {
 	NewDeploymentID string `json:"newDeploymentID"`
 }

@@ -71,13 +71,6 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 
 			newDeploymentID := createDeploymentID()
 
-			logCh := make(chan logging.LogEntry)
-			go func() {
-				for logEntry := range logCh {
-					ui.DisplayDeploymentLogEntry(logEntry)
-				}
-			}()
-
 			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()

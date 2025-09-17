@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"log"
 	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
@@ -42,11 +41,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			}
 		}()
 
-		response := apitypes.DeployResponse{DeploymentID: req.DeploymentID}
-
-		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
-			log.Printf("Error writing JSON response: %v", err)
-		}
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

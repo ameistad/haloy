@@ -6,21 +6,13 @@ import (
 	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
-	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 )
-
-func (c *APIClient) Deploy(ctx context.Context, appConfig config.AppConfig, deploymentID, format string) (*apitypes.DeployResponse, error) {
-	request := apitypes.DeployRequest{AppConfig: appConfig, DeploymentID: deploymentID, ConfigFormat: format}
-	var response apitypes.DeployResponse
-	err := c.post(ctx, "deploy", request, &response)
-	return &response, err
-}
 
 func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apitypes.RollbackTargetsResponse, error) {
 	path := fmt.Sprintf("rollback/%s", appName)
 	var response apitypes.RollbackTargetsResponse
-	if err := c.get(ctx, path, &response); err != nil {
+	if err := c.Get(ctx, path, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -30,7 +22,7 @@ func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID, n
 	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
 	request := apitypes.RollbackRequest{NewDeploymentID: newDeploymentID}
 	var response apitypes.RollbackResponse
-	if err := c.post(ctx, path, request, &response); err != nil {
+	if err := c.Post(ctx, path, request, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -38,7 +30,7 @@ func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID, n
 
 func (c *APIClient) SecretsList(ctx context.Context) (*apitypes.SecretsListResponse, error) {
 	var response apitypes.SecretsListResponse
-	if err := c.get(ctx, "secrets", &response); err != nil {
+	if err := c.Get(ctx, "secrets", &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -49,7 +41,7 @@ func (c *APIClient) SetSecret(ctx context.Context, name, value string) error {
 		Name:  name,
 		Value: value,
 	}
-	if err := c.post(ctx, "secrets", request, nil); err != nil {
+	if err := c.Post(ctx, "secrets", request, nil); err != nil {
 		return err
 	}
 	return nil
@@ -90,7 +82,7 @@ func (c *APIClient) AppStatus(ctx context.Context, appName string) (*apitypes.Ap
 
 	path := fmt.Sprintf("status/%s", appName)
 	var response apitypes.AppStatusResponse
-	if err := c.get(ctx, path, &response); err != nil {
+	if err := c.Get(ctx, path, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -105,7 +97,7 @@ func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainer
 	}
 
 	var response apitypes.StopAppResponse
-	if err := c.post(ctx, path, nil, &response); err != nil {
+	if err := c.Post(ctx, path, nil, &response); err != nil {
 		return nil, err
 	}
 	return &response, nil
@@ -114,7 +106,7 @@ func (c *APIClient) StopApp(ctx context.Context, appName string, removeContainer
 // Version retrieves the version information of haloyd and HAProxy
 func (c *APIClient) Version(ctx context.Context) (*apitypes.VersionResponse, error) {
 	var response apitypes.VersionResponse
-	if err := c.get(ctx, "version", &response); err != nil {
+	if err := c.Get(ctx, "version", &response); err != nil {
 		return nil, err
 	}
 	return &response, nil

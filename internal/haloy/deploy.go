@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
@@ -111,14 +112,12 @@ func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploym
 	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 	defer cancel()
 
+	// Send the deploy request
 	api := apiclient.New(targetServer, token)
-	resp, err := api.Deploy(ctx, *job.Config, deploymentID, format)
+	request := apitypes.DeployRequest{AppConfig: *job.Config, DeploymentID: deploymentID, ConfigFormat: format}
+	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {
 		pui.Error("Deployment request failed: %v", err)
-		return
-	}
-	if resp == nil {
-		pui.Error("No response from server")
 		return
 	}
 
