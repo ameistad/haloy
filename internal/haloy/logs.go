@@ -3,6 +3,7 @@ package haloy
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
@@ -69,7 +70,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 
 				prefix := ""
 				if logEntry.DeploymentID != "" {
-					prefix = logEntry.DeploymentID
+					prefix = fmt.Sprintf("%s ", logEntry.DeploymentID[:8])
 				}
 
 				ui.DisplayLogEntry(logEntry, prefix)
