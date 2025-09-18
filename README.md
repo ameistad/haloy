@@ -1,23 +1,26 @@
 # Haloy
 
-Haloy is a simple and lightweight CLI tool for deploying your apps to a server that you control.
+Haloy is a simple and lightweight CLI tool for deploying your apps to one or multiple servers that you control.
 
 ## ✨ Features
-  * **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
+* **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
 * **Automatic TLS:** Provides free, automatically renewing TLS certificates from Let's Encrypt.
 * **Easy Rollbacks:** Instantly revert to any previous deployment with a single command.
 * **Simple Horizontal Scaling:** Scale your application by changing a single number in your config to run multiple container instances.
 * **High-performance Reverse Proxy:** Leverages [HAProxy](https://www.haproxy.org/) for load balancing, HTTPS termination, and HTTP/2 support.
 * **Deploy from Anywhere:** Integrated API allows for remote deployments from your local machine or a CI/CD pipeline.
+* **Multi-Server Deployments:** Deploy the same application to multiple servers simultaneously or manage multiple server environments from a single CLI.
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- A server with root access and a public IP address 
-- Docker installed on your server
+- One or more servers with root access and public IP addresses 
+- Docker installed on your servers
 - Docker image for your app
 
-### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Server
+### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Servers
+
+Repeat these steps for each server you want to deploy to:
 
 1. Install `haloyadm`:
     ```bash
@@ -63,21 +66,26 @@ Haloy is a simple and lightweight CLI tool for deploying your apps to a server t
 The next step is to install the `haloy` CLI tool that will interact with the haloy server.
 
 1. Install `haloy`
-    ```bash
-    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
-    ```
+```bash
+curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
+```
 
 2. Ensure `~/.local/bin` is in your PATH:
-    ```bash
-    export PATH="$HOME/.local/bin:$PATH"
-    ```
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
     Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
 
-3. Add your server:
-    ```bash
-    haloy server add haloy.yourserver.com <api-token>
-    ``` 
+3. Add your servers:
+```bash
+# Aad a single server
+haloy server add haloy.yourserver.com <api-token>
 
+# Or add multiple servers
+haloy server add production.haloy.com <production-api-token>
+haloy server add staging.haloy.com <staging-api-token>
+haloy server add dev.haloy.com <dev-api-token>
+``` 
 > [!TIP]
 > See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
 
@@ -104,6 +112,83 @@ acme_email: "you@email.com"
 ```
 
 For all available options, see the full [Configuration Options](#configuration-options) table below.
+
+## Multi-Server Deployments
+
+Haloy supports deploying to multiple servers in several ways:
+
+### Single Server Deployment
+For deploying to a single server, specify the server in your config:
+
+```yaml
+server: production.haloy.com
+name: "my-app"
+image:
+  repository: "ghcr.io/your-username/my-app"
+  tag: "latest"
+domains:
+  - domain: "my-app.com"
+acme_email: "you@email.com"
+```
+
+### Automatic Server Selection
+If you have only one server configured with `haloy server add`, you can omit the `server` field and Haloy will automatically use that server:
+
+```yaml
+# No server field needed if only one server is configured
+name: "my-app"
+image:
+  repository: "ghcr.io/your-username/my-app"
+  tag: "latest"
+```
+
+### Multiple Server Management
+When you have multiple servers configured, you must specify which server to deploy to:
+
+```bash
+# List your configured servers
+haloy server list
+
+# Deploy to a specific server by specifying it in config
+haloy deploy
+```
+
+If you have multiple servers configured but don't specify a server in your config, Haloy will show you the available servers and ask you to specify one.
+
+### Environment-Specific Configurations
+Create separate configuration files for different environments:
+
+**production.haloy.yaml:**
+```yaml
+server: production.haloy.com
+name: "my-app"
+image:
+  repository: "ghcr.io/your-username/my-app"
+  tag: "v1.2.3"
+domains:
+  - domain: "my-app.com"
+acme_email: "you@email.com"
+replicas: 3
+```
+
+**staging.haloy.yaml:**
+```yaml
+server: staging.haloy.com
+name: "my-app-staging"
+image:
+  repository: "ghcr.io/your-username/my-app"
+  tag: "main"
+domains:
+  - domain: "staging.my-app.com"
+acme_email: "you@email.com"
+replicas: 1
+```
+
+Deploy to different environments:
+```bash
+haloy deploy production.haloy.yaml
+haloy deploy staging.haloy.yaml
+```
 
 ### 4. Deploy
 
@@ -258,6 +343,7 @@ secret_name = "app-api-secret"
 
 ## Commands
 
+### Deployment Commands
 ```bash
 # Deploy application
 haloy deploy [config-path]
@@ -276,7 +362,22 @@ haloy rollback-targets [config-path]
 
 # Rollback to specific deployment
 haloy rollback [config-path] <deployment-id>
+```
 
+### Server Management Commands
+```bash
+# Add a server
+haloy server add <url> <token>
+
+# List configured servers
+haloy server list
+
+# Remove a server
+haloy server delete <url>
+```
+
+### Secrets Management Commands
+```bash
 # Manage secrets
 haloy secrets set <name> <value>
 haloy secrets list
@@ -373,48 +474,61 @@ Haloy uses standard system directories:
 
 ## Authentication & Token Management
 
-Haloy checks for API tokens in this order:
+Haloy supports managing multiple servers, each with their own API tokens. Haloy checks for API tokens in this order:
 
 1. **App config**: `api_token_env` field in your `haloy.yaml`
 2. **Client config**: Tokens stored via `haloy server add`
 
-### Managing Servers
+### Managing Multiple Servers
 
 ```bash
-# Get your API token from the server
+# Get API tokens from each server
 sudo haloyadm api token
 
-# Add a server
-haloy server add api.haloy.dev <your-api-token>
+# Add multiple servers with their tokens
+haloy server add production.haloy.com <production-token>
+haloy server add staging.haloy.com <staging-token>
+haloy server add dev.haloy.com <dev-token>
 
-# List servers (shows which tokens are available)
+# List all configured servers and their token status
 haloy server list
 
 # Remove a server
-haloy server delete api.haloy.dev
+haloy server delete staging.haloy.com
 ```
 
 ### How It Works
 
-`haloy server add` creates two files:
+When you run `haloy server add`, Haloy creates two files:
 
 **`~/.config/haloy/client.yaml`** - Server references:
 ```yaml
 servers:
-  "api.haloy.dev":
-    token_env: "HALOY_TOKEN_API_HALOY_DEV"
+  "production.haloy.com":
+    token_env: "HALOY_API_TOKEN_PRODUCTION_HALOY_COM"
+  "staging.haloy.com":
+    token_env: "HALOY_API_TOKEN_STAGING_HALOY_COM"
 ```
 
 **`~/.config/haloy/.env`** - Actual tokens:
 ```bash
-HALOY_TOKEN_API_HALOY_DEV=abc123token456
+HALOY_API_TOKEN_PRODUCTION_HALOY_COM=abc123token456
+HALOY_API_TOKEN_STAGING_HALOY_COM=def789token012
 ```
 
 When you deploy, Haloy:
 1. Loads `.env` files from current directory and config directory
 2. Gets server URL from your config
-3. Looks up the token environment variable
-4. Makes authenticated API calls
+3. Looks up the corresponding token environment variable
+4. Makes authenticated API calls to the specified server
+
+### Server Selection Priority
+
+Haloy determines which server to deploy to using this priority order:
+
+1. **Explicit server in config**: `server: production.haloy.com` in your haloy.yaml
+2. **Single server auto-selection**: If only one server is configured, it's used automatically
+3. **Error for multiple servers**: If multiple servers are configured but none specified in config, Haloy will list available servers and prompt you to specify one
 
 ### Set Token In App Configuration
 
@@ -436,22 +550,54 @@ export PRODUCTION_DEPLOY_TOKEN="your_token_here"
 
 ### Use Cases
 
-**Multiple environments:**
+**Multiple environments with different servers:**
 ```bash
-# staging.haloy.yaml
+# production.haloy.yaml
+server: production.haloy.com
+api_token_env: "PROD_TOKEN"
+
+# staging.haloy.yaml  
+server: staging.haloy.com
 api_token_env: "STAGING_TOKEN"
 
-# production.haloy.yaml  
-api_token_env: "PROD_TOKEN"
+# Deploy to different environments
+export PROD_TOKEN="production_token_here"
+export STAGING_TOKEN="staging_token_here"
+
+haloy deploy production.haloy.yaml
+haloy deploy staging.haloy.yaml
 ```
 
-**CI/CD per-project:**
+**CI/CD with multiple projects and servers:**
 ```bash
-export PROJECT_A_TOKEN="token_a"
+# Each project can have its own server and token
+export PROJECT_A_PROD_TOKEN="token_a_prod"
+export PROJECT_A_STAGING_TOKEN="token_a_staging"
 export PROJECT_B_TOKEN="token_b"
 
-haloy deploy project-a/haloy.yaml  # Uses PROJECT_A_TOKEN
-haloy deploy project-b/haloy.yaml  # Uses PROJECT_B_TOKEN
+# project-a/production.haloy.yaml
+server: project-a-prod.haloy.com
+api_token_env: "PROJECT_A_PROD_TOKEN"
+
+# project-a/staging.haloy.yaml
+server: project-a-staging.haloy.com
+api_token_env: "PROJECT_A_STAGING_TOKEN"
+
+# project-b/haloy.yaml
+server: project-b.haloy.com
+api_token_env: "PROJECT_B_TOKEN"
+```
+
+**Single server with multiple projects:**
+```bash
+# All projects deploy to the same server but with different app names
+# app1.haloy.yaml
+server: shared.haloy.com
+name: "app1"
+
+# app2.haloy.yaml
+server: shared.haloy.com
+name: "app2"
 ```
 
 ### Security
