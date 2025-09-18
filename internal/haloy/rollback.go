@@ -16,8 +16,7 @@ import (
 )
 
 func RollbackAppCmd(configPath *string) *cobra.Command {
-	var serverURL string
-	var noLogs bool
+	var noLogsFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "rollback <deployment-id>",
@@ -35,7 +34,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				return
 			}
 
-			targetServer, err := getServer(appConfig, serverURL)
+			targetServer, err := getServer(appConfig, "")
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -61,7 +60,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				return
 			}
 
-			if !noLogs {
+			if !noLogsFlag {
 				// No timeout for streaming logs
 				streamCtx, streamCancel := context.WithCancel(context.Background())
 				defer streamCancel()
@@ -85,8 +84,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
+	cmd.Flags().BoolVar(&noLogsFlag, "no-logs", false, "Don't stream deployment logs")
 
 	return cmd
 }

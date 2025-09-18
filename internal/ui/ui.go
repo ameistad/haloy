@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -27,27 +28,27 @@ var (
 )
 
 func Basic(format string, a ...any) {
-	printStyledLines("", s.Foreground(White), format, a...)
+	printStyledLines(os.Stdout, "", s.Foreground(White), format, a...)
 }
 
 func Info(format string, a ...any) {
-	printStyledLines(s.Foreground(Blue).Render("●"), s.Foreground(White), format, a...)
+	printStyledLines(os.Stdout, s.Foreground(Blue).Render("●"), s.Foreground(White), format, a...)
 }
 
 func Success(format string, a ...any) {
-	printStyledLines(s.Foreground(Green).Render("●"), s.Foreground(White).Bold(true), format, a...)
+	printStyledLines(os.Stdout, s.Foreground(Green).Render("●"), s.Foreground(White).Bold(true), format, a...)
 }
 
 func Debug(format string, a ...any) {
-	printStyledLines(s.Foreground(Purple).Render("◆"), s.Foreground(White), format, a...)
+	printStyledLines(os.Stdout, s.Foreground(Purple).Render("◆"), s.Foreground(White), format, a...)
 }
 
 func Warn(format string, a ...any) {
-	printStyledLines(s.Foreground(Amber).Render("⚠"), s.Foreground(White), format, a...)
+	printStyledLines(os.Stderr, s.Foreground(Amber).Render("⚠"), s.Foreground(White), format, a...)
 }
 
 func Error(format string, a ...any) {
-	printStyledLines(s.Foreground(Red).Render("✖"), s.Foreground(White), format, a...)
+	printStyledLines(os.Stderr, s.Foreground(Red).Render("✖"), s.Foreground(White), format, a...)
 }
 
 var lineStyle = lipgloss.NewStyle().
@@ -82,13 +83,13 @@ func Table(headers []string, rows [][]string) {
 	fmt.Println(t)
 }
 
-func printStyledLines(prefix string, style lipgloss.Style, format string, a ...any) {
+func printStyledLines(output *os.File, prefix string, style lipgloss.Style, format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
 	lines := strings.SplitSeq(msg, "\n")
 	for line := range lines {
 		if line != "" {
 			prefixedLine := fmt.Sprintf("%s %s", prefix, style.Render(line))
-			fmt.Println(prefixedLine)
+			fmt.Fprintln(output, prefixedLine)
 		}
 	}
 }

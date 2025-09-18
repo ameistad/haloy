@@ -40,51 +40,8 @@ type AppConfig struct {
 	Targets map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
 }
 
-type DeploymentJob struct {
-	TargetName string
-	Config     *AppConfig
-}
-
-func (ac *AppConfig) Expand(targetFlag string) ([]DeploymentJob, error) {
-	if len(ac.Targets) > 0 {
-		var targetsToDeploy []string
-		if targetFlag != "" {
-			if _, exists := ac.Targets[targetFlag]; !exists {
-				return nil, fmt.Errorf("target '%s' not found in configuration", targetFlag)
-			}
-			targetsToDeploy = []string{targetFlag}
-		} else {
-			for name := range ac.Targets {
-				targetsToDeploy = append(targetsToDeploy, name)
-			}
-		}
-		var deploymentJobs []DeploymentJob
-		for _, name := range targetsToDeploy {
-			overrides := ac.Targets[name]
-			config := ac.mergeWithTarget(overrides)
-			deploymentJobs = append(deploymentJobs, DeploymentJob{
-				TargetName: name,
-				Config:     config,
-			})
-		}
-
-		return deploymentJobs, nil
-
-	}
-	if ac.Server != "" {
-		finalConfig := *ac
-		finalConfig.Targets = nil
-		return []DeploymentJob{{
-			TargetName: "default",
-			Config:     &finalConfig,
-		}}, nil
-	}
-
-	return nil, fmt.Errorf("no server or targets are defined in the configuration")
-}
-
 // mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.
-func (ac *AppConfig) mergeWithTarget(override *TargetConfig) *AppConfig {
+func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 	final := *ac
 
 	if override == nil {

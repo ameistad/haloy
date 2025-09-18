@@ -20,9 +20,9 @@ import (
 )
 
 func DeployAppCmd(configPath *string) *cobra.Command {
-	var server string
-	var noLogs bool
-	var target string
+	var noLogsFlag bool
+	var targetFlag string
+	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "deploy",
@@ -36,7 +36,7 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			deployJobs, err := appConfig.Expand(target)
+			targets, err := appConfig.Expand(targetFlag, allFlag)
 			if err != nil {
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
@@ -46,34 +46,36 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 
 			var wg sync.WaitGroup
 
-			for _, job := range deployJobs {
+			for _, target := range targets {
 				wg.Add(1)
-				go deployJob(job, &wg, *configPath, deploymentID, format, noLogs, len(deployJobs) > 1)
+				go func(target config.AppConfigTarget) {
+					defer wg.Done()
+					deployTarget(target, *configPath, deploymentID, format, noLogsFlag, len(targets) > 1)
+				}(target)
 			}
 
 			wg.Wait()
 		},
 	}
 
-	cmd.Flags().StringVarP(&server, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
-	cmd.Flags().StringVarP(&target, "target", "t", "", "Deploy to a specific target")
+	cmd.Flags().BoolVar(&noLogsFlag, "no-logs", false, "Don't stream deployment logs")
+	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Deploy to a specific target")
+	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Deploy to all targets")
 
 	return cmd
 }
 
-func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploymentID, format string, noLogs, showTargetName bool) {
-	defer wg.Done()
+func deployTarget(target config.AppConfigTarget, configPath, deploymentID, format string, noLogs, showTargetName bool) {
 	prefix := ""
 	if showTargetName {
-		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", job.TargetName))
+		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", target.TargetName))
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", job.Config.Name)
+	pui.Info("Deployment started for %s", target.Config.Name)
 
-	if len(job.Config.PreDeploy) > 0 {
-		for _, hookCmd := range job.Config.PreDeploy {
+	if len(target.Config.PreDeploy) > 0 {
+		for _, hookCmd := range target.Config.PreDeploy {
 			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
 				pui.Error("Pre-deploy hook failed: %v", err)
 				return
@@ -81,13 +83,13 @@ func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploym
 		}
 	}
 
-	targetServer, err := getServer(job.Config, "")
+	targetServer, err := getServer(target.Config, "")
 	if err != nil {
 		pui.Error("%v", err)
 		return
 	}
 
-	token, err := getToken(job.Config, targetServer)
+	token, err := getToken(target.Config, targetServer)
 	if err != nil {
 		pui.Error("%v", err)
 		return
@@ -98,7 +100,7 @@ func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploym
 
 	// Send the deploy request
 	api := apiclient.New(targetServer, token)
-	request := apitypes.DeployRequest{AppConfig: *job.Config, DeploymentID: deploymentID, ConfigFormat: format}
+	request := apitypes.DeployRequest{AppConfig: *target.Config, DeploymentID: deploymentID, ConfigFormat: format}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {
 		pui.Error("Deployment request failed: %v", err)
@@ -128,8 +130,8 @@ func deployJob(job config.DeploymentJob, wg *sync.WaitGroup, configPath, deploym
 		api.Stream(streamCtx, streamPath, streamHandler)
 	}
 
-	if len(job.Config.PostDeploy) > 0 {
-		for _, hookCmd := range job.Config.PostDeploy {
+	if len(target.Config.PostDeploy) > 0 {
+		for _, hookCmd := range target.Config.PostDeploy {
 			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
 				ui.Warn("Post-deploy hook failed: %v", err)
 			}
