@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewValidateCmd creates a new validate command
 func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate-config",
@@ -17,16 +16,20 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Get the filename of the config
+			configFileName, err := config.FindConfigFile(*configPath)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
 			// Just load the file to validate it.
-			_, _, err := config.LoadAppConfig(*configPath)
+			_, _, err = config.LoadAppConfig(*configPath)
 			if err != nil {
 				ui.Error("Config validation failed: %v", err)
 				return
 			}
 
-			fileName := filepath.Base(filepath.Clean(*configPath))
-
-			ui.Success("Config file '%s' is valid!", fileName)
+			ui.Success("Config file '%s' is valid!", filepath.Base(configFileName))
 		},
 	}
 
