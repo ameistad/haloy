@@ -21,7 +21,7 @@ func createDeploymentID() string {
 
 func getToken(appConfig *config.AppConfig, url string) (string, error) {
 	// Check for app-specific token env var
-	if appConfig.APITokenEnv != "" {
+	if appConfig != nil && appConfig.APITokenEnv != "" {
 		if token := os.Getenv(appConfig.APITokenEnv); token != "" {
 			return token, nil
 		}

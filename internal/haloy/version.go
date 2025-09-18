@@ -10,22 +10,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func VersionCmd() *cobra.Command {
-	var configPath string
+func VersionCmd(configPath *string) *cobra.Command {
 	var serverURL string
 
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Show the current version of haloyd and HAProxy",
 		Long:  "Display the current version of haloyd and the HAProxy version it is using.",
-		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) > 0 {
-				configPath = args[0]
-			} else if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, _ := config.LoadAppConfig(configPath) // we don't strictly need an app config for this to work.
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			appConfig, _, _ := config.LoadAppConfig(*configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
@@ -59,7 +53,6 @@ func VersionCmd() *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to haloy config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }

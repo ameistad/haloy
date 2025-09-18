@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/helpers"
@@ -14,44 +15,21 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func RollbackAppCmd() *cobra.Command {
-	var configPath string
+func RollbackAppCmd(configPath *string) *cobra.Command {
 	var serverURL string
 	var noLogs bool
 
 	cmd := &cobra.Command{
-		Use:   "rollback [config-path] <deployment-id>",
+		Use:   "rollback <deployment-id>",
 		Short: "Rollback an application to a specific deployment",
 		Long: `Rollback an application to a specific deployment using a haloy configuration file.
 
-The path can be:
-- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
-- A full path to a config file with supported extension
-- A relative path to either of the above
-
-If no path is provided, the current directory is used.
-
-Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
+Use 'haloy rollback-targets' to list available deployment IDs.`,
 		Args: cobra.RangeArgs(1, 2), // 1-2 args: [path] deployment-id OR deployment-id
 		Run: func(cmd *cobra.Command, args []string) {
 			var targetDeploymentID string
 
-			// Parse arguments - handle both patterns:
-			// rollback <deployment-id>
-			// rollback <path> <deployment-id>
-			if len(args) == 1 {
-				// rollback <deployment-id>
-				targetDeploymentID = args[0]
-				if configPath == "" {
-					configPath = "."
-				}
-			} else {
-				// rollback <path> <deployment-id>
-				configPath = args[0]
-				targetDeploymentID = args[1]
-			}
-
-			appConfig, _, err := config.LoadAppConfig(configPath)
+			appConfig, _, err := config.LoadAppConfig(*configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
@@ -76,8 +54,9 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 			defer cancel()
 
 			api := apiclient.New(targetServer, token)
-			_, err = api.Rollback(ctx, appConfig.Name, targetDeploymentID, newDeploymentID)
-			if err != nil {
+			path := fmt.Sprintf("rollback/%s/%s", appConfig.Name, targetDeploymentID)
+			request := apitypes.RollbackRequest{NewDeploymentID: newDeploymentID}
+			if err := api.Post(ctx, path, request, nil); err != nil {
 				ui.Error("Rollback failed: %v", err)
 				return
 			}
@@ -106,37 +85,22 @@ Use 'haloy rollback-targets [config-path]' to list available deployment IDs.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to haloy config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
 
 	return cmd
 }
 
-func RollbackTargetsCmd() *cobra.Command {
-	var configPath string
+func RollbackTargetsCmd(configPath *string) *cobra.Command {
 	var serverURL string
 
 	cmd := &cobra.Command{
-		Use:   "rollback-targets [config-path]",
+		Use:   "rollback-targets",
 		Short: "List available rollback targets for an application",
-		Long: `List available rollback targets for an application using a haloy configuration file.
-
-The path can be:
-- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
-- A full path to a config file with supported extension
-- A relative path to either of the above
-
-If no path is provided, the current directory is used.`,
-		Args: cobra.MaximumNArgs(1),
+		Long:  `List available rollback targets for an application using a haloy configuration file.`,
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) > 0 {
-				configPath = args[0]
-			} else if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, err := config.LoadAppConfig(configPath)
+			appConfig, _, err := config.LoadAppConfig(*configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
@@ -170,11 +134,10 @@ If no path is provided, the current directory is used.`,
 				return
 			}
 
-			displayRollbackTargets(appConfig.Name, targets.Targets, configPath)
+			displayRollbackTargets(appConfig.Name, targets.Targets, *configPath)
 		},
 	}
 
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to haloy config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }

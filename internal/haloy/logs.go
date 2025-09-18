@@ -12,12 +12,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func LogsCmd() *cobra.Command {
-	var configPath string
+func LogsCmd(configPath *string) *cobra.Command {
 	var serverURL string
 
 	cmd := &cobra.Command{
-		Use:   "logs [config-path]",
+		Use:   "logs",
 		Short: "Stream logs from haloy server",
 		Long: `Stream all logs from haloy server in real-time.
 
@@ -29,19 +28,9 @@ func LogsCmd() *cobra.Command {
 If no path is provided, the current directory is used.
 
 The logs are streamed in real-time and will continue until interrupted (Ctrl+C).`,
-		Args: cobra.MaximumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) > 0 {
-				configPath = args[0]
-			} else if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, err := config.LoadAppConfig(configPath)
-			if err != nil {
-				ui.Error("Failed to load config: %v", err)
-				return
-			}
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			appConfig, _, _ := config.LoadAppConfig(*configPath) // we actually need an appConfig for this command
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {

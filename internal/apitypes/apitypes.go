@@ -21,10 +21,6 @@ type RollbackRequest struct {
 	NewDeploymentID string `json:"newDeploymentID"`
 }
 
-type RollbackResponse struct {
-	DeploymentID string `json:"deploymentId"`
-}
-
 type RollbackTargetsResponse struct {
 	Targets []deploytypes.RollbackTarget `json:"targets"`
 }

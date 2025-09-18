@@ -18,16 +18,6 @@ func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apity
 	return &response, nil
 }
 
-func (c *APIClient) Rollback(ctx context.Context, appName, targetDeploymentID, newDeploymentID string) (*apitypes.RollbackResponse, error) {
-	path := fmt.Sprintf("rollback/%s/%s", appName, targetDeploymentID)
-	request := apitypes.RollbackRequest{NewDeploymentID: newDeploymentID}
-	var response apitypes.RollbackResponse
-	if err := c.Post(ctx, path, request, &response); err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
 func (c *APIClient) SecretsList(ctx context.Context) (*apitypes.SecretsListResponse, error) {
 	var response apitypes.SecretsListResponse
 	if err := c.Get(ctx, "secrets", &response); err != nil {

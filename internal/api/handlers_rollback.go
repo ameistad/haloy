@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"log"
 	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
@@ -52,10 +51,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			deploymentLogger.Info("Rollback initiated", "app", appName, "deploymentID", req.NewDeploymentID)
 		}()
 
-		response := apitypes.RollbackResponse{DeploymentID: req.NewDeploymentID}
-		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
-			log.Printf("Error writing JSON response: %v", err)
-		}
+		w.WriteHeader(http.StatusAccepted)
 	}
 }
 

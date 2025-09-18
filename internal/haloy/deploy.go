@@ -19,33 +19,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func DeployAppCmd() *cobra.Command {
-	var configPath string
+func DeployAppCmd(configPath *string) *cobra.Command {
 	var server string
 	var noLogs bool
 	var target string
 
 	cmd := &cobra.Command{
-		Use:   "deploy [config-path]",
+		Use:   "deploy",
 		Short: "Deploy an application",
-		Long: `Deploy an application using a haloy configuration file.
-
-The path can be:
-- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
-- A full path to a config file with supported extension (.json, .yaml, .yml, .toml)
-- A relative path to either of the above
-
-If no path is provided, the current directory is used.`,
-		Args: cobra.MaximumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			// Determine config path
-			if len(args) > 0 {
-				configPath = args[0]
-			} else if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, format, err := config.LoadAppConfig(configPath)
+		Long:  "Deploy an application using a haloy configuration file.",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			appConfig, format, err := config.LoadAppConfig(*configPath)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -63,14 +48,13 @@ If no path is provided, the current directory is used.`,
 
 			for _, job := range deployJobs {
 				wg.Add(1)
-				go deployJob(job, &wg, configPath, deploymentID, format, noLogs, len(deployJobs) > 1)
+				go deployJob(job, &wg, *configPath, deploymentID, format, noLogs, len(deployJobs) > 1)
 			}
 
 			wg.Wait()
 		},
 	}
 
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&server, "server", "s", "", "Haloy server URL (overrides config)")
 	cmd.Flags().BoolVar(&noLogs, "no-logs", false, "Don't stream deployment logs")
 	cmd.Flags().StringVarP(&target, "target", "t", "", "Deploy to a specific target")

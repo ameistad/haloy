@@ -6,8 +6,6 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
-func intPtr(i int) *int { return &i }
-
 // baseAppConfig can be used by multiple test functions
 func baseAppConfig(name string) AppConfig {
 	return AppConfig{

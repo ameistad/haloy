@@ -13,8 +13,7 @@ import (
 )
 
 // SecretsSetCommand encrypts a plain-text value and stores it under the provided key.
-func SecretsSetCommand() *cobra.Command {
-	var configPath string
+func SecretsSetCommand(configPath *string) *cobra.Command {
 	var serverURL string
 	cmd := &cobra.Command{
 		Use:     "set <name> <value>",
@@ -32,11 +31,7 @@ func SecretsSetCommand() *cobra.Command {
 			name := args[0]
 			value := strings.Join(args[1:], " ")
 
-			if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, _ := config.LoadAppConfig(configPath)
+			appConfig, _, _ := config.LoadAppConfig(*configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
@@ -61,28 +56,21 @@ func SecretsSetCommand() *cobra.Command {
 			}
 
 			ui.Success("Secret '%s' set successfully on %s", name, targetServer)
-
 		},
 	}
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
 // SecretsListCommand lists all stored secrets in a table.
-func SecretsListCommand() *cobra.Command {
-	var configPath string
+func SecretsListCommand(configPath *string) *cobra.Command {
 	var serverURL string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all stored secrets",
 		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, _ := config.LoadAppConfig(configPath)
+		Run: func(cmd *cobra.Command, _ []string) {
+			appConfig, _, _ := config.LoadAppConfig(*configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
@@ -125,13 +113,11 @@ func SecretsListCommand() *cobra.Command {
 			ui.Table(headers, rows)
 		},
 	}
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
-func SecretsDeleteCommand() *cobra.Command {
-	var configPath string
+func SecretsDeleteCommand(configPath *string) *cobra.Command {
 	var serverURL string
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
@@ -140,11 +126,7 @@ func SecretsDeleteCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			name := args[0]
 
-			if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, _ := config.LoadAppConfig(configPath)
+			appConfig, _, _ := config.LoadAppConfig(*configPath)
 
 			targetServer, err := getServer(appConfig, serverURL)
 			if err != nil {
@@ -171,18 +153,17 @@ func SecretsDeleteCommand() *cobra.Command {
 			ui.Success("Secret '%s' deleted successfully on %s", name, targetServer)
 		},
 	}
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
 }
 
-func SecretsCommand() *cobra.Command {
+func SecretsCommand(configPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
 		Short: "Manage encrypted secrets on the server",
 	}
-	cmd.AddCommand(SecretsSetCommand())
-	cmd.AddCommand(SecretsListCommand())
-	cmd.AddCommand(SecretsDeleteCommand())
+	cmd.AddCommand(SecretsSetCommand(configPath))
+	cmd.AddCommand(SecretsListCommand(configPath))
+	cmd.AddCommand(SecretsDeleteCommand(configPath))
 	return cmd
 }

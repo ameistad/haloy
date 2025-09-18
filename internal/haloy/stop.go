@@ -9,38 +9,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func StopAppCmd() *cobra.Command {
-	var configPath string
+func StopAppCmd(configPath *string) *cobra.Command {
 	var serverURL string
 	var removeContainersFlag bool
 
 	cmd := &cobra.Command{
-		Use:   "stop [config-path]",
+		Use:   "stop",
 		Short: "Stop an application's running containers",
-		Long: `Stop all running containers for an application using a haloy configuration file.
-
-The path can be:
-- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
-- A full path to a config file with supported extension
-- A relative path to either of the above
-
-If no path is provided, the current directory is used.`,
-		Args: cobra.MaximumNArgs(1),
+		Long:  "Stop all running containers for an application using a haloy configuration file.",
+		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			// Determine config path (consistent with other commands)
-			if len(args) > 0 {
-				configPath = args[0]
-			} else if configPath == "" {
-				configPath = "."
-			}
-
-			appConfig, _, err := config.LoadAppConfig(configPath)
+			appConfig, _, err := config.LoadAppConfig(*configPath)
 			if err != nil {
 				ui.Error("Failed to load config: %v", err)
 				return
 			}
 
-			// Same server logic as other commands
 			targetServer := appConfig.Server
 			if serverURL != "" {
 				targetServer = serverURL
@@ -67,7 +51,6 @@ If no path is provided, the current directory is used.`,
 		},
 	}
 
-	cmd.Flags().StringVarP(&configPath, "config", "c", "", "Path to config file or directory")
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	cmd.Flags().BoolVarP(&removeContainersFlag, "remove-containers", "r", false, "Remove containers after stopping them")
 
