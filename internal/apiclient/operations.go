@@ -9,15 +9,6 @@ import (
 	"github.com/ameistad/haloy/internal/constants"
 )
 
-func (c *APIClient) RollbackTargets(ctx context.Context, appName string) (*apitypes.RollbackTargetsResponse, error) {
-	path := fmt.Sprintf("rollback/%s", appName)
-	var response apitypes.RollbackTargetsResponse
-	if err := c.Get(ctx, path, &response); err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
 func (c *APIClient) SecretsList(ctx context.Context) (*apitypes.SecretsListResponse, error) {
 	var response apitypes.SecretsListResponse
 	if err := c.Get(ctx, "secrets", &response); err != nil {

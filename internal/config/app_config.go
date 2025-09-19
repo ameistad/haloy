@@ -99,7 +99,7 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 	return &final
 }
 
-func (ac *AppConfig) Normalize() *AppConfig {
+func (ac *AppConfig) Normalize() {
 	// Default DeploymentsToKeep to the default if not set.
 	if ac.DeploymentsToKeep == nil {
 		defaultMax := constants.DefaultDeploymentsToKeep
@@ -122,7 +122,6 @@ func (ac *AppConfig) Normalize() *AppConfig {
 	if ac.Server == "" {
 		ac.Server = constants.DefaultAPIServerURL
 	}
-	return ac
 }
 
 // LoadAppConfig loads and validates an application configuration from a file.
@@ -130,33 +129,35 @@ func (ac *AppConfig) Normalize() *AppConfig {
 //   - appConfig: Parsed and validated application configuration, nil on error
 //   - format: Detected format ("json", "yaml", "yml", or "toml"), useful for error messages
 //   - err: Any error encountered during loading, parsing, or validation
-func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error) {
+func LoadAppConfig(path string) (AppConfig, string, error) {
 	configFile, err := FindConfigFile(path)
 	if err != nil {
-		return nil, "", err
+		return AppConfig{}, "", err
 	}
 
-	format, err = getConfigFormat(configFile)
+	format, err := getConfigFormat(configFile)
 	if err != nil {
-		return nil, "", err
+		return AppConfig{}, "", err
 	}
 
 	parser, err := getConfigParser(format)
 	if err != nil {
-		return nil, "", err
+		return AppConfig{}, "", err
 	}
 
 	k := koanf.New(".")
 	if err := k.Load(file.Provider(configFile), parser); err != nil {
-		return nil, "", fmt.Errorf("failed to load config file: %w", err)
+		return AppConfig{}, "", fmt.Errorf("failed to load config file: %w", err)
 	}
 
 	configKeys := k.Keys()
 	appConfigType := reflect.TypeOf(AppConfig{})
 
 	if err := checkUnknownFields(appConfigType, configKeys, format); err != nil {
-		return nil, "", err
+		return AppConfig{}, "", err
 	}
+
+	var appConfig AppConfig
 	decoderConfig := &mapstructure.DecoderConfig{
 		TagName: format,
 		Result:  &appConfig,
@@ -170,17 +171,13 @@ func LoadAppConfig(path string) (appConfig *AppConfig, format string, err error)
 	}
 
 	if err := k.UnmarshalWithConf("", &appConfig, unmarshalConf); err != nil {
-		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
+		return AppConfig{}, "", fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	if appConfig == nil {
-		return nil, "", fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	appConfig = appConfig.Normalize()
+	appConfig.Normalize()
 
 	if err := appConfig.Validate(format); err != nil {
-		return nil, format, err
+		return AppConfig{}, format, err
 	}
 
 	return appConfig, format, nil

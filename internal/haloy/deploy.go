@@ -36,7 +36,7 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			targets, err := appConfig.Expand(targetFlag, allFlag)
+			targets, err := expandTargets(appConfig, targetFlag, allFlag)
 			if err != nil {
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
@@ -48,7 +48,7 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target config.AppConfigTarget) {
+				go func(target ExpandedTarget) {
 					defer wg.Done()
 					deployTarget(target, *configPath, deploymentID, format, noLogsFlag, len(targets) > 1)
 				}(target)
@@ -65,7 +65,7 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func deployTarget(target config.AppConfigTarget, configPath, deploymentID, format string, noLogs, showTargetName bool) {
+func deployTarget(target ExpandedTarget, configPath, deploymentID, format string, noLogs, showTargetName bool) {
 	prefix := ""
 	if showTargetName {
 		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", target.TargetName))
@@ -100,7 +100,7 @@ func deployTarget(target config.AppConfigTarget, configPath, deploymentID, forma
 
 	// Send the deploy request
 	api := apiclient.New(targetServer, token)
-	request := apitypes.DeployRequest{AppConfig: *target.Config, DeploymentID: deploymentID, ConfigFormat: format}
+	request := apitypes.DeployRequest{AppConfig: target.Config, DeploymentID: deploymentID, ConfigFormat: format}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {
 		pui.Error("Deployment request failed: %v", err)

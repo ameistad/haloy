@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/apitypes"
@@ -17,16 +19,18 @@ import (
 
 func RollbackAppCmd(configPath *string) *cobra.Command {
 	var noLogsFlag bool
+	var targetFlag string
+	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "rollback <deployment-id>",
 		Short: "Rollback an application to a specific deployment",
-		Long: `Rollback an application to a specific deployment using a haloy configuration file.
+		Long: `Rollback an application to a specific deployment by supplying a deployment ID.
 
 Use 'haloy rollback-targets' to list available deployment IDs.`,
-		Args: cobra.RangeArgs(1, 2), // 1-2 args: [path] deployment-id OR deployment-id
+		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			var targetDeploymentID string
+			targetDeploymentID := args[0]
 
 			appConfig, _, err := config.LoadAppConfig(*configPath)
 			if err != nil {
@@ -34,25 +38,55 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				return
 			}
 
-			targetServer, err := getServer(appConfig, "")
+			targets, err := expandTargets(appConfig, targetFlag, allFlag)
 			if err != nil {
-				ui.Error("%v", err)
-				return
-			}
-
-			token, err := getToken(appConfig, targetServer)
-			if err != nil {
-				ui.Error("%v", err)
+				ui.Error("Failed to process deployment targets: %v", err)
 				return
 			}
 
 			newDeploymentID := createDeploymentID()
 
-			ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
-			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-			defer cancel()
+			var wg sync.WaitGroup
 
-			api := apiclient.New(targetServer, token)
+			for _, target := range targets {
+				wg.Add(1)
+				go func(target ExpandedTarget) {
+					defer wg.Done()
+
+					targetServer, err := getServer(appConfig, "")
+					if err != nil {
+						ui.Error("%v", err)
+						return
+					}
+
+					token, err := getToken(appConfig, targetServer)
+					if err != nil {
+						ui.Error("%v", err)
+						return
+					}
+					ui.Info("Starting rollback for application: %s using server %s", appConfig.Name, targetServer)
+					ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+					defer cancel()
+
+					api := apiclient.New(targetServer, token)
+					rollbackTargetsResponse, err := rollbackTargets(ctx, api, target.Config.Name)
+					if err != nil {
+						ui.Error("Failed to get available rollback targets for %s: %v", target.TargetName, err)
+						return
+					}
+					availableTargets := rollbackTargetsResponse.Targets
+					availableTargetDeploymentIDs := make([]string, 0, len(availableTargets))
+					for _, availableTarget := range availableTargets {
+						availableTargetDeploymentIDs = append(availableTargetDeploymentIDs, availableTarget.DeploymentID)
+					}
+					if !slices.Contains(availableTargetDeploymentIDs, targetDeploymentID) {
+						ui.Warn("Target deployment id: %s is not available in %s", targetDeploymentID, target.TargetName)
+						return
+					}
+				}(target)
+
+			}
+
 			path := fmt.Sprintf("rollback/%s/%s", appConfig.Name, targetDeploymentID)
 			request := apitypes.RollbackRequest{NewDeploymentID: newDeploymentID}
 			if err := api.Post(ctx, path, request, nil); err != nil {
@@ -85,6 +119,8 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 	}
 
 	cmd.Flags().BoolVar(&noLogsFlag, "no-logs", false, "Don't stream deployment logs")
+	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Deploy to a specific target")
+	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Deploy to all targets")
 
 	return cmd
 }
@@ -121,7 +157,7 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 			defer cancel()
 
 			api := apiclient.New(targetServer, token)
-			targets, err := api.RollbackTargets(ctx, appConfig.Name)
+			targets, err := rollbackTargets(ctx, api, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get rollback targets: %v", err)
 				return
@@ -138,6 +174,15 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 
 	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
 	return cmd
+}
+
+func rollbackTargets(ctx context.Context, api *apiclient.APIClient, appName string) (*apitypes.RollbackTargetsResponse, error) {
+	path := fmt.Sprintf("rollback/%s", appName)
+	var response apitypes.RollbackTargetsResponse
+	if err := api.Get(ctx, path, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
 }
 
 func displayRollbackTargets(appName string, targets []deploytypes.RollbackTarget, configPath string) {

@@ -37,12 +37,12 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 				return fmt.Errorf("failed to deploy app %s: %w", appName, err)
 			}
 
-			// found the target, break the loop
-			break
+			// found the target and deployment successfull
+			return nil
 		}
 	}
 
-	return nil
+	return fmt.Errorf("deployment ID '%s' not found for app '%s'", targetDeploymentID, appName)
 }
 
 // GetRollbackTargets retrieves and sorts all available rollback targets for the specified app.

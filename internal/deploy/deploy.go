@@ -12,8 +12,8 @@ import (
 )
 
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, configFormat string, logger *slog.Logger) error {
-	normalizedAppConfig := appConfig.Normalize()
-	if err := normalizedAppConfig.Validate(configFormat); err != nil {
+	appConfig.Normalize()
+	if err := appConfig.Validate(configFormat); err != nil {
 		return fmt.Errorf("app config validation failed: %w", err)
 	}
 

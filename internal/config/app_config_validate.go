@@ -26,7 +26,7 @@ func (ac *AppConfig) Validate(format string) error {
 	// If using targets, validate each merged target configuration
 	if len(ac.Targets) > 0 {
 		for name, overrides := range ac.Targets {
-			mergedConfig := ac.mergeWithTarget(overrides)
+			mergedConfig := ac.MergeWithTarget(overrides)
 			if err := mergedConfig.TargetConfig.Validate(format); err != nil {
 				return fmt.Errorf("validation failed for target '%s': %w", name, err)
 			}

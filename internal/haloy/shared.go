@@ -20,9 +20,9 @@ func createDeploymentID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
 }
 
-func getToken(appConfig *config.AppConfig, url string) (string, error) {
+func getToken(appConfig config.AppConfig, url string) (string, error) {
 	// Check for app-specific token env var
-	if appConfig != nil && appConfig.APITokenEnv != "" {
+	if appConfig.APITokenEnv != "" {
 		if token := os.Getenv(appConfig.APITokenEnv); token != "" {
 			return token, nil
 		}
@@ -61,14 +61,14 @@ func getToken(appConfig *config.AppConfig, url string) (string, error) {
 	return token, nil
 }
 
-func getServer(appConfig *config.AppConfig, url string) (string, error) {
+func getServer(appConfig config.AppConfig, url string) (string, error) {
 	// Explicit server URL parameter takes highest priority
 	if url != "" {
 		return url, nil
 	}
 
 	// Server specified in app config
-	if appConfig != nil && appConfig.Server != "" {
+	if appConfig.Server != "" {
 		return appConfig.Server, nil
 	}
 

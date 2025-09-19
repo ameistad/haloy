@@ -7,7 +7,7 @@ import (
 
 func NewRootCmd() *cobra.Command {
 	var configPathFlag string
-	var resolvedConfigPath string
+	resolvedConfigPath := "."
 
 	cmd := &cobra.Command{
 		Use:   "haloy",
@@ -21,8 +21,6 @@ func NewRootCmd() *cobra.Command {
 
 			if configPathFlag != "" {
 				resolvedConfigPath = configPathFlag
-			} else {
-				resolvedConfigPath = "."
 			}
 		},
 		SilenceErrors: true,
