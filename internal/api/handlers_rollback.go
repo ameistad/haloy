@@ -17,21 +17,24 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			http.Error(w, "App name is required", http.StatusBadRequest)
 			return
 		}
-		targetDeploymentID := r.PathValue("targetDeploymentID")
-		if targetDeploymentID == "" {
-			http.Error(w, "Target deployment ID is required", http.StatusBadRequest)
-			return
-		}
-		var req apitypes.RollbackRequest
 
+		var req apitypes.RollbackRequest
 		if err := decodeJSON(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
+		if req.TargetDeploymentID == "" {
+			http.Error(w, "Target deployment ID is required", http.StatusBadRequest)
+			return
+		}
+		if req.NewDeploymentID == "" {
+			http.Error(w, "New deployment ID is required", http.StatusBadRequest)
+			return
+		}
+
 		deploymentLogger := logging.NewDeploymentLogger(req.NewDeploymentID, s.logLevel, s.logBroker)
 
-		// Start rollback in background
 		go func() {
 			ctx := context.Background()
 			ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
@@ -44,7 +47,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			}
 			defer cli.Close()
 
-			if err := deploy.RollbackApp(ctx, cli, appName, targetDeploymentID, req.NewDeploymentID, deploymentLogger); err != nil {
+			if err := deploy.RollbackApp(ctx, cli, appName, req.TargetDeploymentID, req.NewDeploymentID, deploymentLogger); err != nil {
 				deploymentLogger.Error("Deployment failed", "app", appName, "error", err)
 				return
 			}

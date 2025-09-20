@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
@@ -17,6 +18,16 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 
 		if err := decodeJSON(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if req.DeploymentID == "" {
+			http.Error(w, "Deployment ID is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := req.AppConfig.Validate(req.ConfigFormat); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid app configuration: %v", err), http.StatusBadRequest)
 			return
 		}
 

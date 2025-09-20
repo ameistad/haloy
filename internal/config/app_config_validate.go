@@ -10,7 +10,21 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
+func (ac *AppConfig) isEmpty() bool {
+	return ac.Name == "" &&
+		ac.Image.Repository == "" &&
+		ac.Server == "" &&
+		len(ac.Domains) == 0 &&
+		len(ac.Env) == 0 &&
+		len(ac.Targets) == 0
+}
+
 func (ac *AppConfig) Validate(format string) error {
+	// better ui to first check if AppConfig is empty.
+	if ac.isEmpty() {
+		return fmt.Errorf("app configuration is required")
+	}
+
 	if ac.Name == "" {
 		return fmt.Errorf("app 'name' is required")
 	}

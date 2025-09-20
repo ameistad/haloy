@@ -80,40 +80,40 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 						availableTargetDeploymentIDs = append(availableTargetDeploymentIDs, availableTarget.DeploymentID)
 					}
 					if !slices.Contains(availableTargetDeploymentIDs, targetDeploymentID) {
-						ui.Warn("Target deployment id: %s is not available in %s", targetDeploymentID, target.TargetName)
+						ui.Error("Target deployment id: %s is not available in %s", targetDeploymentID, target.TargetName)
 						return
+					}
+					path := fmt.Sprintf("rollback/%s", appConfig.Name)
+					request := apitypes.RollbackRequest{TargetDeploymentID: targetDeploymentID, NewDeploymentID: newDeploymentID}
+					if err := api.Post(ctx, path, request, nil); err != nil {
+						ui.Error("Rollback failed: %v", err)
+						return
+					}
+
+					if !noLogsFlag {
+						// No timeout for streaming logs
+						streamCtx, streamCancel := context.WithCancel(context.Background())
+						defer streamCancel()
+						streamPath := fmt.Sprintf("deploy/%s/logs", newDeploymentID)
+
+						streamHandler := func(data string) bool {
+							var logEntry logging.LogEntry
+							if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+								ui.Error("failed to ummarshal json: %v", err)
+								return false // we don't stop on errors.
+							}
+
+							ui.DisplayLogEntry(logEntry, "")
+
+							// If deployment is complete we'll return true to signal stream should stop
+							return logEntry.IsDeploymentComplete
+						}
+
+						api.Stream(streamCtx, streamPath, streamHandler)
 					}
 				}(target)
 
-			}
-
-			path := fmt.Sprintf("rollback/%s/%s", appConfig.Name, targetDeploymentID)
-			request := apitypes.RollbackRequest{NewDeploymentID: newDeploymentID}
-			if err := api.Post(ctx, path, request, nil); err != nil {
-				ui.Error("Rollback failed: %v", err)
-				return
-			}
-
-			if !noLogsFlag {
-				// No timeout for streaming logs
-				streamCtx, streamCancel := context.WithCancel(context.Background())
-				defer streamCancel()
-				streamPath := fmt.Sprintf("deploy/%s/logs", newDeploymentID)
-
-				streamHandler := func(data string) bool {
-					var logEntry logging.LogEntry
-					if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
-						ui.Error("failed to ummarshal json: %v", err)
-						return false // we don't stop on errors.
-					}
-
-					ui.DisplayLogEntry(logEntry, "")
-
-					// If deployment is complete we'll return true to signal stream should stop
-					return logEntry.IsDeploymentComplete
-				}
-
-				api.Stream(streamCtx, streamPath, streamHandler)
+				wg.Wait()
 			}
 		},
 	}
@@ -126,7 +126,8 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 }
 
 func RollbackTargetsCmd(configPath *string) *cobra.Command {
-	var serverURL string
+	var targetFlag string
+	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "rollback-targets",
@@ -140,39 +141,58 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			targetServer, err := getServer(appConfig, serverURL)
+			targets, err := expandTargets(appConfig, targetFlag, allFlag)
 			if err != nil {
-				ui.Error("%v", err)
+				ui.Error("Failed to process deployment targets: %v", err)
 				return
 			}
 
-			token, err := getToken(appConfig, targetServer)
-			if err != nil {
-				ui.Error("%v", err)
-				return
+			var wg sync.WaitGroup
+
+			for _, target := range targets {
+				wg.Add(1)
+
+				go func(target ExpandedTarget) {
+					defer wg.Done()
+
+					targetServer, err := getServer(target.Config, "")
+					if err != nil {
+						ui.Error("%v", err)
+						return
+					}
+
+					token, err := getToken(target.Config, targetServer)
+					if err != nil {
+						ui.Error("%v", err)
+						return
+					}
+
+					ui.Info("Rollback targets for application: %s using server %s", appConfig.Name, targetServer)
+					ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+					defer cancel()
+
+					api := apiclient.New(targetServer, token)
+					targets, err := rollbackTargets(ctx, api, appConfig.Name)
+					if err != nil {
+						ui.Error("Failed to get rollback targets: %v", err)
+						return
+					}
+					if len(targets.Targets) == 0 {
+						ui.Info("No rollback targets available for app '%s'", appConfig.Name)
+						return
+					}
+
+					displayRollbackTargets(appConfig.Name, targets.Targets, *configPath)
+				}(target)
 			}
 
-			ui.Info("Rollback targets for application: %s using server %s", appConfig.Name, targetServer)
-			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-			defer cancel()
-
-			api := apiclient.New(targetServer, token)
-			targets, err := rollbackTargets(ctx, api, appConfig.Name)
-			if err != nil {
-				ui.Error("Failed to get rollback targets: %v", err)
-				return
-			}
-
-			if len(targets.Targets) == 0 {
-				ui.Info("No rollback targets available for app '%s'", appConfig.Name)
-				return
-			}
-
-			displayRollbackTargets(appConfig.Name, targets.Targets, *configPath)
+			wg.Wait()
 		},
 	}
 
-	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL (overrides config)")
+	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Deploy to a specific target")
+	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Deploy to all targets")
+
 	return cmd
 }
 
