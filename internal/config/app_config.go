@@ -38,6 +38,9 @@ type AppConfig struct {
 	TargetConfig `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
 
 	Targets map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
+
+	GlobalPreDeploy  []string `json:"globalPreDeploy,omitempty" yaml:"global_pre_deploy,omitempty" toml:"global_pre_deploy,omitempty"`
+	GlobalPostDeploy []string `json:"globalPostDeploy,omitempty" yaml:"global_post_deploy,omitempty" toml:"global_post_deploy,omitempty"`
 }
 
 // mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.

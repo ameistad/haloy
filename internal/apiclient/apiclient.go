@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
 // APIClient handles communication with the haloy API
@@ -22,14 +23,22 @@ type APIClient struct {
 	apiToken string
 }
 
-func New(url, token string) *APIClient {
-	return &APIClient{
+func New(url, token string) (*APIClient, error) {
+	normalizedUrl, err := helpers.NormalizeServerURL(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to normalize url: %w", err)
+	}
+	serverUrl := helpers.BuildServerURL(normalizedUrl)
+
+	cli := &APIClient{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		baseURL:  url,
+		baseURL:  serverUrl,
 		apiToken: token,
 	}
+
+	return cli, nil
 }
 
 func (c *APIClient) setAuthHeader(req *http.Request) {

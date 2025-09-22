@@ -44,6 +44,15 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 
 			deploymentID := createDeploymentID()
 
+			if len(appConfig.GlobalPreDeploy) > 0 {
+				for _, hookCmd := range appConfig.GlobalPreDeploy {
+					if err := executeHook(hookCmd, getHooksWorkDir(*configPath)); err != nil {
+						ui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "GlobalPreDeploy", format), err)
+						return
+					}
+				}
+			}
+
 			var wg sync.WaitGroup
 
 			for _, target := range targets {
@@ -55,6 +64,15 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 			}
 
 			wg.Wait()
+
+			if len(appConfig.GlobalPostDeploy) > 0 {
+				for _, hookCmd := range appConfig.GlobalPostDeploy {
+					if err := executeHook(hookCmd, getHooksWorkDir(*configPath)); err != nil {
+						ui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "GlobalPostDeploy", format), err)
+						return
+					}
+				}
+			}
 		},
 	}
 
@@ -77,7 +95,7 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 	if len(target.Config.PreDeploy) > 0 {
 		for _, hookCmd := range target.Config.PreDeploy {
 			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
-				pui.Error("Pre-deploy hook failed: %v", err)
+				pui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "PreDeploy", format), err)
 				return
 			}
 		}
@@ -99,7 +117,11 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 	defer cancel()
 
 	// Send the deploy request
-	api := apiclient.New(targetServer, token)
+	api, err := apiclient.New(targetServer, token)
+	if err != nil {
+		pui.Error("Failed to create API client: %v", err)
+		return
+	}
 	request := apitypes.DeployRequest{AppConfig: target.Config, DeploymentID: deploymentID, ConfigFormat: format}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {
@@ -133,7 +155,7 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 	if len(target.Config.PostDeploy) > 0 {
 		for _, hookCmd := range target.Config.PostDeploy {
 			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
-				ui.Warn("Post-deploy hook failed: %v", err)
+				pui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "PostDeploy", format), err)
 			}
 		}
 	}

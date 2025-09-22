@@ -40,7 +40,11 @@ func StopAppCmd(configPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer, token)
+			api, err := apiclient.New(targetServer, token)
+			if err != nil {
+				ui.Error("Failed to create API client: %v", err)
+				return
+			}
 			response, err := api.StopApp(ctx, appConfig.Name, removeContainersFlag)
 			if err != nil {
 				ui.Error("Failed to stop app: %v", err)

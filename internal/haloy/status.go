@@ -43,7 +43,11 @@ func StatusAppCmd(configPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 
-			api := apiclient.New(targetServer, token)
+			api, err := apiclient.New(targetServer, token)
+			if err != nil {
+				ui.Error("Failed to create API client: %v", err)
+				return
+			}
 			status, err := api.AppStatus(ctx, appConfig.Name)
 			if err != nil {
 				ui.Error("Failed to get app status: %v", err)

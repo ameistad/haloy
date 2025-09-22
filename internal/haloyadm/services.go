@@ -282,7 +282,10 @@ func ensureNetwork(ctx context.Context) error {
 // streamHaloydInitLogs waits for the API to become available and streams initialization logs
 func streamHaloydInitLogs(ctx context.Context, token string) error {
 	apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
-	api := apiclient.New(apiURL, token)
+	api, err := apiclient.New(apiURL, token)
+	if err != nil {
+		return fmt.Errorf("Failed to create API client: %w", err)
+	}
 
 	ui.Info("Connecting to haloyd API...")
 

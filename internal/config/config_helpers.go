@@ -42,8 +42,8 @@ func getConfigParser(format string) (koanf.Parser, error) {
 	return parser, nil
 }
 
-// getFieldNameForFormat returns the field name as it appears in the specified format
-func getFieldNameForFormat(v any, fieldName, format string) string {
+// GetFieldNameForFormat returns the field name as it appears in the specified format
+func GetFieldNameForFormat(v any, fieldName, format string) string {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -111,7 +111,6 @@ func isValidConfigKey(key string, knownFields []string) bool {
 	return false
 }
 
-// getFieldNameForFormat returns the field name as it appears in the specified format
 func getKnownFields(structType reflect.Type, format string) []string {
 	var fields []string
 	collectFields(structType, format, "", &fields)

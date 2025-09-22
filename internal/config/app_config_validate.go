@@ -68,7 +68,7 @@ func (tc *TargetConfig) Validate(format string) error {
 	}
 
 	if tc.ACMEEmail != "" && !helpers.IsValidEmail(tc.ACMEEmail) {
-		return fmt.Errorf("%s is invalid '%s'; must be a valid email address", getFieldNameForFormat(*tc, "ACMEEmail", format), tc.ACMEEmail)
+		return fmt.Errorf("%s is invalid '%s'; must be a valid email address", GetFieldNameForFormat(*tc, "ACMEEmail", format), tc.ACMEEmail)
 	}
 
 	for j, envVar := range tc.Env {
@@ -95,7 +95,7 @@ func (tc *TargetConfig) Validate(format string) error {
 
 	if tc.HealthCheckPath != "" {
 		if tc.HealthCheckPath[0] != '/' {
-			return fmt.Errorf("%s must start with a slash", getFieldNameForFormat(*tc, "HealthCheckPath", format))
+			return fmt.Errorf("%s must start with a slash", GetFieldNameForFormat(*tc, "HealthCheckPath", format))
 		}
 	}
 

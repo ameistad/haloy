@@ -38,7 +38,11 @@ func VersionCmd(configPath *string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 			defer cancel()
 			cliVersion := constants.Version
-			api := apiclient.New(targetServer, token)
+			api, err := apiclient.New(targetServer, token)
+			if err != nil {
+				ui.Error("Failed to create API client: %v", err)
+				return
+			}
 			response, err := api.Version(ctx)
 			if err != nil {
 				ui.Error("Failed to get version from API: %v", err)

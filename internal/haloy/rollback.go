@@ -68,7 +68,11 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 					ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 					defer cancel()
 
-					api := apiclient.New(targetServer, token)
+					api, err := apiclient.New(targetServer, token)
+					if err != nil {
+						ui.Error("Failed to create API client: %v", err)
+						return
+					}
 					rollbackTargetsResponse, err := rollbackTargets(ctx, api, target.Config.Name)
 					if err != nil {
 						ui.Error("Failed to get available rollback targets for %s: %v", target.TargetName, err)
@@ -171,7 +175,11 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 					ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 					defer cancel()
 
-					api := apiclient.New(targetServer, token)
+					api, err := apiclient.New(targetServer, token)
+					if err != nil {
+						ui.Error("Failed to create API client: %v", err)
+						return
+					}
 					targets, err := rollbackTargets(ctx, api, appConfig.Name)
 					if err != nil {
 						ui.Error("Failed to get rollback targets: %v", err)

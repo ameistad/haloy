@@ -21,7 +21,7 @@ func (ev *EnvVar) Validate(format string) error {
 	hasValue := ev.Value != ""
 	hasSecretName := ev.SecretName != ""
 
-	secretNameField := getFieldNameForFormat(*ev, "SecretName", format) // the field uses different casing based on format.
+	secretNameField := GetFieldNameForFormat(*ev, "SecretName", format) // the field uses different casing based on format.
 	if hasValue && hasSecretName {
 		return fmt.Errorf("environment variable '%s': cannot provide both 'value' and '%s'", ev.Name, secretNameField)
 	}

@@ -50,7 +50,11 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			api := apiclient.New(targetServer, token)
+			api, err := apiclient.New(targetServer, token)
+			if err != nil {
+				ui.Error("Failed to create API client: %v", err)
+				return
+			}
 			streamHandler := func(data string) bool {
 				var logEntry logging.LogEntry
 				if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
