@@ -31,7 +31,6 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			return
 		}
 
-		// Create deployment-specific logger using the factory
 		deploymentLogger := logging.NewDeploymentLogger(req.DeploymentID, s.logLevel, s.logBroker)
 
 		go func() {

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -124,10 +125,19 @@ func (c *APIClient) Post(ctx context.Context, path string, request, response any
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("POST request failed with status %d (unable to read error details: %v)", resp.StatusCode, readErr)
+		}
+
+		errorMessage := strings.TrimSpace(string(bodyBytes))
+		if errorMessage == "" {
+			errorMessage = "no error details provided"
+		}
 		if resp.StatusCode == http.StatusUnauthorized {
 			return fmt.Errorf("authentication failed - check your %s", constants.EnvVarAPIToken)
 		}
-		return fmt.Errorf("POST request failed with status %d", resp.StatusCode)
+		return fmt.Errorf("POST request failed with status %d: %s", resp.StatusCode, errorMessage)
 	}
 
 	if response != nil {

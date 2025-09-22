@@ -99,8 +99,8 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 	return &final
 }
 
+// Normalize will set default values which will be inherited by all targets.
 func (ac *AppConfig) Normalize() {
-	// Default DeploymentsToKeep to the default if not set.
 	if ac.DeploymentsToKeep == nil {
 		defaultMax := constants.DefaultDeploymentsToKeep
 		ac.DeploymentsToKeep = &defaultMax
@@ -117,10 +117,6 @@ func (ac *AppConfig) Normalize() {
 	if ac.Replicas == nil {
 		defaultReplicas := constants.DefaultReplicas
 		ac.Replicas = &defaultReplicas
-	}
-
-	if ac.Server == "" {
-		ac.Server = constants.DefaultAPIServerURL
 	}
 }
 

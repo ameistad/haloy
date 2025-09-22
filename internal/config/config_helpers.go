@@ -80,7 +80,7 @@ func checkUnknownFields(structType reflect.Type, configKeys []string, format str
 
 	unknownFields := make([]string, 0)
 	for _, key := range configKeys {
-		if !slices.Contains(knownFields, key) {
+		if !isValidConfigKey(key, knownFields) {
 			unknownFields = append(unknownFields, key)
 		}
 	}
@@ -90,6 +90,25 @@ func checkUnknownFields(structType reflect.Type, configKeys []string, format str
 	}
 
 	return nil
+}
+
+// isValidConfigKey checks if a config key is valid, handling map fields with dynamic keys
+func isValidConfigKey(key string, knownFields []string) bool {
+	// Direct match
+	if slices.Contains(knownFields, key) {
+		return true
+	}
+
+	// Check for map field patterns (e.g., "targets.somekey.field")
+	parts := strings.Split(key, ".")
+	if len(parts) >= 3 && parts[0] == "targets" {
+		// For targets.{dynamic_key}.{field}, check if the field part is valid
+		// by looking for a pattern like "targets.{field}" in known fields
+		targetFieldKey := "targets." + strings.Join(parts[2:], ".")
+		return slices.Contains(knownFields, targetFieldKey)
+	}
+
+	return false
 }
 
 // getFieldNameForFormat returns the field name as it appears in the specified format
@@ -141,7 +160,19 @@ func collectFields(structType reflect.Type, format string, prefix string, fields
 		*fields = append(*fields, fullFieldName)
 
 		//  Recurse into nested (but not embedded) structs/slices.
-		if fieldType.Kind() == reflect.Struct {
+		//  Handle maps with struct values (like Targets map[string]*TargetConfig)
+		if fieldType.Kind() == reflect.Map {
+			valueType := fieldType.Elem()
+			if valueType.Kind() == reflect.Ptr {
+				valueType = valueType.Elem()
+			}
+			if valueType.Kind() == reflect.Struct {
+				// For maps, we need to accept any key, so we use a wildcard approach
+				// by collecting the possible fields that could appear under this map
+				collectFields(valueType, format, fullFieldName, fields)
+			}
+		} else if fieldType.Kind() == reflect.Struct {
+			//  Recurse into nested (but not embedded) structs.
 			collectFields(fieldType, format, fullFieldName, fields)
 		} else if fieldType.Kind() == reflect.Slice {
 			elemType := fieldType.Elem()

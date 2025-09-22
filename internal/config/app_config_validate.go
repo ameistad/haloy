@@ -20,7 +20,6 @@ func (ac *AppConfig) isEmpty() bool {
 }
 
 func (ac *AppConfig) Validate(format string) error {
-	// better ui to first check if AppConfig is empty.
 	if ac.isEmpty() {
 		return fmt.Errorf("app configuration is required")
 	}
