@@ -23,7 +23,7 @@ func VersionCmd(configPath *string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			if serverFlag != "" {
-				streamLogs(nil, serverFlag)
+				getVersion(nil, serverFlag)
 			} else {
 				appConfig, _, err := config.LoadAppConfig(*configPath)
 				if err != nil {

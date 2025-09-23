@@ -53,13 +53,9 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				go func(target ExpandedTarget) {
 					defer wg.Done()
 
-					targetServer, err := getServer(appConfig, "")
-					if err != nil {
-						ui.Error("%v", err)
-						return
-					}
+					targetServer := target.Config.Server
 
-					token, err := getToken(appConfig, targetServer)
+					token, err := getToken(&appConfig, targetServer)
 					if err != nil {
 						ui.Error("%v", err)
 						return
@@ -73,7 +69,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 						ui.Error("Failed to create API client: %v", err)
 						return
 					}
-					rollbackTargetsResponse, err := rollbackTargets(ctx, api, target.Config.Name)
+					rollbackTargetsResponse, err := getRollbackTargets(ctx, api, target.Config.Name)
 					if err != nil {
 						ui.Error("Failed to get available rollback targets for %s: %v", target.TargetName, err)
 						return
@@ -159,19 +155,14 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 				go func(target ExpandedTarget) {
 					defer wg.Done()
 
-					targetServer, err := getServer(target.Config, "")
+					targetServer := target.Config.Server
+
+					token, err := getToken(&target.Config, targetServer)
 					if err != nil {
 						ui.Error("%v", err)
 						return
 					}
 
-					token, err := getToken(target.Config, targetServer)
-					if err != nil {
-						ui.Error("%v", err)
-						return
-					}
-
-					ui.Info("Rollback targets for application: %s using server %s", appConfig.Name, targetServer)
 					ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 					defer cancel()
 
@@ -180,17 +171,17 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 						ui.Error("Failed to create API client: %v", err)
 						return
 					}
-					targets, err := rollbackTargets(ctx, api, appConfig.Name)
+					rollbackTargets, err := getRollbackTargets(ctx, api, appConfig.Name)
 					if err != nil {
 						ui.Error("Failed to get rollback targets: %v", err)
 						return
 					}
-					if len(targets.Targets) == 0 {
+					if len(rollbackTargets.Targets) == 0 {
 						ui.Info("No rollback targets available for app '%s'", appConfig.Name)
 						return
 					}
 
-					displayRollbackTargets(appConfig.Name, targets.Targets, *configPath)
+					displayRollbackTargets(appConfig.Name, rollbackTargets.Targets, *configPath, target.TargetName)
 				}(target)
 			}
 
@@ -204,7 +195,7 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func rollbackTargets(ctx context.Context, api *apiclient.APIClient, appName string) (*apitypes.RollbackTargetsResponse, error) {
+func getRollbackTargets(ctx context.Context, api *apiclient.APIClient, appName string) (*apitypes.RollbackTargetsResponse, error) {
 	path := fmt.Sprintf("rollback/%s", appName)
 	var response apitypes.RollbackTargetsResponse
 	if err := api.Get(ctx, path, &response); err != nil {
@@ -213,32 +204,36 @@ func rollbackTargets(ctx context.Context, api *apiclient.APIClient, appName stri
 	return &response, nil
 }
 
-func displayRollbackTargets(appName string, targets []deploytypes.RollbackTarget, configPath string) {
-	if len(targets) == 0 {
+func displayRollbackTargets(appName string, rollbackTargets []deploytypes.RollbackTarget, configPath, targetName string) {
+	if len(rollbackTargets) == 0 {
 		ui.Info("No rollback targets available for app '%s'", appName)
 		return
 	}
-	ui.Info("📋 Available rollback targets for '%s':", appName)
-	ui.Info("")
+
+	header := fmt.Sprintf("Available rollback targets for '%s':", appName)
+	if targetName != "" && targetName != "default" {
+		header = fmt.Sprintf("%s on %s", header, targetName)
+	}
+	ui.Info("%s", header)
 
 	headers := []string{"DEPLOYMENT ID", "IMAGE REFERENCE", "DATE", "STATUS"}
-	rows := make([][]string, 0, len(targets))
+	rows := make([][]string, 0, len(rollbackTargets))
 
-	for _, target := range targets {
+	for _, rollbackTarget := range rollbackTargets {
 
 		date := "N/A"
-		if deploymentTime, err := helpers.GetTimestampFromDeploymentID(target.DeploymentID); err == nil {
+		if deploymentTime, err := helpers.GetTimestampFromDeploymentID(rollbackTarget.DeploymentID); err == nil {
 			date = helpers.FormatTime(deploymentTime)
 		}
 
 		status := ""
-		if target.IsRunning {
+		if rollbackTarget.IsRunning {
 			status = "🟢 CURRENT"
 		}
 
 		rows = append(rows, []string{
-			target.DeploymentID,
-			target.ImageRef,
+			rollbackTarget.DeploymentID,
+			rollbackTarget.ImageRef,
 			date,
 			status,
 		})

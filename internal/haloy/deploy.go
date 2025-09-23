@@ -101,13 +101,9 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 		}
 	}
 
-	targetServer, err := getServer(target.Config, "")
-	if err != nil {
-		pui.Error("%v", err)
-		return
-	}
+	targetServer := target.Config.Server
 
-	token, err := getToken(target.Config, targetServer)
+	token, err := getToken(&target.Config, targetServer)
 	if err != nil {
 		pui.Error("%v", err)
 		return
