@@ -1,6 +1,6 @@
 # Haloy
 
-Haloy is a simple and lightweight CLI tool for deploying your apps to one or multiple servers that you control.
+Haloy is a simple and lightweight CLI tool for deploying apps to one or multiple servers that you control.
 
 ## ✨ Features
 * **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
@@ -115,48 +115,129 @@ For all available options, see the full [Configuration Options](#configuration-o
 
 ## Multi-Server Deployments
 
-Haloy supports deploying to multiple servers in several ways:
+Haloy supports multi-server deployments, allowing you to define multiple deployment targets within a single configuration file. Common use cases include:
 
-### Single Server Deployment
-For deploying to a single server, specify the server in your config:
+- **Multi-environment deployments**: Deploy to production, staging, and development environments
+- **Geographic distribution**: Deploy to multiple regions with geo-based load balancing  
+- **A/B testing**: Deploy different versions to separate infrastructure
 
+```yaml
+name: "my-app"
+# Base configuration inherited by all targets
+image:
+  repository: "ghcr.io/your-username/my-app"
+  tag: "latest"
+acme_email: "you@email.com"
+
+# Global hooks run once regardless of number of targets
+global_pre_deploy:
+  - "echo 'Starting deployment pipeline'"
+  - "npm run build"
+
+global_post_deploy:
+  - "echo 'All deployments completed'"
+
+targets:
+  production:
+    server: production.haloy.com
+    image:
+      tag: "v1.2.3"  # Override with stable release
+    domains:
+      - domain: "my-app.com"
+    replicas: 3
+    env:
+      - name: "NODE_ENV"
+        value: "production"
+  
+  staging:
+    server: staging.haloy.com
+    image:
+      tag: "main"  # Use latest main branch
+    domains:
+      - domain: "staging.my-app.com"
+    replicas: 1
+    env:
+      - name: "NODE_ENV"
+        value: "staging"
+  
+  us-east:
+    server: us-east.haloy.com
+    domains:
+      - domain: "us-api.my-app.com"
+    replicas: 2
+    env:
+      - name: "REGION"
+        value: "us-east-1"
+```
+
+**Deploy to specific targets:**
+```bash
+# Deploy to a specific target
+haloy deploy --target production
+haloy deploy -t us-east
+
+# Deploy to all targets
+haloy deploy --all
+
+# Without flags, you'll be prompted to choose
+haloy deploy  # Shows available targets for selection
+```
+
+**Other commands support target selection:**
+```bash
+# Check status of specific target
+haloy status --target production
+
+# View logs from staging
+haloy logs --target staging
+
+# Rollback production only
+haloy rollback --target production <deployment-id>
+
+# Stop all targets
+haloy stop --all
+```
+
+### Separate Configuration Files
+You can also use separate configuration files for different environments:
+
+**production.haloy.yaml:**
 ```yaml
 server: production.haloy.com
 name: "my-app"
 image:
   repository: "ghcr.io/your-username/my-app"
-  tag: "latest"
+  tag: "v1.2.3"
 domains:
   - domain: "my-app.com"
 acme_email: "you@email.com"
+replicas: 3
 ```
 
-### Automatic Server Selection
-If you have only one server configured with `haloy server add`, you can omit the `server` field and Haloy will automatically use that server:
-
-```yaml
-# No server field needed if only one server is configured
-name: "my-app"
-image:
-  repository: "ghcr.io/your-username/my-app"
-  tag: "latest"
-```
-
-### Multiple Server Management
-When you have multiple servers configured, you must specify which server to deploy to:
-
+Deploy using specific configuration files:
 ```bash
-# List your configured servers
-haloy server list
-
-# Deploy to a specific server by specifying it in config
-haloy deploy
+haloy deploy production.haloy.yaml
+haloy deploy staging.haloy.yaml
 ```
 
-If you have multiple servers configured but don't specify a server in your config, Haloy will show you the available servers and ask you to specify one.
 
-### Environment-Specific Configurations
-Create separate configuration files for different environments:
+**Other commands support target flags too:**
+```bash
+# Check status of specific target
+haloy status --target production
+
+# View logs from staging
+haloy logs --target staging
+
+# Rollback production only
+haloy rollback --target production <deployment-id>
+
+# Stop all targets
+haloy stop --all
+```
+
+### Environment-Specific Configuration Files
+You can still use separate configuration files for different environments:
 
 **production.haloy.yaml:**
 ```yaml
@@ -236,6 +317,9 @@ Haloy supports YAML, JSON, and TOML formats:
 | `deployments_to_keep` | integer | No | Deployment history to keep (default: 6) |
 | `pre_deploy` | array | No | Commands to run before deploy |
 | `post_deploy` | array | No | Commands to run after deploy |
+| `global_pre_deploy` | array | No | Commands to run once before all deployments (multi-target only) |
+| `global_post_deploy` | array | No | Commands to run once after all deployments (multi-target only) |
+| `targets` | object | No | Multiple deployment targets with overrides (see [Multi-Target Deployments](#multi-target-deployments-new)) |
 | `network_mode` | string | No | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`) |
 
 #### Image Configuration
@@ -246,6 +330,34 @@ Haloy supports YAML, JSON, and TOML formats:
 | `tag` | string | No | Image tag (default: "latest") |
 | `registry` | object | No | Private registry authentication |
 | `source` | string | No | Set to "local" for images already on server |
+
+#### Target Configuration
+
+When using multi-target deployments, each target can override any of the base configuration options:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `server` | string | Override the server for this target |
+| `api_token_env` | string | Override the API token environment variable |
+| `image` | object | Override image configuration (repository, tag, etc.) |
+| `domains` | array | Override domain configuration |
+| `acme_email` | string | Override ACME email |
+| `env` | array | Override environment variables |
+| `replicas` | integer | Override number of replicas |
+| `port` | string | Override container port |
+| `health_check_path` | string | Override health check path |
+| `volumes` | array | Override volume mounts |
+| `deployments_to_keep` | integer | Override deployment history |
+| `pre_deploy` | array | Override pre-deploy hooks |
+| `post_deploy` | array | Override post-deploy hooks |
+| `network_mode` | string | Override network mode |
+
+**Target Inheritance Rules:**
+- Base configuration provides defaults for all targets
+- Target-specific values completely override base values (no merging)
+- Only specified fields in targets override the base; unspecified fields use base values
+- `global_pre_deploy` and `global_post_deploy` run once regardless of targets
+- Individual target `pre_deploy` and `post_deploy` run for each target deployment
 
 #### Environment Variables
 
@@ -341,27 +453,82 @@ secret_name = "app-api-secret"
 - ✅ Use `value` for non-sensitive configuration (ports, URLs, feature flags)
 - ❌ Never put sensitive data in `value` fields as they're stored in plain text
 
+#### Target Inheritance Example
+
+```yaml
+name: "my-app"
+# Base configuration - inherited by all targets
+image:
+  repository: "ghcr.io/my-org/my-app"
+  tag: "latest"
+replicas: 2
+port: "8080"
+env:
+  - name: "LOG_LEVEL"
+    value: "info"
+  - name: "FEATURE_FLAG"
+    value: "false"
+
+targets:
+  production:
+    # Inherits: replicas=2, port="8080", LOG_LEVEL="info", FEATURE_FLAG="false"
+    # Overrides: image.tag, adds domains, overrides env completely
+    server: "prod.haloy.com"
+    image:
+      tag: "v1.2.3"  # Override tag only, repository inherited
+    domains:
+      - domain: "my-app.com"
+    env:  # Completely replaces base env - no LOG_LEVEL or FEATURE_FLAG inherited
+      - name: "NODE_ENV"
+        value: "production"
+      - name: "DB_URL"
+        secret_name: "prod-db-url"
+  
+  staging:
+    # Inherits: image.repository, image.tag="latest", replicas=2, port="8080", env array
+    # Overrides: server, adds domains, changes replicas
+    server: "staging.haloy.com"
+    replicas: 1  # Override replicas
+    domains:
+      - domain: "staging.my-app.com"
+    # env not specified - inherits base env with LOG_LEVEL and FEATURE_FLAG
+```
+
 ## Commands
 
 ### Deployment Commands
 ```bash
 # Deploy application
 haloy deploy [config-path]
+haloy deploy --target production      # Deploy to specific target
+haloy deploy -t staging              # Short form
+haloy deploy --all                   # Deploy to all targets
+haloy deploy --no-logs              # Skip deployment logs
 
 # Check status
 haloy status [config-path]
+haloy status --target production     # Status for specific target
+haloy status --all                   # Status for all targets
 
 # Stop application containers
 haloy stop [config-path]
+haloy stop --target production       # Stop specific target
+haloy stop --all                     # Stop all targets
+
+# View logs
+haloy logs [config-path]
+haloy logs --target staging          # Logs from specific target
 
 # Validate configuration file
 haloy validate-config [config-path]
 
 # List available rollback targets
 haloy rollback-targets [config-path]
+haloy rollback-targets --target production
 
 # Rollback to specific deployment
 haloy rollback [config-path] <deployment-id>
+haloy rollback --target production <deployment-id>
 ```
 
 ### Server Management Commands
@@ -380,21 +547,31 @@ haloy server delete <url>
 ```bash
 # Manage secrets
 haloy secrets set <name> <value>
+haloy secrets set --target production <name> <value>  # Set for specific target
+haloy secrets set --all <name> <value>               # Set for all targets
+
 haloy secrets list
+haloy secrets list --target staging                  # List from specific target
+haloy secrets list --all                            # List from all targets
+
 haloy secrets delete <name>
+haloy secrets delete --target production <name>      # Delete from specific target
+haloy secrets delete --all <name>                   # Delete from all targets
 
 # Roll secrets with haloyadm (creates new encryption key and re-encrypts all existing secrets)
 sudo haloyadm secrets roll
 ```
 
-### Build Locally With the `pre_deploy` hook.
+### Build Locally With Deployment Hooks
 To get up and running quickly with your app you can build the images locally on your own system and upload with scp to your server. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. 
 
 Here's a simple configuration illustrating how we can build and deploy without needing a Docker registry.
 
 Note that we need to add source: local to the image configuration to indicate that we don't need to pull from a registry.
+
+**Single Target Example:**
 ```json
-  {
+{
   "server": "haloy.yourserver.com",
   "name": "my-app",
   "image": {
@@ -407,15 +584,49 @@ Note that we need to add source: local to the image configuration to indicate th
       "domain": "my-app.com"
     }
   ],
-  "acmeEmail": "acme@my-app-com",
+  "acmeEmail": "acme@my-app.com",
   "preDeploy": [
     "docker build --platform linux/amd64 -t my-app .",
     "docker save -o my-app.tar my-app",
     "scp my-app.tar $(whoami)@server-ip:/tmp/my-app.tar",
-    "ssh $(whoami)@hermes \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\"",
+    "ssh $(whoami)@server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\"",
     "rm my-app.tar"
   ]
 }
+```
+
+**Multi-Target Example with Global Hooks:**
+```yaml
+name: "my-app"
+image:
+  repository: "my-app"
+  source: "local"
+  tag: "latest"
+
+# Build once, deploy to multiple servers
+global_pre_deploy:
+  - "docker build --platform linux/amd64 -t my-app ."
+  - "docker save -o my-app.tar my-app"
+
+global_post_deploy:
+  - "rm my-app.tar"  # Cleanup after all deployments
+
+targets:
+  production:
+    server: "prod.haloy.com"
+    domains:
+      - domain: "my-app.com"
+    pre_deploy:
+      - "scp my-app.tar $(whoami)@prod-server-ip:/tmp/my-app.tar"
+      - "ssh $(whoami)@prod-server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\""
+  
+  staging:
+    server: "staging.haloy.com"
+    domains:
+      - domain: "staging.my-app.com"
+    pre_deploy:
+      - "scp my-app.tar $(whoami)@staging-server-ip:/tmp/my-app.tar"
+      - "ssh $(whoami)@staging-server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\""
 ```
 
 ## Horizontal Scaling
