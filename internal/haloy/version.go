@@ -11,10 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func VersionCmd(configPath *string) *cobra.Command {
+func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var serverFlag string
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "version",
@@ -30,7 +28,7 @@ func VersionCmd(configPath *string) *cobra.Command {
 					ui.Error("%v", err)
 					return
 				}
-				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				targets, err := expandTargets(appConfig, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("Failed to process deployment targets: %v", err)
 					return
@@ -49,10 +47,9 @@ func VersionCmd(configPath *string) *cobra.Command {
 			}
 		},
 	}
-	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Show logs of a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Show all target logs")
-
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Get version for specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Get version for all targets")
 	return cmd
 }
 

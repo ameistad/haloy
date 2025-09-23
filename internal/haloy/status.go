@@ -14,10 +14,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func StatusAppCmd(configPath *string) *cobra.Command {
-	var targetFlag string
-	var allFlag bool
-
+func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show status for an application",
@@ -30,7 +27,7 @@ func StatusAppCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			targets, err := expandTargets(appConfig, targetFlag, allFlag)
+			targets, err := expandTargets(appConfig, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
@@ -49,8 +46,9 @@ func StatusAppCmd(configPath *string) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Show status for a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Show status for all targets")
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Show status for specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Show status for all targets")
 	return cmd
 }
 

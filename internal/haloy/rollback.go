@@ -17,10 +17,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func RollbackAppCmd(configPath *string) *cobra.Command {
+func RollbackAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var noLogsFlag bool
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "rollback <deployment-id>",
@@ -38,7 +36,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				return
 			}
 
-			targets, err := expandTargets(appConfig, targetFlag, allFlag)
+			targets, err := expandTargets(appConfig, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
@@ -118,17 +116,15 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 		},
 	}
 
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
 	cmd.Flags().BoolVar(&noLogsFlag, "no-logs", false, "Don't stream deployment logs")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Deploy to a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Deploy to all targets")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Deploy to specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Deploy to all targets")
 
 	return cmd
 }
 
-func RollbackTargetsCmd(configPath *string) *cobra.Command {
-	var targetFlag string
-	var allFlag bool
-
+func RollbackTargetsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollback-targets",
 		Short: "List available rollback targets for an application",
@@ -141,7 +137,7 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			targets, err := expandTargets(appConfig, targetFlag, allFlag)
+			targets, err := expandTargets(appConfig, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
@@ -189,8 +185,9 @@ func RollbackTargetsCmd(configPath *string) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Deploy to a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Deploy to all targets")
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Deploy to specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Deploy to all targets")
 
 	return cmd
 }
@@ -211,7 +208,7 @@ func displayRollbackTargets(appName string, rollbackTargets []deploytypes.Rollba
 	}
 
 	header := fmt.Sprintf("Available rollback targets for '%s':", appName)
-	if targetName != "" && targetName != "default" {
+	if targetName != "" {
 		header = fmt.Sprintf("%s on %s", header, targetName)
 	}
 	ui.Info("%s", header)

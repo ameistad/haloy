@@ -5,8 +5,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// appCmdFlags holds the values for all flags shared by app-related commands.
+type appCmdFlags struct {
+	configPath string
+	targets    []string
+	all        bool
+}
+
 func NewRootCmd() *cobra.Command {
-	var configPathFlag string
+	appFlags := &appCmdFlags{}
 	resolvedConfigPath := "."
 
 	cmd := &cobra.Command{
@@ -19,40 +26,32 @@ func NewRootCmd() *cobra.Command {
 				return
 			}
 
-			if configPathFlag != "" {
-				resolvedConfigPath = configPathFlag
+			if appFlags.configPath != "" {
+				resolvedConfigPath = appFlags.configPath
 			}
 		},
 		SilenceErrors: true,
-		SilenceUsage:  true, // Don't show usage on error
+		SilenceUsage:  true,
 	}
 
+	validateCmd := ValidateAppConfigCmd(&resolvedConfigPath)
+	validateCmd.Flags().StringVarP(&appFlags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
+
 	cmd.AddCommand(
+		DeployAppCmd(&resolvedConfigPath, appFlags),
+		RollbackTargetsCmd(&resolvedConfigPath, appFlags),
+		RollbackAppCmd(&resolvedConfigPath, appFlags),
+		LogsCmd(&resolvedConfigPath, appFlags),
+		SecretsCmd(&resolvedConfigPath, appFlags),
+		StatusAppCmd(&resolvedConfigPath, appFlags),
+		StopAppCmd(&resolvedConfigPath, appFlags),
+		VersionCmd(&resolvedConfigPath, appFlags),
+
+		validateCmd,
+
 		CompletionCmd(),
 		ServerCmd(),
 	)
 
-	// Add resolvedConfigPath
-	appCommands := []*cobra.Command{
-		DeployAppCmd(&resolvedConfigPath),
-		LogsCmd(&resolvedConfigPath),
-		RollbackAppCmd(&resolvedConfigPath),
-		RollbackTargetsCmd(&resolvedConfigPath),
-		SecretsCmd(&resolvedConfigPath),
-		StatusAppCmd(&resolvedConfigPath),
-		ValidateAppConfigCmd(&resolvedConfigPath),
-		StopAppCmd(&resolvedConfigPath),
-		VersionCmd(&resolvedConfigPath),
-	}
-
-	for _, appCmd := range appCommands {
-		addAppConfigFlag(appCmd, &configPathFlag) // Apply the shared flag
-		cmd.AddCommand(appCmd)
-	}
-
 	return cmd
-}
-
-func addAppConfigFlag(cmd *cobra.Command, configPathFlag *string) {
-	cmd.Flags().StringVarP(configPathFlag, "config", "c", "", "Path to config file or directory (default: .)")
 }

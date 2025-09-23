@@ -10,10 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func StopAppCmd(configPath *string) *cobra.Command {
+func StopAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var serverFlag string
-	var targetFlag string
-	var allFlag bool
 	var removeContainersFlag bool
 
 	cmd := &cobra.Command{
@@ -30,7 +28,7 @@ func StopAppCmd(configPath *string) *cobra.Command {
 					ui.Error("Failed to load config: %v", err)
 					return
 				}
-				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				targets, err := expandTargets(appConfig, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("Failed to process deployment targets: %v", err)
 					return
@@ -50,9 +48,10 @@ func StopAppCmd(configPath *string) *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
 	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Stop app on a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Stop app on all targets")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Stop app on specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Stop app on all targets")
 	cmd.Flags().BoolVarP(&removeContainersFlag, "remove-containers", "r", false, "Remove containers after stopping them")
 
 	return cmd

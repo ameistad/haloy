@@ -14,10 +14,8 @@ import (
 )
 
 // SecretsSetCmd encrypts a plain-text value and stores it under the provided key.
-func SecretsSetCmd(configPath *string) *cobra.Command {
+func SecretsSetCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var serverFlag string
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:     "set <name> <value>",
@@ -43,7 +41,7 @@ func SecretsSetCmd(configPath *string) *cobra.Command {
 					ui.Error("%v", err)
 					return
 				}
-				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				targets, err := expandTargets(appConfig, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("Failed to process deployment targets: %v", err)
 					return
@@ -62,9 +60,10 @@ func SecretsSetCmd(configPath *string) *cobra.Command {
 			}
 		},
 	}
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
 	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Set secret for a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Set secret to all targets")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Set secret for specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Set secret to all targets")
 	return cmd
 }
 
@@ -156,10 +155,8 @@ func deleteSecret(appConfig *config.AppConfig, targetServer, name string) {
 }
 
 // SecretsListCmd lists all stored secrets in a table.
-func SecretsListCmd(configPath *string) *cobra.Command {
+func SecretsListCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var serverFlag string
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -174,7 +171,7 @@ func SecretsListCmd(configPath *string) *cobra.Command {
 					ui.Error("%v", err)
 					return
 				}
-				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				targets, err := expandTargets(appConfig, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("Failed to process deployment targets: %v", err)
 					return
@@ -193,16 +190,15 @@ func SecretsListCmd(configPath *string) *cobra.Command {
 			}
 		},
 	}
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
 	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "List secrets for a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "List secrets from all targets")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "List secrets for specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "List secrets from all targets")
 	return cmd
 }
 
-func SecretsDeleteCmd(configPath *string) *cobra.Command {
+func SecretsDeleteCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var serverFlag string
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "delete <name>",
@@ -219,7 +215,7 @@ func SecretsDeleteCmd(configPath *string) *cobra.Command {
 					ui.Error("%v", err)
 					return
 				}
-				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				targets, err := expandTargets(appConfig, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("Failed to process deployment targets: %v", err)
 					return
@@ -238,19 +234,20 @@ func SecretsDeleteCmd(configPath *string) *cobra.Command {
 			}
 		},
 	}
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
 	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL (overrides config)")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Delete secret from a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Delete secret from all targets")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Delete secret from specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Delete secret from all targets")
 	return cmd
 }
 
-func SecretsCmd(configPath *string) *cobra.Command {
+func SecretsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
 		Short: "Manage encrypted secrets on the server",
 	}
-	cmd.AddCommand(SecretsSetCmd(configPath))
-	cmd.AddCommand(SecretsListCmd(configPath))
-	cmd.AddCommand(SecretsDeleteCmd(configPath))
+	cmd.AddCommand(SecretsSetCmd(configPath, flags))
+	cmd.AddCommand(SecretsListCmd(configPath, flags))
+	cmd.AddCommand(SecretsDeleteCmd(configPath, flags))
 	return cmd
 }

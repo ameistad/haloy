@@ -13,10 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func LogsCmd(configPath *string) *cobra.Command {
+func LogsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var serverFlag string
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "logs",
@@ -34,7 +32,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 					ui.Error("%v", err)
 					return
 				}
-				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				targets, err := expandTargets(appConfig, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("Failed to process deployment targets: %v", err)
 					return
@@ -54,9 +52,10 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 		},
 	}
 
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
 	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Show logs of a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Show all target logs")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Show logs for specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Show all target logs")
 
 	return cmd
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/ui"
 	"github.com/oklog/ulid"
 )
 
@@ -66,28 +65,29 @@ type ExpandedTarget struct {
 	Config     config.AppConfig
 }
 
-func expandTargets(appConfig config.AppConfig, target string, allTargets bool) ([]ExpandedTarget, error) {
+func expandTargets(appConfig config.AppConfig, targets []string, allTargets bool) ([]ExpandedTarget, error) {
 	if len(appConfig.Targets) > 0 {
-		// Multiple targets available - user must specify intent
-		if target == "" && !allTargets {
+		if len(targets) == 0 && !allTargets {
 			var availableTargets []string
 			for name := range appConfig.Targets {
 				availableTargets = append(availableTargets, name)
 			}
-			return nil, fmt.Errorf("multiple targets available (%s). Please specify a target with --target or use --all to deploy to all targets",
+			return nil, fmt.Errorf("multiple targets available (%s). Please specify targets with --targets or use --all to deploy to all targets",
 				strings.Join(availableTargets, ", "))
 		}
-
-		if target != "" && allTargets {
+		if len(targets) > 0 && allTargets {
 			return nil, fmt.Errorf("cannot specify both --target and --all flags")
 		}
 
 		var targetsToDeploy []string
-		if target != "" {
-			if _, exists := appConfig.Targets[target]; !exists {
-				return nil, fmt.Errorf("target '%s' not found in configuration", target)
+		if len(targets) > 0 {
+			// User specified one or more targets.
+			for _, targetName := range targets {
+				if _, exists := appConfig.Targets[targetName]; !exists {
+					return nil, fmt.Errorf("target '%s' not found in configuration", targetName)
+				}
+				targetsToDeploy = append(targetsToDeploy, targetName)
 			}
-			targetsToDeploy = []string{target}
 		} else {
 			// allTargets is true
 			for name := range appConfig.Targets {
@@ -110,17 +110,14 @@ func expandTargets(appConfig config.AppConfig, target string, allTargets bool) (
 
 	// Single target deployment (no targets section, just base config)
 	if appConfig.Server != "" {
-		// For single target, warn if unnecessary flags are used
-		if target != "" || allTargets {
-			// You might want to return an error or just warn and continue
-			// I'll show a warning approach, but you could make this an error
-			ui.Warn("--target and --all flags are ignored when no targets are defined in the config")
+		if len(targets) > 0 || allTargets {
+			return nil, fmt.Errorf("the --targets and --all flags are not applicable because the configuration file does not define a 'targets' section")
 		}
 
 		finalConfig := appConfig
 		finalConfig.Targets = nil
 		return []ExpandedTarget{{
-			TargetName: "default",
+			TargetName: "",
 			Config:     finalConfig,
 		}}, nil
 	}

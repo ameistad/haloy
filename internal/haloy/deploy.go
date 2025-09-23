@@ -19,10 +19,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func DeployAppCmd(configPath *string) *cobra.Command {
+func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	var noLogsFlag bool
-	var targetFlag string
-	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "deploy",
@@ -36,7 +34,7 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			targets, err := expandTargets(appConfig, targetFlag, allFlag)
+			targets, err := expandTargets(appConfig, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("Failed to process deployment targets: %v", err)
 				return
@@ -76,9 +74,9 @@ func DeployAppCmd(configPath *string) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&noLogsFlag, "no-logs", false, "Don't stream deployment logs")
-	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Deploy to a specific target")
-	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Deploy to all targets")
+	cmd.Flags().StringVarP(&flags.configPath, "config", "c", "", "Path to config file or directory (default: .)")
+	cmd.Flags().StringSliceVarP(&flags.targets, "targets", "t", nil, "Deploy to a specific targets (comma-separated)")
+	cmd.Flags().BoolVarP(&flags.all, "all", "a", false, "Deploy to all targets")
 
 	return cmd
 }
