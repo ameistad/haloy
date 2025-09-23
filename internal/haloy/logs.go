@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
@@ -13,68 +14,84 @@ import (
 )
 
 func LogsCmd(configPath *string) *cobra.Command {
-	var serverURL string
+	var serverFlag string
+	var targetFlag string
+	var allFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Short: "Stream logs from haloy server",
 		Long: `Stream all logs from haloy server in real-time.
 
-		The path can be:
-- A directory containing haloy.json, haloy.yaml, haloy.yml, or haloy.toml
-- A full path to a config file with supported extension
-- A relative path to either of the above
-
-If no path is provided, the current directory is used.
-
 The logs are streamed in real-time and will continue until interrupted (Ctrl+C).`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			appConfig, _, _ := config.LoadAppConfig(*configPath) // we actually need an appConfig for this command
-
-			targetServer, err := getServer(appConfig, serverURL)
-			if err != nil {
-				ui.Error("%v", err)
-				return
-			}
-
-			token, err := getToken(appConfig, targetServer)
-			if err != nil {
-				ui.Error("%v", err)
-				return
-			}
-
-			ui.Info("Connecting to haloy server at %s", targetServer)
-			ui.Info("Streaming all logs... (Press Ctrl+C to stop)")
-
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			api, err := apiclient.New(targetServer, token)
-			if err != nil {
-				ui.Error("Failed to create API client: %v", err)
-				return
-			}
-			streamHandler := func(data string) bool {
-				var logEntry logging.LogEntry
-				if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
-					ui.Error("failed to parse log entry: %v", err)
+			if serverFlag != "" {
+				streamLogs(nil, serverFlag)
+			} else {
+				appConfig, _, err := config.LoadAppConfig(*configPath)
+				if err != nil {
+					ui.Error("%v", err)
+					return
+				}
+				targets, err := expandTargets(appConfig, targetFlag, allFlag)
+				if err != nil {
+					ui.Error("Failed to process deployment targets: %v", err)
+					return
 				}
 
-				prefix := ""
-				if logEntry.DeploymentID != "" {
-					prefix = fmt.Sprintf("[id: %s] -> ", logEntry.DeploymentID[:8])
+				var wg sync.WaitGroup
+				for _, target := range targets {
+					wg.Add(1)
+					go func(target ExpandedTarget) {
+						defer wg.Done()
+						streamLogs(&appConfig, target.Config.Server)
+					}(target)
 				}
 
-				ui.DisplayLogEntry(logEntry, prefix)
-
-				// Never stop streaming for general logs
-				return false
+				wg.Wait()
 			}
-			api.Stream(ctx, "logs", streamHandler)
 		},
 	}
 
-	cmd.Flags().StringVarP(&serverURL, "server", "s", "", "Haloy server URL")
+	cmd.Flags().StringVarP(&serverFlag, "server", "s", "", "Haloy server URL")
+	cmd.Flags().StringVarP(&targetFlag, "target", "t", "", "Show logs of a specific target")
+	cmd.Flags().BoolVarP(&allFlag, "all", "a", false, "Show all target logs")
+
 	return cmd
+}
+
+func streamLogs(appConfig *config.AppConfig, targetServer string) error {
+	token, err := getToken(appConfig, targetServer)
+	if err != nil {
+		return err
+	}
+
+	ui.Info("Connecting to haloy server at %s", targetServer)
+	ui.Info("Streaming all logs... (Press Ctrl+C to stop)")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	api, err := apiclient.New(targetServer, token)
+	if err != nil {
+		return fmt.Errorf("Failed to create API client: %w", err)
+	}
+	streamHandler := func(data string) bool {
+		var logEntry logging.LogEntry
+		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+			ui.Error("failed to parse log entry: %v", err)
+		}
+
+		prefix := ""
+		if logEntry.DeploymentID != "" {
+			prefix = fmt.Sprintf("[id: %s] -> ", logEntry.DeploymentID[:8])
+		}
+
+		ui.DisplayLogEntry(logEntry, prefix)
+
+		// Never stop streaming for general logs
+		return false
+	}
+	return api.Stream(ctx, "logs", streamHandler)
 }

@@ -20,9 +20,9 @@ func createDeploymentID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
 }
 
-func getToken(appConfig config.AppConfig, url string) (string, error) {
+func getToken(appConfig *config.AppConfig, url string) (string, error) {
 	// Check for app-specific token env var
-	if appConfig.APITokenEnv != "" {
+	if appConfig != nil && appConfig.APITokenEnv != "" {
 		if token := os.Getenv(appConfig.APITokenEnv); token != "" {
 			return token, nil
 		}
@@ -59,45 +59,6 @@ func getToken(appConfig config.AppConfig, url string) (string, error) {
 	}
 
 	return token, nil
-}
-
-func getServer(appConfig config.AppConfig, url string) (string, error) {
-	// Explicit server URL parameter takes highest priority
-	if url != "" {
-		return url, nil
-	}
-
-	// Server specified in app config
-	if appConfig.Server != "" {
-		return appConfig.Server, nil
-	}
-
-	// Fall back to client config for default server discovery
-	configDir, err := config.ConfigDir()
-	if err != nil {
-		return "", err
-	}
-	clientConfigPath := filepath.Join(configDir, constants.ClientConfigFileName)
-	clientConfig, _ := config.LoadClientConfig(clientConfigPath)
-
-	if clientConfig == nil || len(clientConfig.Servers) == 0 {
-		return "", fmt.Errorf("no servers configured. Run: haloy server add <url> <token>")
-	}
-
-	// If only one server configured, use it as default
-	if len(clientConfig.Servers) == 1 {
-		for url := range clientConfig.Servers {
-			return url, nil
-		}
-	}
-
-	// Multiple servers but no default specified
-	var urls []string
-	for url := range clientConfig.Servers {
-		urls = append(urls, url)
-	}
-
-	return "", fmt.Errorf("multiple servers configured but no server specified in config.\nAvailable servers: %s\nAdd 'server: <url>' to your app config", strings.Join(urls, ", "))
 }
 
 type ExpandedTarget struct {
@@ -153,7 +114,7 @@ func expandTargets(appConfig config.AppConfig, target string, allTargets bool) (
 		if target != "" || allTargets {
 			// You might want to return an error or just warn and continue
 			// I'll show a warning approach, but you could make this an error
-			ui.Warn("--target and --all flags are ignored when no targets are defined")
+			ui.Warn("--target and --all flags are ignored when no targets are defined in the config")
 		}
 
 		finalConfig := appConfig
