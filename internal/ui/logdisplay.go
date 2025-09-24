@@ -12,6 +12,13 @@ func DisplayLogEntry(logEntry logging.LogEntry, prefix string) {
 	isSuccess := logEntry.IsDeploymentSuccess
 	domains := logEntry.Domains
 
+	// Include error details from Fields if available
+	if errorMsg, exists := logEntry.Fields["error"]; exists {
+		if errorStr, ok := errorMsg.(string); ok && errorStr != "" {
+			message = fmt.Sprintf("%s: %s", message, errorStr)
+		}
+	}
+
 	if prefix != "" {
 		message = fmt.Sprintf("%s%s", prefix, message)
 	}
