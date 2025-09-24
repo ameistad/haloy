@@ -2,16 +2,15 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
-	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/docker"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
+	"github.com/ameistad/haloy/internal/storage"
 	"github.com/docker/docker/client"
 )
 
@@ -51,47 +50,85 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 		return targets, fmt.Errorf("app name cannot be empty")
 	}
 
-	// Get available images for the app
-	// List all images for the app that match the format appName:<deploymentID>.
-	images, err := cli.ImageList(ctx, image.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
-	})
+	db, err := storage.New()
 	if err != nil {
-		return targets, fmt.Errorf("failed to list images for %s: %w", appName, err)
+		return targets, fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer db.Close()
+
+	deployments, err := db.GetDeploymentHistory(appName, 50)
+	if err != nil {
+		return targets, fmt.Errorf("failed to get deployment history: %w", err)
 	}
 
 	runningDeploymentID, _ := getRunningDeploymentID(ctx, cli, appName)
 
-	for _, img := range images {
-		for _, imageRef := range img.RepoTags {
-			if strings.HasSuffix(imageRef, ":latest") {
-				continue
-			}
-			// Expected tag format: "appName:deploymentID", e.g. "test-app:20250615214304"
-			parts := strings.SplitN(imageRef, ":", 2)
-			if len(parts) != 2 {
-				// Unexpected tag format, skip this tag.
-				continue
-			}
-			deploymentID := parts[1]
-			appConfig, _ := GetAppConfigHistory(deploymentID)
-			target := deploytypes.RollbackTarget{
-				DeploymentID: deploymentID,
-				ImageID:      img.ID,
-				ImageRef:     imageRef,
-				IsRunning:    deploymentID == runningDeploymentID,
-				AppConfig:    appConfig,
-			}
-
-			targets = append(targets, target)
+	for _, deployment := range deployments {
+		// Parse deployed image config
+		deployedImage, err := deployment.GetDeployedImageConfig()
+		if err != nil {
+			continue // Skip malformed image configs
 		}
+
+		// Skip deployments with "none" strategy
+		if deployedImage.History != nil && deployedImage.History.Strategy == config.HistoryStrategyNone {
+			continue
+		}
+
+		// Get image reference
+		imageRef, err := deployment.GetImageRef()
+		if err != nil {
+			continue
+		}
+
+		// Check if image is available based on strategy
+		strategy := config.HistoryStrategyLocal // Default for legacy
+		if deployedImage.History != nil {
+			strategy = deployedImage.History.Strategy
+		}
+
+		available, err := isImageAvailable(ctx, cli, imageRef, strategy)
+		if err != nil || !available {
+			continue
+		}
+
+		// Parse original config and replace the image with the deployed one
+		var rollbackConfig config.AppConfig
+		if err := json.Unmarshal(deployment.AppConfig, &rollbackConfig); err != nil {
+			continue
+		}
+
+		// Replace the image in the config with the deployed image
+		rollbackConfig.Image = deployedImage
+
+		target := deploytypes.RollbackTarget{
+			DeploymentID: deployment.ID,
+			ImageRef:     imageRef,
+			IsRunning:    deployment.ID == runningDeploymentID,
+			AppConfig:    &rollbackConfig,
+		}
+
+		targets = append(targets, target)
 	}
 
-	sort.Slice(targets, func(i, j int) bool {
-		return targets[i].DeploymentID > targets[j].DeploymentID // Newest first
-	})
-
 	return targets, nil
+}
+
+func isImageAvailable(ctx context.Context, cli *client.Client, imageRef string, strategy config.HistoryStrategy) (bool, error) {
+	switch strategy {
+	case config.HistoryStrategyLocal:
+		_, _, err := cli.ImageInspectWithRaw(ctx, imageRef)
+		return err == nil, nil
+
+	case config.HistoryStrategyRegistry:
+		return true, nil // Assume registry images are available
+
+	case config.HistoryStrategyNone:
+		return false, nil
+
+	default:
+		return false, fmt.Errorf("unknown strategy: %s", strategy)
+	}
 }
 
 func getRunningDeploymentID(ctx context.Context, cli *client.Client, appName string) (string, error) {

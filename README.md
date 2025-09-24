@@ -5,7 +5,7 @@ Haloy is a simple and lightweight CLI tool for deploying apps to one or multiple
 ## ✨ Features
 * **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
 * **Automatic TLS:** Provides free, automatically renewing TLS certificates from Let's Encrypt.
-* **Easy Rollbacks:** Instantly revert to any previous deployment with a single command.
+* **Easy Rollbacks:** Instantly revert to any previous deployment with a single command. Supports multiple rollback strategies (local images, registry tags, or disabled).
 * **Simple Horizontal Scaling:** Scale your application by changing a single number in your config to run multiple container instances.
 * **High-performance Reverse Proxy:** Leverages [HAProxy](https://www.haproxy.org/) for load balancing, HTTPS termination, and HTTP/2 support.
 * **Deploy from Anywhere:** Integrated API allows for remote deployments from your local machine or a CI/CD pipeline.
@@ -24,7 +24,7 @@ Repeat these steps for each server you want to deploy to:
 
 1. Install `haloyadm`:
     ```bash
-    sudo curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
+    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | sudo bash
     ```
 
 2. Initialize `haloyd` and `HAProxy`:
@@ -76,15 +76,10 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
     Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
 
-3. Add your servers:
+3. Add server:
 ```bash
 # Aad a single server
 haloy server add haloy.yourserver.com <api-token>
-
-# Or add multiple servers
-haloy server add production.haloy.com <production-api-token>
-haloy server add staging.haloy.com <staging-api-token>
-haloy server add dev.haloy.com <dev-api-token>
 ``` 
 > [!TIP]
 > See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
@@ -314,7 +309,6 @@ Haloy supports YAML, JSON, and TOML formats:
 | `health_check_path` | string | No | Health check endpoint (default: "/") |
 | `env` | array | No | Environment variables (see [Environment Variables](#environment-variables)) |
 | `volumes` | array | No | Volume mounts |
-| `deployments_to_keep` | integer | No | Deployment history to keep (default: 6) |
 | `pre_deploy` | array | No | Commands to run before deploy |
 | `post_deploy` | array | No | Commands to run after deploy |
 | `global_pre_deploy` | array | No | Commands to run once before all deployments (multi-target only) |
@@ -329,7 +323,8 @@ Haloy supports YAML, JSON, and TOML formats:
 | `repository` | string | **Yes** | Docker image name |
 | `tag` | string | No | Image tag (default: "latest") |
 | `registry` | object | No | Private registry authentication |
-| `source` | string | No | Set to "local" for images already on server |
+| `source` | string | No | Where the source for the image is. If set to local it will only look for images already on the server. (default: registry) |
+| `history` | object | No | Image history and rollback strategy (see [Image History](#image-history)) |
 
 #### Target Configuration
 
@@ -347,7 +342,7 @@ When using multi-target deployments, each target can override any of the base co
 | `port` | string | Override container port |
 | `health_check_path` | string | Override health check path |
 | `volumes` | array | Override volume mounts |
-| `deployments_to_keep` | integer | Override deployment history |
+| `deployments_to_keep` | integer | **Deprecated**: Override deployment history count (use `image.history.count` instead) |
 | `pre_deploy` | array | Override pre-deploy hooks |
 | `post_deploy` | array | Override post-deploy hooks |
 | `network_mode` | string | Override network mode |
@@ -453,6 +448,84 @@ secret_name = "app-api-secret"
 - ✅ Use `value` for non-sensitive configuration (ports, URLs, feature flags)
 - ❌ Never put sensitive data in `value` fields as they're stored in plain text
 
+#### Image History
+
+Haloy supports different strategies for managing image history and rollbacks:
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| `local` | Keep images locally (default) | Fast rollbacks, local development |
+| `registry` | Rely on registry tags | Save disk space, production with versioned releases |
+| `none` | No rollback support | Minimal storage, no rollback needs |
+
+**Image History Configuration:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `strategy` | string | No | History strategy: "local", "registry", or "none" (default: "local") |
+| `count` | integer | Conditional* | Number of images/deployments to keep (required for "local" and "registry") |
+| `pattern` | string | Conditional* | Tag pattern for registry rollbacks (required for "registry" strategy) |
+
+> **Note**: `count` is required for "local" and "registry" strategies. `pattern` is required for "registry" strategy.
+
+**Examples:**
+
+<details>
+<summary>Local Strategy (Default)</summary>
+
+```yaml
+name: "my-app"
+image:
+  repository: "ghcr.io/my-org/my-app"
+  tag: "latest"
+  history:
+    strategy: "local"
+    count: 5  # Keep 5 images locally
+domains:
+  - domain: "my-app.com"
+```
+</details>
+
+<details>
+<summary>Registry Strategy</summary>
+
+```yaml
+name: "my-app"
+image:
+  repository: "ghcr.io/my-org/my-app"
+  tag: "v1.2.3"  # Must use immutable tags
+  history:
+    strategy: "registry"
+    count: 10  # Track 10 deployment versions
+    pattern: "v*"  # Match versioned tags for rollbacks
+domains:
+  - domain: "my-app.com"
+```
+</details>
+
+<details>
+<summary>No History Strategy</summary>
+
+```yaml
+name: "my-app"
+image:
+  repository: "ghcr.io/my-org/my-app"
+  tag: "latest"
+  history:
+    strategy: "none"  # No rollback support
+domains:
+  - domain: "my-app.com"
+```
+</details>
+
+**Strategy Details:**
+
+- **Local Strategy**: Haloy automatically tags images with deployment IDs and keeps them locally. Fast rollbacks but uses more disk space.
+
+- **Registry Strategy**: Relies on your registry's existing tags for rollbacks. You must use immutable tags (no "latest", "main", etc.). Saves local disk space but requires proper tagging discipline.
+
+- **None Strategy**: Disables rollback capability entirely. Minimal resource usage but no rollback safety net.
+
 #### Target Inheritance Example
 
 ```yaml
@@ -529,6 +602,11 @@ haloy rollback-targets --target production
 # Rollback to specific deployment
 haloy rollback [config-path] <deployment-id>
 haloy rollback --target production <deployment-id>
+
+# Note: Rollback availability depends on image.history.strategy:
+# - local: Fast rollbacks from locally stored images
+# - registry: Rollbacks use registry tags (requires immutable tags)
+# - none: No rollback support
 ```
 
 ### Server Management Commands

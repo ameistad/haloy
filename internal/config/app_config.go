@@ -15,20 +15,19 @@ import (
 )
 
 type TargetConfig struct {
-	Image             Image    `json:"image" yaml:"image" toml:"image"`
-	Server            string   `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
-	APITokenEnv       string   `json:"apiTokenEnv,omitempty" yaml:"api_token_env,omitempty" toml:"api_token_env,omitempty"`
-	Domains           []Domain `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
-	ACMEEmail         string   `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
-	Env               []EnvVar `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
-	DeploymentsToKeep *int     `json:"deploymentsToKeep,omitempty" yaml:"deployments_to_keep,omitempty" toml:"deployments_to_keep,omitempty"`
-	HealthCheckPath   string   `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty"`
-	Port              string   `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
-	Replicas          *int     `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
-	Volumes           []string `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
-	NetworkMode       string   `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
-	PreDeploy         []string `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
-	PostDeploy        []string `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
+	Image           Image    `json:"image" yaml:"image" toml:"image"`
+	Server          string   `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
+	APITokenEnv     string   `json:"apiTokenEnv,omitempty" yaml:"api_token_env,omitempty" toml:"api_token_env,omitempty"`
+	Domains         []Domain `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
+	ACMEEmail       string   `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
+	Env             []EnvVar `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
+	HealthCheckPath string   `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty"`
+	Port            string   `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
+	Replicas        *int     `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
+	Volumes         []string `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
+	NetworkMode     string   `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
+	PreDeploy       []string `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
+	PostDeploy      []string `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
 }
 
 type AppConfig struct {
@@ -54,7 +53,19 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 
 	// Apply overrides from the target. Target values take precedence.
 	if override.Image.Repository != "" {
-		final.Image = override.Image
+		final.Image.Repository = override.Image.Repository
+	}
+	if override.Image.Tag != "" {
+		final.Image.Tag = override.Image.Tag
+	}
+	if override.Image.Source != "" {
+		final.Image.Source = override.Image.Source
+	}
+	if override.Image.History != nil {
+		final.Image.History = override.Image.History
+	}
+	if override.Image.RegistryAuth != nil {
+		final.Image.RegistryAuth = override.Image.RegistryAuth
 	}
 	if override.Server != "" {
 		final.Server = override.Server
@@ -70,9 +81,6 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 	}
 	if override.Env != nil {
 		final.Env = override.Env
-	}
-	if override.DeploymentsToKeep != nil {
-		final.DeploymentsToKeep = override.DeploymentsToKeep
 	}
 	if override.HealthCheckPath != "" {
 		final.HealthCheckPath = override.HealthCheckPath
@@ -104,11 +112,13 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 
 // Normalize will set default values which will be inherited by all targets.
 func (ac *AppConfig) Normalize() {
-	if ac.DeploymentsToKeep == nil {
-		defaultMax := constants.DefaultDeploymentsToKeep
-		ac.DeploymentsToKeep = &defaultMax
+	if ac.Image.History == nil {
+		defaultCount := constants.DefaultDeploymentsToKeep
+		ac.Image.History = &ImageHistory{
+			Strategy: HistoryStrategyLocal,
+			Count:    &defaultCount,
+		}
 	}
-
 	if ac.HealthCheckPath == "" {
 		ac.HealthCheckPath = constants.DefaultHealthCheckPath
 	}
