@@ -65,7 +65,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 
 	for _, deployment := range deployments {
 		// Parse deployed image config
-		deployedImage, err := deployment.GetDeployedImageConfig()
+		deployedImage, err := deployment.GetRollbackImageConfig()
 		if err != nil {
 			continue // Skip malformed image configs
 		}
@@ -82,7 +82,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 		}
 
 		// Check if image is available based on strategy
-		strategy := config.HistoryStrategyLocal // Default for legacy
+		strategy := config.HistoryStrategyLocal
 		if deployedImage.History != nil {
 			strategy = deployedImage.History.Strategy
 		}
@@ -117,7 +117,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 func isImageAvailable(ctx context.Context, cli *client.Client, imageRef string, strategy config.HistoryStrategy) (bool, error) {
 	switch strategy {
 	case config.HistoryStrategyLocal:
-		_, _, err := cli.ImageInspectWithRaw(ctx, imageRef)
+		_, err := cli.ImageInspect(ctx, imageRef)
 		return err == nil, nil
 
 	case config.HistoryStrategyRegistry:

@@ -58,13 +58,13 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	return nil
 }
 
-func handleImageHistory(ctx context.Context, cli *client.Client, appConfig config.AppConfig, deploymentID, imageRef string, logger *slog.Logger) {
+func handleImageHistory(ctx context.Context, cli *client.Client, appConfig config.AppConfig, deploymentID, newImageRef string, logger *slog.Logger) {
 	switch appConfig.Image.History.Strategy {
 	case config.HistoryStrategyNone:
 		logger.Debug("History disabled, skipping cleanup and history storage")
 
 	case config.HistoryStrategyLocal:
-		if err := writeAppConfigHistory(appConfig, deploymentID, imageRef); err != nil {
+		if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef); err != nil {
 			logger.Warn("Failed to write app config history", "error", err)
 		} else {
 			logger.Debug("App configuration saved to history")
@@ -79,7 +79,7 @@ func handleImageHistory(ctx context.Context, cli *client.Client, appConfig confi
 
 	case config.HistoryStrategyRegistry:
 		// Save deployment history for rollback metadata
-		if err := writeAppConfigHistory(appConfig, deploymentID, imageRef); err != nil {
+		if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef); err != nil {
 			logger.Warn("Failed to write app config history", "error", err)
 		} else {
 			logger.Debug("App configuration saved to history")
@@ -111,8 +111,8 @@ func tagImage(ctx context.Context, cli *client.Client, srcRef, appName, deployme
 	return dstRef, nil
 }
 
-// WriteAppConfigHistory writes the given appConfig to the history folder, naming the file <deploymentID>.yml.
-func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageRef string) error {
+// writeAppConfigHistory writes the given appConfig to the db. It will save the newImageRef as a json repsentation of the Image struct to use for rollbacks
+func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, newImageRef string) error {
 	if appConfig.Image.History == nil {
 		return fmt.Errorf("image.history must be set")
 	}
@@ -130,13 +130,13 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageRef st
 	if err != nil {
 		return fmt.Errorf("failed to convert app config to JSON: %w", err)
 	}
-	deployedImage := appConfig.Image
-	if parts := strings.SplitN(imageRef, ":", 2); len(parts) == 2 {
-		deployedImage.Repository = parts[0]
-		deployedImage.Tag = parts[1]
+	rollbackImage := appConfig.Image
+	if parts := strings.SplitN(newImageRef, ":", 2); len(parts) == 2 {
+		rollbackImage.Repository = parts[0]
+		rollbackImage.Tag = parts[1]
 	}
 
-	deployedImageJSON, err := json.Marshal(deployedImage)
+	rollbackImageJSON, err := json.Marshal(rollbackImage)
 	if err != nil {
 		return fmt.Errorf("failed to convert deployed image to JSON: %w", err)
 	}
@@ -144,14 +144,13 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, imageRef st
 		ID:            deploymentID,
 		AppName:       appConfig.Name,
 		AppConfig:     appConfigJSON,
-		DeployedImage: deployedImageJSON,
+		RollbackImage: rollbackImageJSON,
 	}
 
 	if err := db.SaveDeployment(deployment); err != nil {
 		return fmt.Errorf("failed to save deployment to database: %w", err)
 	}
 
-	// After writing, prune old deployment entries.
 	if err := db.PruneOldDeployments(appConfig.Name, *appConfig.Image.History.Count); err != nil {
 		return fmt.Errorf("failed to prune old deployments: %w", err)
 	}

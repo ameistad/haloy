@@ -12,7 +12,7 @@ type Deployment struct {
 	ID             string          `db:"id" json:"id"`
 	AppName        string          `db:"app_name" json:"app_name"`
 	AppConfig      json.RawMessage `db:"app_config" json:"app_config"`
-	DeployedImage  json.RawMessage `db:"deployed_image" json:"deployed_image"`
+	RollbackImage  json.RawMessage `db:"rollback_image" json:"rollback_image"`
 	RolledBackFrom *string         `db:"rolled_back_from" json:"rolled_back_from,omitempty"`
 }
 
@@ -44,7 +44,7 @@ func (db *DB) SaveDeployment(deployment Deployment) error {
 	query := `INSERT INTO deployments (id, app_name, app_config, deployed_image, rolled_back_from)
               VALUES (?, ?, ?, ?, ?)`
 	_, err := db.Exec(query, deployment.ID, deployment.AppName, deployment.AppConfig,
-		deployment.DeployedImage, deployment.RolledBackFrom)
+		deployment.RollbackImage, deployment.RolledBackFrom)
 	return err
 }
 
@@ -55,7 +55,7 @@ func (db *DB) GetDeployment(deploymentID string) (Deployment, error) {
 
 	row := db.QueryRow(query, deploymentID)
 	err := row.Scan(&deployment.ID, &deployment.AppName, &deployment.AppConfig,
-		&deployment.DeployedImage, &deployment.RolledBackFrom)
+		&deployment.RollbackImage, &deployment.RolledBackFrom)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return deployment, fmt.Errorf("deployment '%s' not found", deploymentID)
@@ -83,7 +83,7 @@ func (db *DB) GetDeploymentHistory(appName string, limit int) ([]Deployment, err
 	for rows.Next() {
 		var deployment Deployment
 		err := rows.Scan(&deployment.ID, &deployment.AppName, &deployment.AppConfig,
-			&deployment.DeployedImage, &deployment.RolledBackFrom)
+			&deployment.RollbackImage, &deployment.RolledBackFrom)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan deployment: %w", err)
 		}
@@ -122,16 +122,16 @@ func (db *DB) PruneOldDeployments(appName string, deploymentsToKeep int) error {
 
 func (d *Deployment) GetImageRef() (string, error) {
 	var deployedImage config.Image
-	if err := json.Unmarshal(d.DeployedImage, &deployedImage); err != nil {
+	if err := json.Unmarshal(d.RollbackImage, &deployedImage); err != nil {
 		return "", fmt.Errorf("failed to parse deployed image: %w", err)
 	}
 	return deployedImage.ImageRef(), nil
 }
 
-// GetDeployedImageConfig parses and returns the deployed image configuration
-func (d *Deployment) GetDeployedImageConfig() (config.Image, error) {
+// GetRollbackImageConfig parses and returns the deployed image configuration
+func (d *Deployment) GetRollbackImageConfig() (config.Image, error) {
 	var deployedImage config.Image
-	if err := json.Unmarshal(d.DeployedImage, &deployedImage); err != nil {
+	if err := json.Unmarshal(d.RollbackImage, &deployedImage); err != nil {
 		return deployedImage, fmt.Errorf("failed to parse deployed image: %w", err)
 	}
 	return deployedImage, nil
