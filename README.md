@@ -296,7 +296,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `domains` | array | No | Domain configuration |
 | `acme_email` | string | No | Let's Encrypt email (required with domains) |
 | `replicas` | integer | No | Number of container instances (default: 1) |
-| `port` | string | No | Container port (default: "8080") |
+| `port` | string/integer | No | Container port to expose (default: "8080"). This is the port your application listens on inside the container. The proxy will route traffic from ports 80/443 to this container port. |
 | `health_check_path` | string | No | Health check endpoint (default: "/") |
 | `env` | array | No | Environment variables (see [Environment Variables](#environment-variables)) |
 | `volumes` | array | No | Volume mounts |

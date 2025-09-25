@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/constants"
@@ -22,7 +23,7 @@ type TargetConfig struct {
 	ACMEEmail       string   `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
 	Env             []EnvVar `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
 	HealthCheckPath string   `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty"`
-	Port            string   `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
+	Port            Port     `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
 	Replicas        *int     `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
 	Volumes         []string `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
 	NetworkMode     string   `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
@@ -124,7 +125,7 @@ func (ac *AppConfig) Normalize() {
 	}
 
 	if ac.Port == "" {
-		ac.Port = constants.DefaultContainerPort
+		ac.Port = Port(constants.DefaultContainerPort)
 	}
 
 	if ac.Replicas == nil {
@@ -171,7 +172,8 @@ func LoadAppConfig(path string) (AppConfig, string, error) {
 		TagName: format,
 		Result:  &appConfig,
 		// This ensures that embedded structs with inline tags work properly
-		Squash: true,
+		Squash:     true,
+		DecodeHook: portDecodeHook(),
 	}
 
 	unmarshalConf := koanf.UnmarshalConf{
@@ -247,4 +249,41 @@ func FindConfigFile(path string) (string, error) {
 
 	return "", fmt.Errorf("no haloy config file found in directory %s (looking for: %s)",
 		dirName, strings.Join(supportedConfigNames, ", "))
+}
+
+// Using custom Port type so we can use both string and int for port in the config.
+type Port string
+
+func (p Port) String() string {
+	return string(p)
+}
+
+func portDecodeHook() mapstructure.DecodeHookFuncType {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data any,
+	) (any, error) {
+		// Only process if target type is Port
+		if t != reflect.TypeOf(Port("")) {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case string:
+			return Port(v), nil
+		case int:
+			return Port(strconv.Itoa(v)), nil
+		case int64:
+			return Port(strconv.FormatInt(v, 10)), nil
+		case float64:
+			// Handle case where YAML/JSON might parse integers as floats
+			if v == float64(int(v)) {
+				return Port(strconv.Itoa(int(v))), nil
+			}
+			return nil, fmt.Errorf("port must be an integer, got float: %v", v)
+		default:
+			return nil, fmt.Errorf("port must be a string or integer, got %T: %v", data, data)
+		}
+	}
 }

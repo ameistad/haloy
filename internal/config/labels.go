@@ -36,7 +36,7 @@ type ContainerLabels struct {
 	DeploymentID    string
 	HealthCheckPath string
 	ACMEEmail       string
-	Port            string
+	Port            Port
 	Domains         []Domain
 	Role            string
 }
@@ -51,7 +51,7 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 	}
 
 	if v, ok := labels[LabelPort]; ok {
-		cl.Port = v
+		cl.Port = Port(v)
 	} else {
 		cl.Port = constants.DefaultContainerPort
 	}
@@ -124,7 +124,7 @@ func (cl *ContainerLabels) ToLabels() map[string]string {
 		LabelAppName:         cl.AppName,
 		LabelDeploymentID:    cl.DeploymentID,
 		LabelHealthCheckPath: cl.HealthCheckPath,
-		LabelPort:            cl.Port,
+		LabelPort:            cl.Port.String(),
 		LabelACMEEmail:       cl.ACMEEmail,
 		LabelRole:            cl.Role,
 	}

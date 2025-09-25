@@ -101,7 +101,7 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.
 
 		var port string
 		if labels.Port != "" {
-			port = labels.Port
+			port = labels.Port.String()
 		} else {
 			port = constants.DefaultContainerPort
 		}
@@ -230,7 +230,6 @@ type compareResult struct {
 // 3. Added deployments - new deployments that didn't exist in the previous state
 // This comparison is critical for determining when HAProxy configuration should be updated.
 func compareDeployments(oldDeployments, newDeployments map[string]Deployment) compareResult {
-
 	updatedDeployments := make(map[string]Deployment)
 	removedDeployments := make(map[string]Deployment)
 	addedDeployments := make(map[string]Deployment)

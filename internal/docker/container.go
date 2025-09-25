@@ -25,7 +25,6 @@ type ContainerRunResult struct {
 }
 
 func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRef string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
-
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
 	// Check image platform compatibility before creating containers

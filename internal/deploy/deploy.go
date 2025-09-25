@@ -74,7 +74,7 @@ func handleImageHistory(ctx context.Context, cli *client.Client, appConfig confi
 		if err := docker.RemoveImages(ctx, cli, logger, appConfig.Name, deploymentID, *appConfig.Image.History.Count); err != nil {
 			logger.Warn("Failed to clean up old images", "error", err)
 		} else {
-			logger.Debug("Old images cleaned up, keeping %d recent images locally", *appConfig.Image.History.Count)
+			logger.Debug(fmt.Sprintf("Old images cleaned up, keeping %d recent images locally", *appConfig.Image.History.Count))
 		}
 
 	case config.HistoryStrategyRegistry:
