@@ -23,7 +23,7 @@ haloy status                            # Check deployment status
 ### Prerequisites
 - **Server**: Any Linux server with Docker installed
 - **Local**: Docker for building your app
-- **Domain**: To access the API remotely 
+- **Domain**: To access the Haloy API remotely (optional for local development)
 
 ### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Servers
 
@@ -66,7 +66,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 3. Add server:
 ```bash
-# Aad a single server
+# Add a single server
 haloy server add haloy.yourserver.com <api-token>
 ``` 
 > [!TIP]
@@ -96,7 +96,9 @@ acme_email: "you@email.com"
 
 For all available options, see the full [Configuration Options](#configuration-options) table below.
 
-For mor information on how Haloy works check out the (architecture section)[#architecture]
+> [!TIP]
+> See [Architecture](#architecture) for detailed information on how the differents components work together.
+
 ## Multi-Server Deployments
 
 Haloy supports multi-server deployments, allowing you to define multiple deployment targets within a single configuration file. Common use cases include:
