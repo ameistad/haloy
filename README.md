@@ -1,3 +1,15 @@
+<p align="center">
+    <picture>
+      <source srcset="images/haloy-logo.svg" media="(prefers-color-scheme: light)">
+      <source srcset="images/logo-logo.svg" media="(prefers-color-scheme: light)">
+      <img src="images/haloy-logo.svg" alt="Haloy logo">
+    </picture>
+</p>
+<p align="center">Deploy containerized apps with zero downtime, automatic SSL, and effortless scaling.</p>
+
+---
+
+
 # Haloy
 
 **Deploy containerized apps with zero downtime, automatic SSL, and effortless scaling.**
