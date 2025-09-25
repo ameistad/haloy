@@ -8,15 +8,13 @@
 <h1 align="center">Haloy</h1>
 <p align="center">Deploy containerized apps with zero downtime, automatic SSL, and effortless scaling.</p>
 
-Haloy is a developer-friendly deployment platform that makes deploying Docker containers to your own servers as simple as `git push`. No complex orchestration, no vendor lock-in—just pure deployment bliss.
-
-## ✨ Why Haloy?
+Haloy is a developer-friendly deployment platform that makes deploying Docker containers to your own servers as simple as `git push`. No complex orchestration and no vendor lock-in.
 
 ```bash
 # Deploy in 3 commands:
 haloy server add my-server.com <token>  # Connect to your server
 haloy deploy                            # Deploy your app
-haloy status                           # Check deployment status
+haloy status                            # Check deployment status
 ```
 **Zero Learning Curve**: If you know Docker, you know Haloy.
 
