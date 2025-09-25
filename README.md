@@ -1,11 +1,11 @@
 <p align="center">
     <picture>
       <source srcset="images/haloy-logo.svg" media="(prefers-color-scheme: light)">
-      <source srcset="images/logo-logo.svg" media="(prefers-color-scheme: light)">
-      <img src="images/haloy-logo.svg" width="200" alt="Haloy logo">
+      <source srcset="images/haloy-logo.svg" media="(prefers-color-scheme: light)">
+      <img src="images/haloy-logo.svg" width="150" alt="Haloy logo">
     </picture>
-    <h1>Haloy</h1>
 </p>
+<h1 align="center">Haloy</h1>
 <p align="center">Deploy containerized apps with zero downtime, automatic SSL, and effortless scaling.</p>
 
 Haloy is a developer-friendly deployment platform that makes deploying Docker containers to your own servers as simple as `git push`. No complex orchestration, no vendor lock-in—just pure deployment bliss.
