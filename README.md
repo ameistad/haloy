@@ -17,12 +17,13 @@ haloy status                            # Check deployment status
 ```
 **Zero Learning Curve**: If you know Docker, you know Haloy.
 
+
 ## 🚀 Quick Start (5 minutes)
 
 ### Prerequisites
 - **Server**: Any Linux server with Docker installed
 - **Local**: Docker for building your app
-- **Domain**: (optional) For automatic SSL certificates
+- **Domain**: To access the API remotely 
 
 ### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Servers
 
@@ -41,10 +42,8 @@ Repeat these steps for each server you want to deploy to:
     💡 **Optional**: Secure the Haloy API with a domain during initialization:
     ```bash
     sudo haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
-    ```
 
-    If you don't have a domain ready now, you can set this later with:
-    ```bash
+    # If you don't have a domain now ready, you can set this later with:
     sudo haloyadm api domain haloy.yourserver.com you@email.com
     ```
 
@@ -56,7 +55,7 @@ The next step is to install the `haloy` CLI tool that will interact with the hal
 
 1. Install `haloy`
 ```bash
-curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
 ```
 
 2. Ensure `~/.local/bin` is in your PATH:
@@ -97,6 +96,7 @@ acme_email: "you@email.com"
 
 For all available options, see the full [Configuration Options](#configuration-options) table below.
 
+For mor information on how Haloy works check out the (architecture section)[#architecture]
 ## Multi-Server Deployments
 
 Haloy supports multi-server deployments, allowing you to define multiple deployment targets within a single configuration file. Common use cases include:
@@ -266,15 +266,15 @@ haloy status
 
 ## Architecture
 
-Haloy consists of several components:
+Haloy manages several components working together:
 
-1. **Haloy CLI (`haloy`)** - Command-line interface for deployments
-1. **Haloy Admin CLI** (`haloyadm`) - Command-line interface to administrate haloyd and secrets.
-1. **Haloy Daemon (haloyd)** - Service discovery and configuration management
-1. **HAProxy** - Load balancer and SSL termination
-1. **Application Containers** - Your deployed applications
+1. **Haloy CLI (`haloy`)** - Command-line interface for deployments and management from your local machine
+2. **Haloy Admin CLI (`haloyadm`)** - Command-line interface to set up and administrate `haloyd` and HAProxy
+3. **Haloy Daemon (`haloyd`)** - Service discovery, configuration management, and container orchestration
+4. **HAProxy** - External load balancer providing SSL termination and traffic routing (managed by Haloy)
+5. **Application Containers** - Your deployed applications orchestrated by `haloyd`
 
-The system uses Docker labels for service discovery and dynamic configuration generation.
+The system uses Docker labels for service discovery and dynamic HAProxy configuration generation. `haloyd` continuously monitors your application containers and automatically updates HAProxy's configuration to route traffic appropriately.
 
 ## Configuration Reference
 
