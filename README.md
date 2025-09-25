@@ -1,22 +1,25 @@
 # Haloy
 
-Haloy is a simple and lightweight CLI tool for deploying apps to one or multiple servers that you control.
+**Deploy containerized apps with zero downtime, automatic SSL, and effortless scaling.**
 
-## ✨ Features
-* **Zero-Downtime Deployments:** Haloy waits for new containers to be healthy before switching traffic, ensuring your application is always available.
-* **Automatic TLS:** Provides free, automatically renewing TLS certificates from Let's Encrypt.
-* **Easy Rollbacks:** Instantly revert to any previous deployment with a single command. Supports multiple rollback strategies (local images, registry tags, or disabled).
-* **Simple Horizontal Scaling:** Scale your application by changing a single number in your config to run multiple container instances.
-* **High-performance Reverse Proxy:** Leverages [HAProxy](https://www.haproxy.org/) for load balancing, HTTPS termination, and HTTP/2 support.
-* **Deploy from Anywhere:** Integrated API allows for remote deployments from your local machine or a CI/CD pipeline.
-* **Multi-Server Deployments:** Deploy the same application to multiple servers simultaneously or manage multiple server environments from a single CLI.
+Haloy is a developer-friendly deployment platform that makes deploying Docker containers to your own servers as simple as `git push`. No complex orchestration, no vendor lock-in—just pure deployment bliss.
 
-## 🚀 Quick Start
+## ✨ Why Haloy?
+
+```bash
+# Deploy in 3 commands:
+haloy server add my-server.com <token>  # Connect to your server
+haloy deploy                            # Deploy your app
+haloy status                           # Check deployment status
+```
+**Zero Learning Curve**: If you know Docker, you know Haloy.
+
+## 🚀 Quick Start (5 minutes)
 
 ### Prerequisites
-- One or more servers with root access and public IP addresses 
-- Docker installed on your servers
-- Docker image for your app
+- **Server**: Any Linux server with Docker installed
+- **Local**: Docker for building your app
+- **Domain**: (optional) For automatic SSL certificates
 
 ### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Servers
 
@@ -24,7 +27,7 @@ Repeat these steps for each server you want to deploy to:
 
 1. Install `haloyadm`:
     ```bash
-    curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | sudo bash
+    curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | sudo bash
     ```
 
 2. Initialize `haloyd` and `HAProxy`:
@@ -43,25 +46,8 @@ Repeat these steps for each server you want to deploy to:
     ```
 
 > [!NOTE]
-> For development or non-root installations, you can install in user mode:
-> ```bash
-> # Install to user directory
-> curl -sL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
-> 
-> # Add your user to the docker group (required for non-root Docker access)
-> sudo usermod -aG docker $(whoami)
-> 
-> # Log out and back in, or run:
-> newgrp docker
-> 
-> # Test Docker access
-> docker ps
-> 
-> # Initialize in local mode
-> haloyadm init --local-install
-> ```
->
-> ⚠️ Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access, so only do this for trusted users.
+> For development or non-root installations, you can install in [user mode](#non-root-install).
+
 ### 2. Install `haloy` Client
 The next step is to install the `haloy` CLI tool that will interact with the haloy server.
 
@@ -894,6 +880,26 @@ name: "app2"
 - ✅ `.env` files have `0600` permissions (owner only)
 - ✅ Config files contain no secrets
 - ✅ Works with environment variables or `.env` files
+
+### Non-root install
+```bash
+# Install to user directory
+curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
+
+# Add your user to the docker group (required for non-root Docker access)
+sudo usermod -aG docker $(whoami)
+
+# Log out and back in, or run:
+newgrp docker
+
+# Test Docker access
+docker ps
+
+# Initialize in local mode
+haloyadm init --local-install
+```
+
+⚠️ Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access, so only do this for trusted users.
 
 ## License
 
