@@ -1,7 +1,7 @@
 <p align="center">
     <picture>
       <source srcset="images/haloy-logo.svg" media="(prefers-color-scheme: light)">
-      <source srcset="images/haloy.logo-dark.svg" media="(prefers-color-scheme: dark)">      <img src="images/haloy-logo.svg" width="150" alt="Haloy logo">
+      <source srcset="images/haloy-logo-dark.svg" media="(prefers-color-scheme: dark)">      <img src="images/haloy-logo.svg" width="150" alt="Haloy logo">
     </picture>
 </p>
 <h1 align="center">Haloy</h1>
