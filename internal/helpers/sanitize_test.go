@@ -45,24 +45,3 @@ func TestSafeIDPrefix(t *testing.T) {
 		})
 	}
 }
-
-func TestSanitizeFilename(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{"valid filename", "my-file.txt", "my-file.txt"},
-		{"with spaces", "my file.txt", "my_file.txt"},
-		{"with slashes", "my/file.txt", "my_file.txt"},
-		{"with colons", "my:file.txt", "my_file.txt"},
-		{"with question mark", "my?file.txt", "my_file.txt"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := SanitizeFilename(tt.in); got != tt.want {
-				t.Errorf("SanitizeFilename() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}

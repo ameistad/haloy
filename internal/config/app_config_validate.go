@@ -110,10 +110,11 @@ func (tc *TargetConfig) Validate(format string) error {
 
 func isValidAppName(name string) bool {
 	// Only allow alphanumeric, hyphens, and underscores
-	matched, err := regexp.MatchString(`^[a-zA-Z0-9_-]+$`, name)
+	// Must start with alphanumeric character
+	// This is to satisfy docker container name restrictions
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`, name)
 	if err != nil {
-		// If regex fails, treat as invalid
-		return true
+		return false
 	}
 	return matched
 }

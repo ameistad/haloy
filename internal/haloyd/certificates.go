@@ -46,9 +46,11 @@ type CertificatesUser struct {
 func (u *CertificatesUser) GetEmail() string {
 	return u.Email
 }
+
 func (u *CertificatesUser) GetRegistration() *registration.Resource {
 	return u.Registration
 }
+
 func (u *CertificatesUser) GetPrivateKey() crypto.PrivateKey {
 	return u.privateKey
 }
@@ -647,16 +649,14 @@ func NewCertificatesKeyManager(keyDir string) (*CertificatesKeyManager, error) {
 // LoadOrCreateKey loads an existing account key or creates a new one
 func (km *CertificatesKeyManager) LoadOrCreateKey(email string) (crypto.PrivateKey, error) {
 	// Sanitize email for filename
-	filename := helpers.SanitizeFilename(email) + keyCertExt
+	filename := helpers.SanitizeString(email) + keyCertExt
 	keyPath := filepath.Join(km.keyDir, filename)
 
-	// Check if key already exists
 	if _, err := os.Stat(keyPath); err == nil {
 		// Key exists, load it
 		return km.loadKey(keyPath)
 	}
 
-	// Key doesn't exist, create a new one
 	return km.createKey(keyPath)
 }
 

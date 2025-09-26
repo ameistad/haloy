@@ -36,6 +36,9 @@ func TestIsValidAppName(t *testing.T) {
 		{"invalid with special char", "my@app", false},
 		{"invalid empty", "", false},
 		{"invalid with slash", "my/app", false},
+		{"invalid starts with underscore", "_my-app", false},
+		{"invalid starts with hyphen", "-my-app", false},
+		{"invalid starts with dot", ".my-app", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
