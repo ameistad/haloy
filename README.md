@@ -630,8 +630,59 @@ haloy secrets delete --all <name>                   # Delete from all targets
 # Roll secrets with haloyadm (creates new encryption key and re-encrypts all existing secrets)
 sudo haloyadm secrets roll
 ```
+## Shell Completion
 
-### Build Locally With Deployment Hooks
+Haloy supports shell completion for bash, zsh, fish, and PowerShell to make command usage faster and more convenient.
+
+### Setup Instructions
+
+**Bash:**
+```bash
+# Temporarily (current session only):
+source <(haloy completion bash)
+
+# Permanently:
+# Linux:
+haloy completion bash | sudo tee /etc/bash_completion.d/haloy > /dev/null
+# macOS:
+haloy completion bash | sudo tee /usr/local/etc/bash_completion.d/haloy > /dev/null
+```
+
+**Zsh:**
+```bash
+# Create completions directory and generate completion file
+mkdir -p ~/.local/share/zsh/site-functions
+haloy completion zsh > ~/.local/share/zsh/site-functions/_haloy
+
+# Add to ~/.zshrc (only needed once):
+echo 'fpath=(~/.local/share/zsh/site-functions $fpath)' >> ~/.zshrc
+echo 'autoload -U compinit && compinit' >> ~/.zshrc
+
+# Reload your shell or restart terminal
+```
+
+**Fish:**
+```bash
+mkdir -p ~/.config/fish/completions
+haloy completion fish > ~/.config/fish/completions/haloy.fish
+```
+
+**PowerShell:**
+```powershell
+haloy completion powershell > haloy.ps1
+# Then source the file from your PowerShell profile
+```
+
+### What You Get
+
+Shell completion provides:
+- Command and subcommand completion (`haloy dep<tab>` → `haloy deploy`)
+- Flag completion (`haloy deploy --t<tab>` → `haloy deploy --target`)
+- File path completion for configuration files
+- Target name completion for multi-target deployments
+
+
+## Build Locally With Deployment Hooks
 To get up and running quickly with your app you can build the images locally on your own system and upload with scp to your server. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. 
 
 Here's a simple configuration illustrating how we can build and deploy without needing a Docker registry.

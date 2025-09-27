@@ -10,9 +10,10 @@ import (
 // NewCompletionCmd creates a new completion command
 func CompletionCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "completion [bash|zsh|fish|powershell]",
-		Short: "Generate completion script",
-		Args:  cobra.ExactArgs(1),
+		Use:       "completion [bash|zsh|fish|powershell]",
+		Short:     "Generate completion script",
+		Args:      cobra.ExactArgs(1),
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
 		Long: `To load completions:
 
 Bash:
