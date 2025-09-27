@@ -1,7 +1,8 @@
 <p align="center">
     <picture>
       <source srcset="images/haloy-logo.svg" media="(prefers-color-scheme: light)">
-      <source srcset="images/haloy-logo-dark.svg" media="(prefers-color-scheme: dark)">      <img src="images/haloy-logo.svg" width="150" alt="Haloy logo">
+      <source srcset="images/haloy-logo-dark.svg" media="(prefers-color-scheme: dark)">
+      <img src="images/haloy-logo.svg" width="150" alt="Haloy logo">
     </picture>
 </p>
 <h1 align="center">Haloy</h1>
@@ -11,9 +12,9 @@ Haloy is a developer-friendly deployment platform that makes deploying Docker co
 
 ```bash
 # Deploy in 3 commands:
-haloy server add my-server.com <token>  # Connect to your server
-haloy deploy                            # Deploy your app
-haloy status                            # Check deployment status
+haloy server add haloyapi.my-app.com <token> # Connect to your server (e.g., haloy.example.com)
+haloy deploy                                 # Deploy your app
+haloy status                                 # Check deployment status
 ```
 **Zero Learning Curve**: If you know Docker, you know Haloy.
 
@@ -67,7 +68,7 @@ export PATH="$HOME/.local/bin:$PATH"
 3. Add server:
 ```bash
 # Add a single server
-haloy server add haloy.yourserver.com <api-token>
+haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
 ``` 
 > [!TIP]
 > See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
@@ -204,22 +205,6 @@ Deploy using specific configuration files:
 ```bash
 haloy deploy production.haloy.yaml
 haloy deploy staging.haloy.yaml
-```
-
-
-**Other commands support target flags too:**
-```bash
-# Check status of specific target
-haloy status --target production
-
-# View logs from staging
-haloy logs --target staging
-
-# Rollback production only
-haloy rollback --target production <deployment-id>
-
-# Stop all targets
-haloy stop --all
 ```
 
 ### Environment-Specific Configuration Files
@@ -578,6 +563,7 @@ haloy status --all                   # Status for all targets
 haloy stop [config-path]
 haloy stop --target production       # Stop specific target
 haloy stop --all                     # Stop all targets
+haloy stop --remove-containers       # Remove containers after stopping
 
 # View logs
 haloy logs [config-path]
@@ -593,24 +579,36 @@ haloy rollback-targets --target production
 # Rollback to specific deployment
 haloy rollback [config-path] <deployment-id>
 haloy rollback --target production <deployment-id>
-
-# Note: Rollback availability depends on image.history.strategy:
-# - local: Fast rollbacks from locally stored images
-# - registry: Rollbacks use registry tags (requires immutable tags)
-# - none: No rollback support
 ```
+
+**Note:** Rollback availability depends on `image.history.strategy`:
+- **local**: Fast rollbacks from locally stored images
+- **registry**: Rollbacks use registry tags (requires immutable tags)  
+- **none**: No rollback support
+
+**Common Flags:**
+- `--config, -c <path>` - Path to config file or directory (default: current directory)
+- `--server, -s <url>` - Haloy server URL (overrides config)
+- `--targets, -t <names>` - Target specific deployments (comma-separated)
+- `--all, -a` - Apply to all targets
 
 ### Server Management Commands
 ```bash
 # Add a server
-haloy server add <url> <token>
+haloy server add <server-domain> <token>  # e.g., haloy.example.com
+haloy server add <server-domain> <token> --force  # Force overwrite if exists
 
 # List configured servers
 haloy server list
 
 # Remove a server
-haloy server delete <url>
+haloy server delete <server-domain>
 ```
+
+**Server Domain Format:**
+- Use just the domain name (e.g., `haloy.example.com`)
+- Don't include `https://` - Haloy will handle that automatically
+- For local development: `localhost` or `127.0.0.1`
 
 ### Secrets Management Commands
 ```bash
@@ -629,6 +627,37 @@ haloy secrets delete --all <name>                   # Delete from all targets
 
 # Roll secrets with haloyadm (creates new encryption key and re-encrypts all existing secrets)
 sudo haloyadm secrets roll
+```
+
+**Common Flags:**
+- `--config, -c <path>` - Path to config file or directory
+- `--server, -s <url>` - Haloy server URL (overrides config)
+- `--targets, -t <names>` - Target specific deployments (comma-separated)
+- `--all, -a` - Apply to all targets
+
+### Server Administration Commands (haloyadm)
+
+These commands are run on the server to manage the Haloy daemon and services:
+
+```bash
+# Initialize haloyd and HAProxy (first-time setup)
+sudo haloyadm init
+sudo haloyadm init --api-domain haloy.example.com --acme-email you@example.com
+sudo haloyadm init --local-install  # For non-root installations
+
+# Start/stop services
+sudo haloyadm start                  # Start haloyd and HAProxy
+sudo haloyadm start --restart        # Restart if already running
+sudo haloyadm start --dev            # Use local haloyd image (development)
+sudo haloyadm start --debug          # Enable debug mode
+sudo haloyadm stop                   # Stop haloyd and HAProxy
+
+# API management
+sudo haloyadm api token              # Generate API token
+sudo haloyadm api domain <domain> <email>  # Set API domain and email
+
+# Secrets management
+sudo haloyadm secrets roll           # Roll encryption keys
 ```
 ## Shell Completion
 
@@ -938,6 +967,9 @@ name: "app2"
 - ✅ Works with environment variables or `.env` files
 
 ### Non-root install
+
+For development environments or when you don't have root access, you can install Haloy in user mode:
+
 ```bash
 # Install to user directory
 curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | bash
@@ -955,7 +987,13 @@ docker ps
 haloyadm init --local-install
 ```
 
-⚠️ Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access, so only do this for trusted users.
+**⚠️ Security Notice:** Non-root installations require your user to be in the `docker` group. Adding your user to the `docker` group gives root-equivalent access to the system, as Docker daemon runs with root privileges. Only do this for trusted users in secure environments.
+
+**User vs System Installation Differences:**
+- **User installation**: Uses `~/.config/haloy/` and `~/.local/share/haloy/`
+- **System installation**: Uses `/etc/haloy/` and `/var/lib/haloy/`
+- **Services**: Both use systemd, but user installation may require manual service setup
+- **Permissions**: User installation runs with your user permissions, system installation runs as root
 
 ## License
 
