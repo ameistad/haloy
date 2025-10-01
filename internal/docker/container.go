@@ -11,8 +11,6 @@ import (
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/secrets"
-	"github.com/ameistad/haloy/internal/storage"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
@@ -46,38 +44,9 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 
 	// Process environment variables
 	var envVars []string
-	var secretEnvVars []config.EnvVar
 
 	for _, envVar := range appConfig.Env {
-		if envVar.SecretName != "" {
-			secretEnvVars = append(secretEnvVars, envVar)
-		} else {
-			envVars = append(envVars, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
-		}
-	}
-
-	// Process secret environment variables
-	if len(secretEnvVars) > 0 {
-		db, err := storage.New()
-		if err != nil {
-			return result, fmt.Errorf("failed to create database: %w", err)
-		}
-		defer db.Close()
-		identity, err := secrets.GetAgeIdentity()
-		if err != nil {
-			return result, fmt.Errorf("failed to get age identity: %w", err)
-		}
-		for _, secretEnvVar := range secretEnvVars {
-			encryptedValue, err := db.GetSecretEncryptedValue(secretEnvVar.SecretName)
-			if err != nil {
-				return result, fmt.Errorf("failed to get encrypted secret value: %w", err)
-			}
-			decryptedValue, err := secrets.Decrypt(encryptedValue, identity)
-			if err != nil {
-				return result, fmt.Errorf("failed to decrypt secret value: %w", err)
-			}
-			envVars = append(envVars, fmt.Sprintf("%s=%s", secretEnvVar.Name, decryptedValue))
-		}
+		envVars = append(envVars, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
 	}
 
 	networkMode := container.NetworkMode(constants.DockerNetwork)

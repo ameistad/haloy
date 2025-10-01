@@ -3,58 +3,11 @@ package apiclient
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
-	"github.com/ameistad/haloy/internal/constants"
 )
 
-func (c *APIClient) SecretsList(ctx context.Context) (*apitypes.SecretsListResponse, error) {
-	var response apitypes.SecretsListResponse
-	if err := c.Get(ctx, "secrets", &response); err != nil {
-		return nil, err
-	}
-	return &response, nil
-}
-
-func (c *APIClient) SetSecret(ctx context.Context, name, value string) error {
-	request := apitypes.SetSecretRequest{
-		Name:  name,
-		Value: value,
-	}
-	if err := c.Post(ctx, "secrets", request, nil); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *APIClient) DeleteSecret(ctx context.Context, name string) error {
-	if name == "" {
-		return fmt.Errorf("secret name is required")
-	}
-
-	path := fmt.Sprintf("secrets/%s", name)
-	req, err := http.NewRequestWithContext(ctx, "DELETE", fmt.Sprintf("%s/v1/%s", c.baseURL, path), nil)
-	if err != nil {
-		return fmt.Errorf("failed to create DELETE request: %w", err)
-	}
-	c.setAuthHeader(req)
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send DELETE request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("authentication failed - check your %s", constants.EnvVarAPIToken)
-		}
-		return fmt.Errorf("DELETE request failed with status %d", resp.StatusCode)
-	}
-
-	return nil
-}
+// TODO: move this logic into the haloy package
 
 func (c *APIClient) AppStatus(ctx context.Context, appName string) (*apitypes.AppStatusResponse, error) {
 	if appName == "" {

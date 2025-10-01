@@ -5,8 +5,5 @@ func (db *DB) Migrate() error {
 		return err
 	}
 
-	if err := createSecretsTable(db); err != nil {
-		return err
-	}
 	return nil
 }

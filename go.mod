@@ -8,6 +8,7 @@ require (
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/go-acme/lego/v4 v4.22.2
 	github.com/go-viper/mapstructure/v2 v2.3.0
+	github.com/jinzhu/copier v0.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/parsers/toml v0.1.0

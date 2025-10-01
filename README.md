@@ -343,87 +343,6 @@ env:
     value: "true"
 ```
 
-**2. Secret references:** (requires [secrets management](#secrets-management))
-```yaml
-env:
-  - name: "API_KEY"
-    secret_name: "my-api-key"
-  - name: "DATABASE_PASSWORD"
-    secret_name: "db-password"
-```
-
-**Environment Variable Configuration:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | **Yes** | Environment variable name |
-| `value` | string | No* | Plain text value |
-| `secret_name` | string | No* | Reference to a stored secret |
-
-> **Note**: You must provide either `value` OR `secret_name`, but not both.
-
-**Examples:**
-
-<details>
-<summary>YAML Format</summary>
-
-```yaml
-env:
-  - name: "NODE_ENV"
-    value: "production"
-  - name: "PORT"
-    value: "3000"
-  - name: "API_SECRET"
-    secret_name: "app-api-secret"
-```
-</details>
-
-<details>
-<summary>JSON Format</summary>
-
-```json
-{
-  "env": [
-    {
-      "name": "NODE_ENV",
-      "value": "production"
-    },
-    {
-      "name": "PORT", 
-      "value": "3000"
-    },
-    {
-      "name": "API_SECRET",
-      "secretName": "app-api-secret"
-    }
-  ]
-}
-```
-</details>
-
-<details>
-<summary>TOML Format</summary>
-
-```toml
-[[env]]
-name = "NODE_ENV"
-value = "production"
-
-[[env]]
-name = "PORT"
-value = "3000"
-
-[[env]]
-name = "API_SECRET"
-secret_name = "app-api-secret"
-```
-</details>
-
-**Security Best Practices:**
-- ✅ Use `secret_name` for sensitive values (passwords, API keys, tokens)
-- ✅ Use `value` for non-sensitive configuration (ports, URLs, feature flags)
-- ❌ Never put sensitive data in `value` fields as they're stored in plain text
-
 #### Image History
 
 Haloy supports different strategies for managing image history and rollbacks:
@@ -530,8 +449,6 @@ targets:
     env:  # Completely replaces base env - no LOG_LEVEL or FEATURE_FLAG inherited
       - name: "NODE_ENV"
         value: "production"
-      - name: "DB_URL"
-        secret_name: "prod-db-url"
   
   staging:
     # Inherits: image.repository, image.tag="latest", replicas=2, port="8080", env array
@@ -610,25 +527,6 @@ haloy server delete <server-domain>
 - Don't include `https://` - Haloy will handle that automatically
 - For local development: `localhost` or `127.0.0.1`
 
-### Secrets Management Commands
-```bash
-# Manage secrets
-haloy secrets set <name> <value>
-haloy secrets set --target production <name> <value>  # Set for specific target
-haloy secrets set --all <name> <value>               # Set for all targets
-
-haloy secrets list
-haloy secrets list --target staging                  # List from specific target
-haloy secrets list --all                            # List from all targets
-
-haloy secrets delete <name>
-haloy secrets delete --target production <name>      # Delete from specific target
-haloy secrets delete --all <name>                   # Delete from all targets
-
-# Roll secrets with haloyadm (creates new encryption key and re-encrypts all existing secrets)
-sudo haloyadm secrets roll
-```
-
 **Common Flags:**
 - `--config, -c <path>` - Path to config file or directory
 - `--server, -s <url>` - Haloy server URL (overrides config)
@@ -655,9 +553,6 @@ sudo haloyadm stop                   # Stop haloyd and HAProxy
 # API management
 sudo haloyadm api token              # Generate API token
 sudo haloyadm api domain <domain> <email>  # Set API domain and email
-
-# Secrets management
-sudo haloyadm secrets roll           # Roll encryption keys
 ```
 ## Shell Completion
 

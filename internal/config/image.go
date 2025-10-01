@@ -23,14 +23,9 @@ type Image struct {
 
 type RegistryAuth struct {
 	// Server is optional. If not set, it will be parsed from the Repository field.
-	Server   string             `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
-	Username RegistryAuthSource `json:"username" yaml:"username" toml:"username"`
-	Password RegistryAuthSource `json:"password" yaml:"password" toml:"password"`
-}
-
-type RegistryAuthSource struct {
-	Type  string `json:"type" yaml:"type" toml:"type"`    // "env", "secret", or "plain"
-	Value string `json:"value" yaml:"value" toml:"value"` // env var name, secret name, or plain value
+	Server   string      `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
+	Username ValueSource `json:"username" yaml:"username" toml:"username"`
+	Password ValueSource `json:"password" yaml:"password" toml:"password"`
 }
 
 func (is *Image) ImageRef() string {
@@ -60,13 +55,11 @@ func (i *Image) Validate() error {
 		return fmt.Errorf("image.tag '%s' contains whitespace", i.Tag)
 	}
 
-	// Validate History if present
 	if i.History != nil {
 		if err := i.History.Validate(); err != nil {
 			return err
 		}
 
-		// Registry strategy validation
 		if i.History.Strategy == HistoryStrategyRegistry {
 			// Prevent mutable tags with registry strategy
 			tag := strings.TrimSpace(i.Tag)
@@ -83,35 +76,18 @@ func (i *Image) Validate() error {
 		}
 	}
 
-	// Validate RegistryAuth if present
 	if i.RegistryAuth != nil {
 		reg := i.RegistryAuth
 		// Server is optional; if empty, it will be parsed from Repository at runtime.
 		if strings.TrimSpace(reg.Server) != "" && strings.ContainsAny(reg.Server, " \t\n\r") {
 			return fmt.Errorf("image.registry.server '%s' contains whitespace", reg.Server)
 		}
-		// Validate Username
-		if err := validateRegistryAuthSource("username", reg.Username); err != nil {
+		if err := reg.Username.Validate(); err != nil {
 			return err
 		}
-		// Validate Password
-		if err := validateRegistryAuthSource("password", reg.Password); err != nil {
+		if err := reg.Password.Validate(); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-func validateRegistryAuthSource(field string, ras RegistryAuthSource) error {
-	validTypes := map[string]bool{"env": true, "secret": true, "plain": true}
-	if strings.TrimSpace(ras.Type) == "" {
-		return fmt.Errorf("image.registry.%s.type is required", field)
-	}
-	if !validTypes[ras.Type] {
-		return fmt.Errorf("image.registry.%s.type '%s' is invalid (must be 'env', 'secret', or 'plain')", field, ras.Type)
-	}
-	if strings.TrimSpace(ras.Value) == "" {
-		return fmt.Errorf("image.registry.%s.value is required", field)
 	}
 	return nil
 }

@@ -42,7 +42,6 @@ func NewRootCmd() *cobra.Command {
 		RollbackTargetsCmd(&resolvedConfigPath, appFlags),
 		RollbackAppCmd(&resolvedConfigPath, appFlags),
 		LogsCmd(&resolvedConfigPath, appFlags),
-		SecretsCmd(&resolvedConfigPath, appFlags),
 		StatusAppCmd(&resolvedConfigPath, appFlags),
 		StopAppCmd(&resolvedConfigPath, appFlags),
 		VersionCmd(&resolvedConfigPath, appFlags),

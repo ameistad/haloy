@@ -5,67 +5,24 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/secrets"
-	"github.com/ameistad/haloy/internal/storage"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 )
 
-func resolveRegistryAuthSource(ras config.RegistryAuthSource) (string, error) {
-	switch ras.Type {
-	case "env":
-		return os.Getenv(ras.Value), nil
-	case "secret":
-		db, err := storage.New()
-		if err != nil {
-			return "", fmt.Errorf("failed to create secrets manager: %w", err)
-		}
-		defer db.Close()
-		identity, err := secrets.GetAgeIdentity()
-		if err != nil {
-			return "", fmt.Errorf("failed to get age identity: %w", err)
-		}
-		encryptedValue, err := db.GetSecretEncryptedValue(ras.Value)
-		if err != nil {
-			return "", fmt.Errorf("failed to get secret '%s': %w", ras.Value, err)
-		}
-		decryptedValue, err := secrets.Decrypt(encryptedValue, identity)
-		if err != nil {
-			return "", fmt.Errorf("failed to decrypt secret '%s': %w", ras.Value, err)
-		}
-		if decryptedValue == "" {
-			return "", fmt.Errorf("secret '%s' is empty", ras.Value)
-		}
-		return decryptedValue, nil
-	case "plain":
-		return ras.Value, nil
-	default:
-		return "", fmt.Errorf("unsupported registry auth type: %s", ras.Type)
-	}
-}
-
 func getRegistryAuthString(imageConfig config.Image) (string, error) {
-	if imageConfig.RegistryAuth == nil {
+	auth := imageConfig.RegistryAuth
+	if auth == nil {
 		return "", nil
 	}
-	username, err := resolveRegistryAuthSource(imageConfig.RegistryAuth.Username)
-	if err != nil {
-		return "", err
-	}
-	password, err := resolveRegistryAuthSource(imageConfig.RegistryAuth.Password)
-	if err != nil {
-		return "", err
-	}
 	server := "index.docker.io" // Default to Docker Hub if no server specified
-	if imageConfig.RegistryAuth.Server != "" {
-		server = imageConfig.RegistryAuth.Server
+	if auth.Server != "" {
+		server = auth.Server
 	} else {
 		// If no server is set, parse it from the Repository field
 		parts := strings.SplitN(imageConfig.Repository, "/", 2)
@@ -74,8 +31,8 @@ func getRegistryAuthString(imageConfig config.Image) (string, error) {
 		}
 	}
 	authConfig := registry.AuthConfig{
-		Username:      username,
-		Password:      password,
+		Username:      auth.Username.Value,
+		Password:      auth.Password.Value,
 		ServerAddress: server,
 	}
 	authStr, err := registry.EncodeAuthConfig(authConfig)

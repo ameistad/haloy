@@ -33,14 +33,14 @@ type TargetConfig struct {
 
 type AppConfig struct {
 	Name string `json:"name" yaml:"name" toml:"name"`
+
 	// This tag tells the unmarshaler to treat TargetConfig's
 	// fields as if they were part of AppConfig directly.
-	TargetConfig `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
-
-	Targets map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
-
-	GlobalPreDeploy  []string `json:"globalPreDeploy,omitempty" yaml:"global_pre_deploy,omitempty" toml:"global_pre_deploy,omitempty"`
-	GlobalPostDeploy []string `json:"globalPostDeploy,omitempty" yaml:"global_post_deploy,omitempty" toml:"global_post_deploy,omitempty"`
+	TargetConfig     `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
+	Targets          map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
+	SecretProviders  *SecretProviders         `json:"secretProviders,omitempty" yaml:"secret_providers,omitempty" toml:"secret_providers,omitempty"`
+	GlobalPreDeploy  []string                 `json:"globalPreDeploy,omitempty" yaml:"global_pre_deploy,omitempty" toml:"global_pre_deploy,omitempty"`
+	GlobalPostDeploy []string                 `json:"globalPostDeploy,omitempty" yaml:"global_post_deploy,omitempty" toml:"global_post_deploy,omitempty"`
 }
 
 // mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.
