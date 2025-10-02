@@ -16,52 +16,63 @@ func Resolve(ctx context.Context, unresolvedConfig *config.AppConfig, configForm
 		return nil, nil
 	}
 
-	// Copy to avoid mutating the original
+	// Create a deep copy to avoid mutating the original
 	resolvedConfig := &config.AppConfig{}
-	err := copier.Copy(resolvedConfig, unresolvedConfig)
-	if err != nil {
+	if err := copier.Copy(resolvedConfig, unresolvedConfig); err != nil {
 		return nil, fmt.Errorf("failed to copy config for resolution: %w", err)
 	}
 
-	sourcesToResolve := gatherValueSources(resolvedConfig)
-	if len(sourcesToResolve) == 0 {
+	// Gather ValueSources across base config and all targets
+	allSources := gatherAllValueSources(resolvedConfig)
+	if len(allSources) == 0 {
 		return resolvedConfig, nil
 	}
 
-	// Group sources by the provider and the specific source configuration.
-	// This is the core of the "Fetch & Extract" model, ensuring we only call each provider once per unique source.
-	groupedSources, err := groupSources(sourcesToResolve, resolvedConfig.SecretProviders, configFormat)
+	// Group and fetch secrets once for the entire app config
+	groupedSources, err := groupSources(allSources, resolvedConfig.SecretProviders, configFormat)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to group sources: %w", err)
 	}
 
-	// Fetch the data for each group in bulk.
-	// The cache's key is a unique identifier for the source (e.g., "onepassword:prod_api_keys").
-	// The value is a map of the fetched secrets (e.g., {"api-key": "sk_...", "password": "..."}).
 	fetchedDataCache, err := fetchGroupedSources(ctx, groupedSources)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch grouped sources: %w", err)
 	}
 
-	// Extract the values from the fetched data and update the config.
-	if err := extractValues(sourcesToResolve, fetchedDataCache); err != nil {
-		return nil, err
+	// Extract values into all the sources we gathered
+	if err := extractValues(allSources, fetchedDataCache); err != nil {
+		return nil, fmt.Errorf("failed to extract values: %w", err)
 	}
 
 	return resolvedConfig, nil
 }
 
-// gatherValueSources scans the AppConfig and collects pointers to all ValueSource instances that need to be resolved.
-func gatherValueSources(appConfig *config.AppConfig) []*config.ValueSource {
+// gatherAllValueSources collects ValueSource pointers from the entire AppConfig tree
+func gatherAllValueSources(appConfig *config.AppConfig) []*config.ValueSource {
 	var sources []*config.ValueSource
 
-	for i := range appConfig.Env {
-		sources = append(sources, &appConfig.Env[i].ValueSource)
+	// Base config sources
+	sources = append(sources, gatherValueSources(&appConfig.TargetConfig)...)
+
+	// Target-specific sources
+	for _, targetConfig := range appConfig.Targets {
+		sources = append(sources, gatherValueSources(targetConfig)...)
 	}
 
-	if appConfig.Image.RegistryAuth != nil {
-		sources = append(sources, &appConfig.Image.RegistryAuth.Username)
-		sources = append(sources, &appConfig.Image.RegistryAuth.Password)
+	return sources
+}
+
+// gatherValueSources extracts ValueSources from a TargetConfig (works for both base and target overrides)
+func gatherValueSources(targetConfig *config.TargetConfig) []*config.ValueSource {
+	var sources []*config.ValueSource
+
+	for i := range targetConfig.Env {
+		sources = append(sources, &targetConfig.Env[i].ValueSource)
+	}
+
+	if targetConfig.Image.RegistryAuth != nil {
+		sources = append(sources, &targetConfig.Image.RegistryAuth.Username)
+		sources = append(sources, &targetConfig.Image.RegistryAuth.Password)
 	}
 
 	return sources
@@ -153,8 +164,8 @@ func fetchGroupedSources(ctx context.Context, groups map[groupKey]fetchGroup) (m
 
 		switch group.provider {
 		case "onepassword":
-			cfg := group.sourceConfig.(config.OnePasswordSourceConfig)
-			fetchedSecrets, err = fetchFrom1Password(ctx, cfg)
+			config := group.sourceConfig.(config.OnePasswordSourceConfig)
+			fetchedSecrets, err = fetchFrom1Password(ctx, config)
 		// Add cases for other providers here
 		default:
 			err = fmt.Errorf("unsupported secret provider: %s", group.provider)

@@ -45,70 +45,70 @@ type AppConfig struct {
 
 // mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.
 func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
-	final := *ac
+	mergedConfig := *ac
 
 	if override == nil {
-		final.Targets = nil
-		return &final
+		mergedConfig.Targets = nil
+		return &mergedConfig
 	}
 
 	// Apply overrides from the target. Target values take precedence.
 	if override.Image.Repository != "" {
-		final.Image.Repository = override.Image.Repository
+		mergedConfig.Image.Repository = override.Image.Repository
 	}
 	if override.Image.Tag != "" {
-		final.Image.Tag = override.Image.Tag
+		mergedConfig.Image.Tag = override.Image.Tag
 	}
 	if override.Image.Source != "" {
-		final.Image.Source = override.Image.Source
+		mergedConfig.Image.Source = override.Image.Source
 	}
 	if override.Image.History != nil {
-		final.Image.History = override.Image.History
+		mergedConfig.Image.History = override.Image.History
 	}
 	if override.Image.RegistryAuth != nil {
-		final.Image.RegistryAuth = override.Image.RegistryAuth
+		mergedConfig.Image.RegistryAuth = override.Image.RegistryAuth
 	}
 	if override.Server != "" {
-		final.Server = override.Server
+		mergedConfig.Server = override.Server
 	}
 	if override.APITokenEnv != "" {
-		final.APITokenEnv = override.APITokenEnv
+		mergedConfig.APITokenEnv = override.APITokenEnv
 	}
 	if override.Domains != nil {
-		final.Domains = override.Domains
+		mergedConfig.Domains = override.Domains
 	}
 	if override.ACMEEmail != "" {
-		final.ACMEEmail = override.ACMEEmail
+		mergedConfig.ACMEEmail = override.ACMEEmail
 	}
 	if override.Env != nil {
-		final.Env = override.Env
+		mergedConfig.Env = override.Env
 	}
 	if override.HealthCheckPath != "" {
-		final.HealthCheckPath = override.HealthCheckPath
+		mergedConfig.HealthCheckPath = override.HealthCheckPath
 	}
 	if override.Port != "" {
-		final.Port = override.Port
+		mergedConfig.Port = override.Port
 	}
 	if override.Replicas != nil {
-		final.Replicas = override.Replicas
+		mergedConfig.Replicas = override.Replicas
 	}
 	if override.Volumes != nil {
-		final.Volumes = override.Volumes
+		mergedConfig.Volumes = override.Volumes
 	}
 	if override.NetworkMode != "" {
-		final.NetworkMode = override.NetworkMode
+		mergedConfig.NetworkMode = override.NetworkMode
 	}
 	if override.PreDeploy != nil {
-		final.PreDeploy = override.PreDeploy
+		mergedConfig.PreDeploy = override.PreDeploy
 	}
 	if override.PostDeploy != nil {
-		final.PostDeploy = override.PostDeploy
+		mergedConfig.PostDeploy = override.PostDeploy
 	}
 
 	// The final, merged config has no concept of targets.
-	final.Targets = nil
+	mergedConfig.Targets = nil
 
-	return &final
+	return &mergedConfig
 }
 
 // Normalize will set default values which will be inherited by all targets.

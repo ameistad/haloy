@@ -101,11 +101,21 @@ func isValidConfigKey(key string, knownFields []string) bool {
 
 	// Check for map field patterns (e.g., "targets.somekey.field")
 	parts := strings.Split(key, ".")
+
+	// Handle targets.{dynamic_key}.{field}
 	if len(parts) >= 3 && parts[0] == "targets" {
 		// For targets.{dynamic_key}.{field}, check if the field part is valid
 		// by looking for a pattern like "targets.{field}" in known fields
 		targetFieldKey := "targets." + strings.Join(parts[2:], ".")
 		return slices.Contains(knownFields, targetFieldKey)
+	}
+
+	// Handle secret_providers.{provider}.{source_name}.{field}
+	if len(parts) >= 4 && parts[0] == "secret_providers" {
+		// For secret_providers.{provider}.{source_name}.{field}
+		// check if secret_providers.{provider}.{field} exists in known fields
+		providerFieldKey := "secret_providers." + parts[1] + "." + strings.Join(parts[3:], ".")
+		return slices.Contains(knownFields, providerFieldKey)
 	}
 
 	return false
@@ -137,7 +147,7 @@ func collectFields(structType reflect.Type, format string, prefix string, fields
 			fieldType = fieldType.Elem()
 		}
 
-		//  Check for embedding.
+		// Check for embedding.
 		if field.Anonymous && fieldType.Kind() == reflect.Struct {
 			// If it's an embedded struct, recurse into it with the SAME prefix
 			// to "promote" its fields to the parent's level.
@@ -146,7 +156,7 @@ func collectFields(structType reflect.Type, format string, prefix string, fields
 			continue
 		}
 
-		//  If it's NOT an embedded struct, proceed as normal.
+		// If it's NOT an embedded struct, proceed as normal.
 		fieldName := getFieldTagName(field, format)
 		if fieldName == "" || fieldName == "-" {
 			continue
@@ -158,8 +168,7 @@ func collectFields(structType reflect.Type, format string, prefix string, fields
 		}
 		*fields = append(*fields, fullFieldName)
 
-		//  Recurse into nested (but not embedded) structs/slices.
-		//  Handle maps with struct values (like Targets map[string]*TargetConfig)
+		// Handle maps with struct values (like Targets map[string]*TargetConfig)
 		if fieldType.Kind() == reflect.Map {
 			valueType := fieldType.Elem()
 			if valueType.Kind() == reflect.Ptr {
@@ -169,9 +178,18 @@ func collectFields(structType reflect.Type, format string, prefix string, fields
 				// For maps, we need to accept any key, so we use a wildcard approach
 				// by collecting the possible fields that could appear under this map
 				collectFields(valueType, format, fullFieldName, fields)
+			} else if valueType.Kind() == reflect.Map {
+				// Handle nested maps (like SecretProviders -> OnePassword -> map[string]Config)
+				nestedValueType := valueType.Elem()
+				if nestedValueType.Kind() == reflect.Ptr {
+					nestedValueType = nestedValueType.Elem()
+				}
+				if nestedValueType.Kind() == reflect.Struct {
+					collectFields(nestedValueType, format, fullFieldName, fields)
+				}
 			}
 		} else if fieldType.Kind() == reflect.Struct {
-			//  Recurse into nested (but not embedded) structs.
+			// Recurse into nested (but not embedded) structs.
 			collectFields(fieldType, format, fullFieldName, fields)
 		} else if fieldType.Kind() == reflect.Slice {
 			elemType := fieldType.Elem()
