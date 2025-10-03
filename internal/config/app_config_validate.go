@@ -32,10 +32,6 @@ func (ac *AppConfig) Validate(format string) error {
 		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
 	}
 
-	if ac.Server != "" && len(ac.Targets) > 0 {
-		return fmt.Errorf("configuration cannot contain both 'server' and 'targets'; please use one method")
-	}
-
 	// If using targets, validate each merged target configuration
 	if len(ac.Targets) > 0 {
 		for name, overrides := range ac.Targets {

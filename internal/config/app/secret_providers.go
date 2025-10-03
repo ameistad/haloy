@@ -1,4 +1,4 @@
-package config
+package app
 
 type SecretProviders struct {
 	OnePassword map[string]OnePasswordSourceConfig `json:"onepassword,omitempty" yaml:"onepassword,omitempty" toml:"onepassword,omitempty"`

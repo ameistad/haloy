@@ -1,4 +1,4 @@
-package configresolver
+package configloader
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 )
 
 func fetchFrom1Password(ctx context.Context, config config.OnePasswordSourceConfig) (map[string]string, error) {
-	fmt.Printf("HELLO FROM fetchFRom1Password")
 	if config.Item == "" || config.Vault == "" {
 		return nil, fmt.Errorf("1Password source requires 'vault' and 'item' to be set")
 	}

@@ -13,7 +13,7 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-func getConfigFormat(configFile string) (string, error) {
+func GetConfigFormat(configFile string) (string, error) {
 	ext := filepath.Ext(configFile)
 	switch ext {
 	case ".json":
@@ -27,7 +27,7 @@ func getConfigFormat(configFile string) (string, error) {
 	}
 }
 
-func getConfigParser(format string) (koanf.Parser, error) {
+func GetConfigParser(format string) (koanf.Parser, error) {
 	var parser koanf.Parser
 	switch format {
 	case "json":
@@ -75,7 +75,7 @@ func GetFieldNameForFormat(v any, fieldName, format string) string {
 	return parts[0]
 }
 
-func checkUnknownFields(structType reflect.Type, configKeys []string, format string) error {
+func CheckUnknownFields(structType reflect.Type, configKeys []string, format string) error {
 	knownFields := getKnownFields(structType, format)
 
 	unknownFields := make([]string, 0)

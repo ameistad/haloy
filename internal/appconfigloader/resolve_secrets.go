@@ -1,4 +1,4 @@
-package configresolver
+package configloader
 
 import (
 	"context"
@@ -8,16 +8,18 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/config/app"
+	appConfig "github.com/ameistad/haloy/internal/config/app"
 	"github.com/jinzhu/copier"
 )
 
-func Resolve(ctx context.Context, unresolvedConfig *config.AppConfig, configFormat string) (*config.AppConfig, error) {
+func resolveSecrets(ctx context.Context, unresolvedConfig *app.AppConfig, configFormat string) (*app.AppConfig, error) {
 	if unresolvedConfig == nil {
 		return nil, nil
 	}
 
 	// Create a deep copy to avoid mutating the original
-	resolvedConfig := &config.AppConfig{}
+	resolvedConfig := &app.AppConfig{}
 	if err := copier.Copy(resolvedConfig, unresolvedConfig); err != nil {
 		return nil, fmt.Errorf("failed to copy config for resolution: %w", err)
 	}
@@ -48,11 +50,11 @@ func Resolve(ctx context.Context, unresolvedConfig *config.AppConfig, configForm
 }
 
 // gatherAllValueSources collects ValueSource pointers from the entire AppConfig tree
-func gatherAllValueSources(appConfig *config.AppConfig) []*config.ValueSource {
-	var sources []*config.ValueSource
+func gatherAllValueSources(appConfig *app.AppConfig) []*app.ValueSource {
+	var sources []*app.ValueSource
 
 	// Base config sources
-	sources = append(sources, gatherValueSources(&appConfig.TargetConfig)...)
+	sources = append(sources, gatherValueSources(&app.TargetConfig)...)
 
 	// Target-specific sources
 	for _, targetConfig := range appConfig.Targets {
@@ -63,8 +65,8 @@ func gatherAllValueSources(appConfig *config.AppConfig) []*config.ValueSource {
 }
 
 // gatherValueSources extracts ValueSources from a TargetConfig (works for both base and target overrides)
-func gatherValueSources(targetConfig *config.TargetConfig) []*config.ValueSource {
-	var sources []*config.ValueSource
+func gatherValueSources(targetConfig *app.TargetConfig) []*app.ValueSource {
+	var sources []*app.ValueSource
 
 	for i := range targetConfig.Env {
 		sources = append(sources, &targetConfig.Env[i].ValueSource)
@@ -92,14 +94,14 @@ type fetchGroup struct {
 }
 
 // groupSources organizes the ValueSource instances into bulk fetch operations.
-func groupSources(sources []*config.ValueSource, providers *config.SecretProviders, configFormat string) (map[groupKey]fetchGroup, error) {
+func groupSources(sources []*app.ValueSource, providers *app.SecretProviders, configFormat string) (map[groupKey]fetchGroup, error) {
 	groups := make(map[groupKey]fetchGroup)
 
 	// if there are no providers are defined we'll check if there are any from.secret in the config and return an error.
 	if providers == nil {
 		for _, vs := range sources {
 			if vs.From != nil && vs.From.Secret != "" {
-				return nil, fmt.Errorf("found 'from.secret' reference but no '%s' block is defined in the configuration", config.GetFieldNameForFormat(config.AppConfig{}, "SecretProviders", configFormat))
+				return nil, fmt.Errorf("found 'from.secret' reference but no '%s' block is defined in the configuration", config.GetFieldNameForFormat(appConfig.AppConfig{}, "SecretProviders", configFormat))
 			}
 		}
 		return groups, nil // Only `env:` sources are possible, which don't need grouping.
@@ -164,7 +166,7 @@ func fetchGroupedSources(ctx context.Context, groups map[groupKey]fetchGroup) (m
 
 		switch group.provider {
 		case "onepassword":
-			config := group.sourceConfig.(config.OnePasswordSourceConfig)
+			config := group.sourceConfig.(app.OnePasswordSourceConfig)
 			fetchedSecrets, err = fetchFrom1Password(ctx, config)
 		// Add cases for other providers here
 		default:
@@ -181,7 +183,7 @@ func fetchGroupedSources(ctx context.Context, groups map[groupKey]fetchGroup) (m
 }
 
 // extractValues populates the final values into the config struct from the cache.
-func extractValues(sources []*config.ValueSource, cache map[groupKey]map[string]string) error {
+func extractValues(sources []*app.ValueSource, cache map[groupKey]map[string]string) error {
 	for _, vs := range sources {
 		if vs.From == nil {
 			continue

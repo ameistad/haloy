@@ -1,0 +1,67 @@
+package app
+
+import (
+	"github.com/ameistad/haloy/internal/constants"
+)
+
+type TargetConfig struct {
+	Image           Image    `json:"image" yaml:"image" toml:"image"`
+	Server          string   `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
+	APITokenEnv     string   `json:"apiTokenEnv,omitempty" yaml:"api_token_env,omitempty" toml:"api_token_env,omitempty"`
+	Domains         []Domain `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
+	ACMEEmail       string   `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
+	Env             []EnvVar `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
+	HealthCheckPath string   `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty"`
+	Port            Port     `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
+	Replicas        *int     `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
+	Volumes         []string `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
+	NetworkMode     string   `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
+	PreDeploy       []string `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
+	PostDeploy      []string `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
+}
+
+type AppConfig struct {
+	Name string `json:"name" yaml:"name" toml:"name"`
+
+	// This field is not read from the config file.
+	// It's populated by LoadAppConfigs to identify the target.
+	TargetName string `json:"-" yaml:"-" toml:"-"`
+
+	// This tag tells the unmarshaler to treat TargetConfig's
+	// fields as if they were part of AppConfig directly.
+	TargetConfig     `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
+	Targets          map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
+	SecretProviders  *SecretProviders         `json:"secretProviders,omitempty" yaml:"secr-et_providers,omitempty" toml:"secret_providers,omitempty"`
+	GlobalPreDeploy  []string                 `json:"globalPreDeploy,omitempty" yaml:"global_pre_deploy,omitempty" toml:"global_pre_deploy,omitempty"`
+	GlobalPostDeploy []string                 `json:"globalPostDeploy,omitempty" yaml:"global_post_deploy,omitempty" toml:"global_post_deploy,omitempty"`
+}
+
+// Normalize will set default values which will be inherited by all targets.
+func (ac *AppConfig) Normalize() {
+	if ac.Image.History == nil {
+		defaultCount := constants.DefaultDeploymentsToKeep
+		ac.Image.History = &ImageHistory{
+			Strategy: HistoryStrategyLocal,
+			Count:    &defaultCount,
+		}
+	}
+	if ac.HealthCheckPath == "" {
+		ac.HealthCheckPath = constants.DefaultHealthCheckPath
+	}
+
+	if ac.Port == "" {
+		ac.Port = Port(constants.DefaultContainerPort)
+	}
+
+	if ac.Replicas == nil {
+		defaultReplicas := constants.DefaultReplicas
+		ac.Replicas = &defaultReplicas
+	}
+}
+
+// Using custom Port type so we can use both string and int for port in the config.
+type Port string
+
+func (p Port) String() string {
+	return string(p)
+}

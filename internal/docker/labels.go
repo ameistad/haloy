@@ -1,10 +1,11 @@
-package config
+package docker
 
 import (
 	"fmt"
 	"sort"
 	"strings"
 
+	appConfig "github.com/ameistad/haloy/internal/config/app"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
 )
@@ -36,8 +37,8 @@ type ContainerLabels struct {
 	DeploymentID    string
 	HealthCheckPath string
 	ACMEEmail       string
-	Port            Port
-	Domains         []Domain
+	Port            appConfig.Port
+	Domains         []appConfig.Domain
 	Role            string
 }
 
@@ -51,7 +52,7 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 	}
 
 	if v, ok := labels[LabelPort]; ok {
-		cl.Port = Port(v)
+		cl.Port = appConfig.Port(v)
 	} else {
 		cl.Port = constants.DefaultContainerPort
 	}
@@ -64,7 +65,7 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 	}
 
 	// Parse domains
-	domainMap := make(map[int]*Domain)
+	domainMap := make(map[int]*appConfig.Domain)
 
 	// Process domain and alias labels.
 	for key, value := range labels {
@@ -110,11 +111,11 @@ func ParseContainerLabels(labels map[string]string) (*ContainerLabels, error) {
 }
 
 // getOrCreateDomain returns an existing *config.Domain from domainMap or creates a new one.
-func getOrCreateDomain(domainMap map[int]*Domain, idx int) *Domain {
+func getOrCreateDomain(domainMap map[int]*appConfig.Domain, idx int) *appConfig.Domain {
 	if domain, exists := domainMap[idx]; exists {
 		return domain
 	}
-	domainMap[idx] = &Domain{}
+	domainMap[idx] = &appConfig.Domain{}
 	return domainMap[idx]
 }
 
