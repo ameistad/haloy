@@ -12,9 +12,10 @@ type HealthResponse struct {
 }
 
 type DeployRequest struct {
-	AppConfig    config.AppConfig `json:"app"`
-	DeploymentID string           `json:"deploymentID"`
-	ConfigFormat string           `json:"configFormat,omitempty"`
+	ResolvedAppConfig config.AppConfig `json:"resolvedAppConfig"`
+	RawAppConfig      config.AppConfig `json:"rawAppConfig"`
+	DeploymentID      string           `json:"deploymentID"`
+	ConfigFormat      string           `json:"configFormat,omitempty"`
 }
 
 type RollbackRequest struct {

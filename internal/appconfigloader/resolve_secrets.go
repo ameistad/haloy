@@ -1,4 +1,4 @@
-package configresolver
+package appconfigloader
 
 import (
 	"context"
@@ -11,19 +11,14 @@ import (
 	"github.com/jinzhu/copier"
 )
 
-func Resolve(ctx context.Context, unresolvedConfig *config.AppConfig, configFormat string) (*config.AppConfig, error) {
-	if unresolvedConfig == nil {
-		return nil, nil
-	}
-
-	// Create a deep copy to avoid mutating the original
-	resolvedConfig := &config.AppConfig{}
-	if err := copier.Copy(resolvedConfig, unresolvedConfig); err != nil {
-		return nil, fmt.Errorf("failed to copy config for resolution: %w", err)
+func resolveSecrets(ctx context.Context, appConfig config.AppConfig, configFormat string) (config.AppConfig, error) {
+	var resolvedConfig config.AppConfig
+	if err := copier.Copy(&resolvedConfig, &appConfig); err != nil {
+		return config.AppConfig{}, fmt.Errorf("failed to copy config for resolution: %w", err)
 	}
 
 	// Gather ValueSources across base config and all targets
-	allSources := gatherAllValueSources(resolvedConfig)
+	allSources := gatherAllValueSources(&resolvedConfig)
 	if len(allSources) == 0 {
 		return resolvedConfig, nil
 	}
@@ -31,17 +26,17 @@ func Resolve(ctx context.Context, unresolvedConfig *config.AppConfig, configForm
 	// Group and fetch secrets once for the entire app config
 	groupedSources, err := groupSources(allSources, resolvedConfig.SecretProviders, configFormat)
 	if err != nil {
-		return nil, fmt.Errorf("failed to group sources: %w", err)
+		return config.AppConfig{}, fmt.Errorf("failed to group sources: %w", err)
 	}
 
 	fetchedDataCache, err := fetchGroupedSources(ctx, groupedSources)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch grouped sources: %w", err)
+		return config.AppConfig{}, fmt.Errorf("failed to fetch grouped sources: %w", err)
 	}
 
 	// Extract values into all the sources we gathered
 	if err := extractValues(allSources, fetchedDataCache); err != nil {
-		return nil, fmt.Errorf("failed to extract values: %w", err)
+		return config.AppConfig{}, fmt.Errorf("failed to extract values: %w", err)
 	}
 
 	return resolvedConfig, nil

@@ -19,10 +19,9 @@ func TestCheckUnknownFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := checkUnknownFields(appConfigType, tt.keys, "json"); (err == nil) == tt.wantErr {
+			if err := CheckUnknownFields(appConfigType, tt.keys, "json"); (err == nil) == tt.wantErr {
 				t.Errorf("TestCheckUnknownFields() error = %v, wantErr %v", err, tt.wantErr)
 			}
-
 		})
 	}
 }

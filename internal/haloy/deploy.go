@@ -12,6 +12,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/apitypes"
+	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
@@ -28,22 +29,16 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Long:  "Deploy an application using a haloy configuration file.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			appConfig, format, err := config.LoadAppConfig(*configPath)
+			ctx := cmd.Context()
+			targets, globalPreDeploy, globalPostDeploy, format, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("%v", err)
 				return
 			}
-
-			targets, err := expandTargets(appConfig, flags.targets, flags.all)
-			if err != nil {
-				ui.Error("Failed to process deployment targets: %v", err)
-				return
-			}
-
 			deploymentID := createDeploymentID()
 
-			if len(appConfig.GlobalPreDeploy) > 0 {
-				for _, hookCmd := range appConfig.GlobalPreDeploy {
+			if len(globalPreDeploy) > 0 {
+				for _, hookCmd := range globalPreDeploy {
 					if err := executeHook(hookCmd, getHooksWorkDir(*configPath)); err != nil {
 						ui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "GlobalPreDeploy", format), err)
 						return
@@ -55,16 +50,16 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target ExpandedTarget) {
+				go func(target appconfigloader.AppConfigTarget) {
 					defer wg.Done()
-					deployTarget(target, *configPath, deploymentID, format, noLogsFlag, len(targets) > 1)
+					deployTarget(ctx, target, *configPath, deploymentID, format, noLogsFlag, len(targets) > 1)
 				}(target)
 			}
 
 			wg.Wait()
 
-			if len(appConfig.GlobalPostDeploy) > 0 {
-				for _, hookCmd := range appConfig.GlobalPostDeploy {
+			if len(globalPostDeploy) > 0 {
+				for _, hookCmd := range globalPostDeploy {
 					if err := executeHook(hookCmd, getHooksWorkDir(*configPath)); err != nil {
 						ui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "GlobalPostDeploy", format), err)
 						return
@@ -81,17 +76,17 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func deployTarget(target ExpandedTarget, configPath, deploymentID, format string, noLogs, showTargetName bool) {
+func deployTarget(ctx context.Context, target appconfigloader.AppConfigTarget, configPath, deploymentID, format string, noLogs, showTargetName bool) {
 	prefix := ""
 	if showTargetName {
-		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", target.TargetName))
+		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", target.ResolvedAppConfig.TargetName))
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", target.Config.Name)
+	pui.Info("Deployment started for %s", target.ResolvedAppConfig.TargetName)
 
-	if len(target.Config.PreDeploy) > 0 {
-		for _, hookCmd := range target.Config.PreDeploy {
+	if len(target.ResolvedAppConfig.PreDeploy) > 0 {
+		for _, hookCmd := range target.ResolvedAppConfig.PreDeploy {
 			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
 				pui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "PreDeploy", format), err)
 				return
@@ -99,24 +94,24 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 		}
 	}
 
-	targetServer := target.Config.Server
-
-	token, err := getToken(&target.Config, targetServer)
+	token, err := getToken(&target.ResolvedAppConfig, target.ResolvedAppConfig.Server)
 	if err != nil {
 		pui.Error("%v", err)
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-	defer cancel()
-
 	// Send the deploy request
-	api, err := apiclient.New(targetServer, token)
+	api, err := apiclient.New(target.ResolvedAppConfig.Server, token)
 	if err != nil {
 		pui.Error("Failed to create API client: %v", err)
 		return
 	}
-	request := apitypes.DeployRequest{AppConfig: target.Config, DeploymentID: deploymentID, ConfigFormat: format}
+
+	request := apitypes.DeployRequest{
+		RawAppConfig:      target.RawAppConfig,
+		ResolvedAppConfig: target.ResolvedAppConfig,
+		DeploymentID:      deploymentID, ConfigFormat: format,
+	}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {
 		pui.Error("Deployment request failed: %v", err)
@@ -124,10 +119,6 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 	}
 
 	if !noLogs {
-		// No timout for streaming logs
-		streamCtx, streamCancel := context.WithCancel(context.Background())
-		defer streamCancel()
-
 		streamPath := fmt.Sprintf("deploy/%s/logs", deploymentID)
 
 		streamHandler := func(data string) bool {
@@ -143,11 +134,11 @@ func deployTarget(target ExpandedTarget, configPath, deploymentID, format string
 			return logEntry.IsDeploymentComplete
 		}
 
-		api.Stream(streamCtx, streamPath, streamHandler)
+		api.Stream(ctx, streamPath, streamHandler)
 	}
 
-	if len(target.Config.PostDeploy) > 0 {
-		for _, hookCmd := range target.Config.PostDeploy {
+	if len(target.ResolvedAppConfig.PostDeploy) > 0 {
+		for _, hookCmd := range target.ResolvedAppConfig.PostDeploy {
 			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
 				pui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "PostDeploy", format), err)
 			}

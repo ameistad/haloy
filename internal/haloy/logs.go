@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
@@ -24,27 +25,24 @@ func LogsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 The logs are streamed in real-time and will continue until interrupted (Ctrl+C).`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
+			ctx := cmd.Context()
 			if serverFlag != "" {
-				streamLogs(nil, serverFlag)
+				streamLogs(ctx, nil, serverFlag)
 			} else {
-				appConfig, _, err := config.LoadAppConfig(*configPath)
+
+				targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
-					return
-				}
-				targets, err := expandTargets(appConfig, flags.targets, flags.all)
-				if err != nil {
-					ui.Error("Failed to process deployment targets: %v", err)
 					return
 				}
 
 				var wg sync.WaitGroup
 				for _, target := range targets {
 					wg.Add(1)
-					go func(target ExpandedTarget) {
+					go func(appConfig config.AppConfig) {
 						defer wg.Done()
-						streamLogs(&appConfig, target.Config.Server)
-					}(target)
+						streamLogs(ctx, &appConfig, target.Resolved.Server)
+					}(target.Raw) // using Raw, because why not?
 				}
 
 				wg.Wait()
@@ -60,7 +58,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 	return cmd
 }
 
-func streamLogs(appConfig *config.AppConfig, targetServer string) error {
+func streamLogs(ctx context.Context, appConfig *config.AppConfig, targetServer string) error {
 	token, err := getToken(appConfig, targetServer)
 	if err != nil {
 		return err
@@ -68,9 +66,6 @@ func streamLogs(appConfig *config.AppConfig, targetServer string) error {
 
 	ui.Info("Connecting to haloy server at %s", targetServer)
 	ui.Info("Streaming all logs... (Press Ctrl+C to stop)")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	api, err := apiclient.New(targetServer, token)
 	if err != nil {

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
-	"github.com/ameistad/haloy/internal/configresolver"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
@@ -24,29 +24,25 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			configFileName, err := config.FindConfigFile(*configPath)
+			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+			defer cancel()
+
+			configFileName, err := appconfigloader.FindConfigFile(*configPath)
 			if err != nil {
 				ui.Error("%v", err)
 				return
 			}
 			// Just load the file to validate it.
-			appConfig, format, err := config.LoadAppConfig(*configPath)
-			if err != nil {
-				ui.Error("Config validation failed: %v", err)
-				return
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-			defer cancel()
-
-			resolvedAppConfig, err := configresolver.Resolve(ctx, &appConfig, format)
+			appConfigs, _, _, format, err := appconfigloader.Load(ctx, *configPath, nil, true)
 			if err != nil {
 				ui.Error("Config validation failed: %v", err)
 				return
 			}
 
 			if showResolvedConfigFlag {
-				displayResolvedConfig(resolvedAppConfig, format)
+				for _, appConfig := range appConfigs {
+					displayResolvedConfig(appConfig, format)
+				}
 			}
 
 			ui.Success("Config file '%s' is valid!", filepath.Base(configFileName))
@@ -56,7 +52,7 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func displayResolvedConfig(appConfig *config.AppConfig, format string) error {
+func displayResolvedConfig(appConfig config.AppConfig, format string) error {
 	var output string
 
 	switch format {

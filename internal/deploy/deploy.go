@@ -14,7 +14,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig config.AppConfig, configFormat string, logger *slog.Logger) error {
+func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig, rawAppConfig config.AppConfig, configFormat string, logger *slog.Logger) error {
 	appConfig.Normalize()
 	if err := appConfig.Validate(configFormat); err != nil {
 		return fmt.Errorf("app config validation failed: %w", err)
@@ -52,34 +52,34 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, app
 	} else {
 		logger.Info(fmt.Sprintf("Containers started successfully (%d replicas)", len(runResult)), "count", len(runResult), "deploymentID", deploymentID)
 	}
-
-	handleImageHistory(ctx, cli, appConfig, deploymentID, newImageRef, logger)
+	// We'll make sure to save the raw app config (without resolved secrets to history)
+	handleImageHistory(ctx, cli, rawAppConfig, deploymentID, newImageRef, logger)
 
 	return nil
 }
 
-func handleImageHistory(ctx context.Context, cli *client.Client, appConfig config.AppConfig, deploymentID, newImageRef string, logger *slog.Logger) {
-	switch appConfig.Image.History.Strategy {
+func handleImageHistory(ctx context.Context, cli *client.Client, rawAppConfig config.AppConfig, deploymentID, newImageRef string, logger *slog.Logger) {
+	switch rawAppConfig.Image.History.Strategy {
 	case config.HistoryStrategyNone:
 		logger.Debug("History disabled, skipping cleanup and history storage")
 
 	case config.HistoryStrategyLocal:
-		if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef); err != nil {
+		if err := writeAppConfigHistory(rawAppConfig, deploymentID, newImageRef); err != nil {
 			logger.Warn("Failed to write app config history", "error", err)
 		} else {
 			logger.Debug("App configuration saved to history")
 		}
 
 		// Keep N images locally for fast rollback
-		if err := docker.RemoveImages(ctx, cli, logger, appConfig.Name, deploymentID, *appConfig.Image.History.Count); err != nil {
+		if err := docker.RemoveImages(ctx, cli, logger, rawAppConfig.Name, deploymentID, *rawAppConfig.Image.History.Count); err != nil {
 			logger.Warn("Failed to clean up old images", "error", err)
 		} else {
-			logger.Debug(fmt.Sprintf("Old images cleaned up, keeping %d recent images locally", *appConfig.Image.History.Count))
+			logger.Debug(fmt.Sprintf("Old images cleaned up, keeping %d recent images locally", *rawAppConfig.Image.History.Count))
 		}
 
 	case config.HistoryStrategyRegistry:
 		// Save deployment history for rollback metadata
-		if err := writeAppConfigHistory(appConfig, deploymentID, newImageRef); err != nil {
+		if err := writeAppConfigHistory(rawAppConfig, deploymentID, newImageRef); err != nil {
 			logger.Warn("Failed to write app config history", "error", err)
 		} else {
 			logger.Debug("App configuration saved to history")
@@ -87,14 +87,14 @@ func handleImageHistory(ctx context.Context, cli *client.Client, appConfig confi
 
 		// Remove all old images - registry is source of truth
 		// Keep only the current deployment's image (count = 1)
-		if err := docker.RemoveImages(ctx, cli, logger, appConfig.Name, deploymentID, 1); err != nil {
+		if err := docker.RemoveImages(ctx, cli, logger, rawAppConfig.Name, deploymentID, 1); err != nil {
 			logger.Warn("Failed to clean up old images", "error", err)
 		} else {
 			logger.Debug("Old images cleaned up, registry strategy - keeping only current image locally")
 		}
 
 	default:
-		logger.Warn("Unknown history strategy, skipping history management", "strategy", appConfig.Image.History.Strategy)
+		logger.Warn("Unknown history strategy, skipping history management", "strategy", rawAppConfig.Image.History.Strategy)
 	}
 }
 

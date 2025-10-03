@@ -51,12 +51,12 @@ func LoadHaloydConfig(path string) (*HaloydConfig, error) {
 		return nil, nil
 	}
 
-	format, err := getConfigFormat(path)
+	format, err := GetConfigFormat(path)
 	if err != nil {
 		return nil, err
 	}
 
-	parser, err := getConfigParser(format)
+	parser, err := GetConfigParser(format)
 	if err != nil {
 		return nil, err
 	}
