@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/ui"
@@ -21,25 +22,21 @@ func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			if serverFlag != "" {
-				getVersion(nil, serverFlag)
+				getVersion(context.Background(), nil, serverFlag)
 			} else {
-				appConfig, _, err := config.LoadAppConfig(*configPath)
+				ctx := cmd.Context()
+				targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
-					return
-				}
-				targets, err := expandTargets(appConfig, flags.targets, flags.all)
-				if err != nil {
-					ui.Error("Failed to process deployment targets: %v", err)
 					return
 				}
 
 				var wg sync.WaitGroup
 				for _, target := range targets {
 					wg.Add(1)
-					go func(target ExpandedTarget) {
+					go func(target appconfigloader.AppConfigTarget) {
 						defer wg.Done()
-						getVersion(&appConfig, target.Config.Server)
+						getVersion(ctx, &target.ResolvedAppConfig, target.ResolvedAppConfig.Server)
 					}(target)
 				}
 
@@ -53,7 +50,7 @@ func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func getVersion(appConfig *config.AppConfig, targetServer string) {
+func getVersion(ctx context.Context, appConfig *config.AppConfig, targetServer string) {
 	token, err := getToken(appConfig, targetServer)
 	if err != nil {
 		ui.Error("%v", err)
@@ -61,7 +58,7 @@ func getVersion(appConfig *config.AppConfig, targetServer string) {
 	}
 	ui.Info("Getting version using server %s", targetServer)
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 	defer cancel()
 	cliVersion := constants.Version
 	api, err := apiclient.New(targetServer, token)

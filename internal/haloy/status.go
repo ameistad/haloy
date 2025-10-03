@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/ui"
@@ -21,24 +22,19 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Long:  "Show current status of a deployed application using a haloy configuration file.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
-			appConfig, _, err := config.LoadAppConfig(*configPath)
+			ctx := cmd.Context()
+			targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
-				ui.Error("Failed to load config: %v", err)
-				return
-			}
-
-			targets, err := expandTargets(appConfig, flags.targets, flags.all)
-			if err != nil {
-				ui.Error("Failed to process deployment targets: %v", err)
+				ui.Error("%v", err)
 				return
 			}
 
 			var wg sync.WaitGroup
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target ExpandedTarget) {
+				go func(target appconfigloader.AppConfigTarget) {
 					defer wg.Done()
-					getAppStatus(&appConfig, target.Config.Server, appConfig.Name)
+					getAppStatus(ctx, &target.ResolvedAppConfig, target.ResolvedAppConfig.Server, target.ResolvedAppConfig.Name)
 				}(target)
 			}
 
@@ -52,7 +48,7 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func getAppStatus(appConfig *config.AppConfig, targetServer, appName string) {
+func getAppStatus(ctx context.Context, appConfig *config.AppConfig, targetServer, appName string) {
 	token, err := getToken(appConfig, targetServer)
 	if err != nil {
 		ui.Error("%v", err)
@@ -60,7 +56,7 @@ func getAppStatus(appConfig *config.AppConfig, targetServer, appName string) {
 	}
 
 	ui.Info("Getting status for application: %s using server %s", appName, targetServer)
-	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
 	defer cancel()
 
 	api, err := apiclient.New(targetServer, token)

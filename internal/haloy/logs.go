@@ -41,8 +41,8 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 					wg.Add(1)
 					go func(appConfig config.AppConfig) {
 						defer wg.Done()
-						streamLogs(ctx, &appConfig, target.Resolved.Server)
-					}(target.Raw) // using Raw, because why not?
+						streamLogs(ctx, &appConfig, target.ResolvedAppConfig.Server)
+					}(target.RawAppConfig) // using Raw, because why not?
 				}
 
 				wg.Wait()

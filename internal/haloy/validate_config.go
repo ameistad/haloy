@@ -40,8 +40,8 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 			}
 
 			if showResolvedConfigFlag {
-				for _, appConfig := range appConfigs {
-					displayResolvedConfig(appConfig, format)
+				for _, target := range appConfigs {
+					displayResolvedConfig(target.ResolvedAppConfig, format)
 				}
 			}
 

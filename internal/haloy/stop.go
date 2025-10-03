@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
@@ -20,26 +21,22 @@ func StopAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Long:  "Stop all running containers for an application using a haloy configuration file.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			ctx := cmd.Context()
 			if serverFlag != "" {
-				stopApp(nil, serverFlag, "", removeContainersFlag)
+				stopApp(ctx, nil, serverFlag, "", removeContainersFlag)
 			} else {
-				appConfig, _, err := config.LoadAppConfig(*configPath)
+				targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
-					ui.Error("Failed to load config: %v", err)
-					return
-				}
-				targets, err := expandTargets(appConfig, flags.targets, flags.all)
-				if err != nil {
-					ui.Error("Failed to process deployment targets: %v", err)
+					ui.Error("%v", err)
 					return
 				}
 
 				var wg sync.WaitGroup
 				for _, target := range targets {
 					wg.Add(1)
-					go func(target ExpandedTarget) {
+					go func(target appconfigloader.AppConfigTarget) {
 						defer wg.Done()
-						stopApp(&appConfig, target.Config.Server, appConfig.Name, removeContainersFlag)
+						stopApp(ctx, &target.ResolvedAppConfig, target.ResolvedAppConfig.Server, target.ResolvedAppConfig.Name, removeContainersFlag)
 					}(target)
 				}
 
@@ -57,7 +54,7 @@ func StopAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func stopApp(appConfig *config.AppConfig, targetServer, appName string, removeContainers bool) {
+func stopApp(ctx context.Context, appConfig *config.AppConfig, targetServer, appName string, removeContainers bool) {
 	token, err := getToken(appConfig, targetServer)
 	if err != nil {
 		ui.Error("%v", err)
@@ -65,8 +62,6 @@ func stopApp(appConfig *config.AppConfig, targetServer, appName string, removeCo
 	}
 
 	ui.Info("Stopping application: %s using server %s", appName, targetServer)
-	ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-	defer cancel()
 
 	api, err := apiclient.New(targetServer, token)
 	if err != nil {
