@@ -23,7 +23,7 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			ctx := cmd.Context()
-			targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+			targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -56,8 +56,6 @@ func getAppStatus(ctx context.Context, appConfig *config.AppConfig, targetServer
 	}
 
 	ui.Info("Getting status for application: %s using server %s", appName, targetServer)
-	ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
-	defer cancel()
 
 	api, err := apiclient.New(targetServer, token)
 	if err != nil {

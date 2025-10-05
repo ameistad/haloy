@@ -1,7 +1,6 @@
 package haloy
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -24,24 +23,23 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
-			defer cancel()
+			ctx := cmd.Context()
 
 			configFileName, err := appconfigloader.FindConfigFile(*configPath)
 			if err != nil {
 				ui.Error("%v", err)
 				return
 			}
-			// Just load the file to validate it.
-			appConfigs, _, _, format, err := appconfigloader.Load(ctx, *configPath, nil, true)
+
+			targets, _, err := appconfigloader.Load(ctx, *configPath, nil, true)
 			if err != nil {
 				ui.Error("Config validation failed: %v", err)
 				return
 			}
 
 			if showResolvedConfigFlag {
-				for _, target := range appConfigs {
-					displayResolvedConfig(target.ResolvedAppConfig, format)
+				for _, target := range targets {
+					displayResolvedConfig(target.ResolvedAppConfig)
 				}
 			}
 
@@ -52,10 +50,10 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func displayResolvedConfig(appConfig config.AppConfig, format string) error {
+func displayResolvedConfig(appConfig config.AppConfig) error {
 	var output string
 
-	switch format {
+	switch appConfig.Format {
 	case "json":
 		data, err := json.MarshalIndent(appConfig, "", "  ")
 		if err != nil {
@@ -75,7 +73,7 @@ func displayResolvedConfig(appConfig config.AppConfig, format string) error {
 		}
 		output = string(data)
 	default:
-		return fmt.Errorf("unsupported format: %s", format)
+		return fmt.Errorf("unsupported format: %s", appConfig.Format)
 	}
 
 	ui.Section("Resolved Configuration", []string{output})

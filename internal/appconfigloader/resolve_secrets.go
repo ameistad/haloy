@@ -11,7 +11,7 @@ import (
 	"github.com/jinzhu/copier"
 )
 
-func resolveSecrets(ctx context.Context, appConfig config.AppConfig, configFormat string) (config.AppConfig, error) {
+func ResolveSecrets(ctx context.Context, appConfig config.AppConfig) (config.AppConfig, error) {
 	var resolvedConfig config.AppConfig
 	if err := copier.Copy(&resolvedConfig, &appConfig); err != nil {
 		return config.AppConfig{}, fmt.Errorf("failed to copy config for resolution: %w", err)
@@ -24,7 +24,7 @@ func resolveSecrets(ctx context.Context, appConfig config.AppConfig, configForma
 	}
 
 	// Group and fetch secrets once for the entire app config
-	groupedSources, err := groupSources(allSources, resolvedConfig.SecretProviders, configFormat)
+	groupedSources, err := groupSources(allSources, resolvedConfig.SecretProviders, resolvedConfig.Format)
 	if err != nil {
 		return config.AppConfig{}, fmt.Errorf("failed to group sources: %w", err)
 	}

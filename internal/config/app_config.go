@@ -24,7 +24,9 @@ type AppConfig struct {
 	Name string `json:"name" yaml:"name" toml:"name"`
 
 	// Not read from the config file and populated on load.
-	TargetName       string `json:"-" yaml:"-" toml:"-"`
+	TargetName string `json:"-" yaml:"-" toml:"-"`
+	Format     string `json:"-" yaml:"-" toml:"-"` // format of the config file (json, yaml or toml)
+
 	TargetConfig     `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
 	Targets          map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
 	SecretProviders  *SecretProviders         `json:"secretProviders,omitempty" yaml:"secret_providers,omitempty" toml:"secret_providers,omitempty"`

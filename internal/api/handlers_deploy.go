@@ -26,7 +26,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			return
 		}
 
-		if err := req.ResolvedAppConfig.Validate(req.ConfigFormat); err != nil {
+		if err := req.ResolvedAppConfig.Validate(req.ResolvedAppConfig.Format); err != nil {
 			http.Error(w, fmt.Sprintf("Invalid app configuration: %v", err), http.StatusBadRequest)
 			return
 		}
@@ -45,7 +45,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			}
 			defer cli.Close()
 
-			if err := deploy.DeployApp(ctx, cli, req.DeploymentID, req.ResolvedAppConfig, req.RawAppConfig, req.ConfigFormat, deploymentLogger); err != nil {
+			if err := deploy.DeployApp(ctx, cli, req.DeploymentID, req.ResolvedAppConfig, req.RawAppConfig, deploymentLogger); err != nil {
 				logging.LogDeploymentFailed(deploymentLogger, req.DeploymentID, req.ResolvedAppConfig.Name, "Deployment failed", err)
 				return
 			}

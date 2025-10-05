@@ -25,7 +25,7 @@ func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				getVersion(context.Background(), nil, serverFlag)
 			} else {
 				ctx := cmd.Context()
-				targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+				targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
 					return
@@ -58,8 +58,6 @@ func getVersion(ctx context.Context, appConfig *config.AppConfig, targetServer s
 	}
 	ui.Info("Getting version using server %s", targetServer)
 
-	ctx, cancel := context.WithTimeout(ctx, defaultContextTimeout)
-	defer cancel()
 	cliVersion := constants.Version
 	api, err := apiclient.New(targetServer, token)
 	if err != nil {

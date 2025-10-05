@@ -11,6 +11,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/jinzhu/copier"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -22,31 +23,35 @@ type AppConfigTarget struct {
 
 func Load(ctx context.Context, configPath string, targets []string, allTargets bool) (
 	appConfigTargets []AppConfigTarget,
-	globalPreDeploy []string,
-	globalPostDeploy []string,
-	configFormat string,
+	baseAppConfig config.AppConfig,
 	err error,
 ) {
 	rawAppConfig, format, err := loadRawAppConfig(configPath)
 	if err != nil {
-		return nil, nil, nil, "", err
+		return nil, config.AppConfig{}, err
 	}
 
 	// Set default values
 	rawAppConfig.Normalize()
 
 	if err := rawAppConfig.Validate(format); err != nil {
-		return nil, nil, nil, format, err
+		return nil, config.AppConfig{}, err
+	}
+
+	// Set the format the app config was loaded in
+	rawAppConfig.Format = format
+
+	// Deep copy to preserve original so we can return hooks
+	if err := copier.Copy(&baseAppConfig, &rawAppConfig); err != nil {
+		return nil, config.AppConfig{}, fmt.Errorf("failed to copy base app config: %w", err)
 	}
 
 	// Resolve secrets and environment variables.
-	resolvedAppConfig, err := resolveSecrets(ctx, rawAppConfig, format)
+	resolvedAppConfig, err := ResolveSecrets(ctx, rawAppConfig)
 	if err != nil {
-		return nil, nil, nil, format, err
+		return nil, config.AppConfig{}, err
 	}
 
-	globalPreDeploy = rawAppConfig.GlobalPreDeploy
-	globalPostDeploy = rawAppConfig.GlobalPostDeploy
 	rawAppConfig.GlobalPreDeploy = nil
 	rawAppConfig.GlobalPostDeploy = nil
 	resolvedAppConfig.GlobalPreDeploy = nil
@@ -62,7 +67,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 			for name := range rawAppConfig.Targets {
 				availableTargets = append(availableTargets, name)
 			}
-			return nil, nil, nil, format, fmt.Errorf("multiple targets available (%s); please specify targets with --targets or use --all", strings.Join(availableTargets, ", "))
+			return nil, config.AppConfig{}, fmt.Errorf("multiple targets available (%s); please specify targets with --targets or use --all", strings.Join(availableTargets, ", "))
 		}
 		if allTargets {
 			// User wants all available targets.
@@ -73,7 +78,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 			// User specified a subset of targets.
 			for _, name := range targets {
 				if _, exists := rawAppConfig.Targets[name]; !exists {
-					return nil, nil, nil, format, fmt.Errorf("target '%s' not found in configuration", name)
+					return nil, config.AppConfig{}, fmt.Errorf("target '%s' not found in configuration", name)
 				}
 			}
 			targetsToProcess = targets
@@ -81,7 +86,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 	} else {
 		// This is a single-target configuration file.
 		if len(targets) > 0 || allTargets {
-			return nil, nil, nil, format, fmt.Errorf("the --targets and --all flags are not applicable for a single-target configuration file")
+			return nil, config.AppConfig{}, fmt.Errorf("the --targets and --all flags are not applicable for a single-target configuration file")
 		}
 		targetsToProcess = []string{""} // Use an empty string to signify processing the base config itself.
 	}
@@ -111,7 +116,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 		})
 	}
 
-	return finalAppConfigTargets, globalPreDeploy, globalPostDeploy, format, nil
+	return finalAppConfigTargets, baseAppConfig, nil
 }
 
 func loadRawAppConfig(configPath string) (config.AppConfig, string, error) {

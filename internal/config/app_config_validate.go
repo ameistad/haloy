@@ -20,6 +20,11 @@ func (ac *AppConfig) isEmpty() bool {
 }
 
 func (ac *AppConfig) Validate(format string) error {
+	// We'll assume yaml if no format is supplied
+	if format == "" {
+		format = "yaml"
+	}
+
 	if ac.isEmpty() {
 		return fmt.Errorf("app configuration is required")
 	}

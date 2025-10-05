@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/ameistad/haloy/internal/apitypes"
@@ -12,17 +13,13 @@ import (
 
 func (s *APIServer) handleRollback() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		appName := r.PathValue("appName")
-		if appName == "" {
-			http.Error(w, "App name is required", http.StatusBadRequest)
-			return
-		}
-
 		var req apitypes.RollbackRequest
 		if err := decodeJSON(r.Body, &req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		appConfig := req.NewResolvedAppConfig
 
 		if req.TargetDeploymentID == "" {
 			http.Error(w, "Target deployment ID is required", http.StatusBadRequest)
@@ -30,6 +27,11 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 		}
 		if req.NewDeploymentID == "" {
 			http.Error(w, "New deployment ID is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := appConfig.Validate(appConfig.Format); err != nil {
+			http.Error(w, fmt.Sprintf("Invalid app configuration: %v", err), http.StatusBadRequest)
 			return
 		}
 
@@ -47,11 +49,11 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			}
 			defer cli.Close()
 
-			if err := deploy.RollbackApp(ctx, cli, appName, req.TargetDeploymentID, req.NewDeploymentID, deploymentLogger); err != nil {
-				deploymentLogger.Error("Deployment failed", "app", appName, "error", err)
+			if err := deploy.RollbackApp(ctx, cli, appConfig, req.TargetDeploymentID, req.NewDeploymentID, deploymentLogger); err != nil {
+				deploymentLogger.Error("Deployment failed", "app", appConfig.Name, "error", err)
 				return
 			}
-			deploymentLogger.Info("Rollback initiated", "app", appName, "deploymentID", req.NewDeploymentID)
+			deploymentLogger.Info("Rollback initiated", "app", appConfig.Name, "deploymentID", req.NewDeploymentID)
 		}()
 
 		w.WriteHeader(http.StatusAccepted)

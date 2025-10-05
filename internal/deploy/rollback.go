@@ -15,7 +15,9 @@ import (
 )
 
 // RollbackApp is basically a wrapper around DeployApp that allows rolling back to a previous deployment.
-func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploymentID, newDeploymentID string, logger *slog.Logger) error {
+func RollbackApp(ctx context.Context, cli *client.Client, resolvedAppConfig config.AppConfig, targetDeploymentID, newDeploymentID string, logger *slog.Logger) error {
+	appName := resolvedAppConfig.Name
+
 	targets, err := GetRollbackTargets(ctx, cli, appName)
 	if err != nil {
 		return err
@@ -25,14 +27,12 @@ func RollbackApp(ctx context.Context, cli *client.Client, appName, targetDeploym
 		return fmt.Errorf("there are no images to rollback to for %s", appName)
 	}
 
-	for _, t := range targets {
-		if t.DeploymentID == targetDeploymentID {
-			if t.AppConfig == nil {
-				return fmt.Errorf("failed to load app config for %s: %w", appName, err)
+	for _, target := range targets {
+		if target.DeploymentID == targetDeploymentID {
+			if target.RawAppConfig == nil {
+				return fmt.Errorf("no raw app config stored for app %s: %w", appName, err)
 			}
-			// Adding config format here doesn't seem necessary as it is mainly used to return better validation errors.
-			// If we already have used the config it's already been validated.
-			if err := DeployApp(ctx, cli, newDeploymentID, *t.AppConfig, "", logger); err != nil {
+			if err := DeployApp(ctx, cli, newDeploymentID, resolvedAppConfig, *target.RawAppConfig, logger); err != nil {
 				return fmt.Errorf("failed to deploy app %s: %w", appName, err)
 			}
 
@@ -94,7 +94,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 
 		// Parse original config and replace the image with the deployed one
 		var rollbackConfig config.AppConfig
-		if err := json.Unmarshal(deployment.AppConfig, &rollbackConfig); err != nil {
+		if err := json.Unmarshal(deployment.RawAppConfig, &rollbackConfig); err != nil {
 			continue
 		}
 
@@ -105,7 +105,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 			DeploymentID: deployment.ID,
 			ImageRef:     imageRef,
 			IsRunning:    deployment.ID == runningDeploymentID,
-			AppConfig:    &rollbackConfig,
+			RawAppConfig: &rollbackConfig,
 		}
 
 		targets = append(targets, target)

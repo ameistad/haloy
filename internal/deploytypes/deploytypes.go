@@ -7,5 +7,5 @@ type RollbackTarget struct {
 	ImageID      string
 	ImageRef     string
 	IsRunning    bool // The image is live
-	AppConfig    *config.AppConfig
+	RawAppConfig *config.AppConfig
 }

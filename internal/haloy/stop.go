@@ -25,7 +25,7 @@ func StopAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			if serverFlag != "" {
 				stopApp(ctx, nil, serverFlag, "", removeContainersFlag)
 			} else {
-				targets, _, _, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+				targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
 					return

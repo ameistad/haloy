@@ -14,25 +14,20 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, appConfig, rawAppConfig config.AppConfig, configFormat string, logger *slog.Logger) error {
-	appConfig.Normalize()
-	if err := appConfig.Validate(configFormat); err != nil {
-		return fmt.Errorf("app config validation failed: %w", err)
-	}
+func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, resolvedAppConfig, rawAppConfig config.AppConfig, logger *slog.Logger) error {
+	imageRef := resolvedAppConfig.Image.ImageRef()
 
-	imageRef := appConfig.Image.ImageRef()
-
-	err := docker.EnsureImageUpToDate(ctx, cli, logger, appConfig.Image)
+	err := docker.EnsureImageUpToDate(ctx, cli, logger, resolvedAppConfig.Image)
 	if err != nil {
 		return err
 	}
 
-	newImageRef, err := tagImage(ctx, cli, imageRef, appConfig.Name, deploymentID)
+	newImageRef, err := tagImage(ctx, cli, imageRef, resolvedAppConfig.Name, deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to tag image: %w", err)
 	}
 
-	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageRef, appConfig)
+	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageRef, resolvedAppConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("container startup timed out: %w", err)
@@ -143,7 +138,7 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, newImageRef
 	deployment := storage.Deployment{
 		ID:            deploymentID,
 		AppName:       appConfig.Name,
-		AppConfig:     appConfigJSON,
+		RawAppConfig:  appConfigJSON,
 		RollbackImage: rollbackImageJSON,
 	}
 
