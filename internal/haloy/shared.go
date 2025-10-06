@@ -19,12 +19,8 @@ func createDeploymentID() string {
 }
 
 func getToken(appConfig *config.AppConfig, url string) (string, error) {
-	// Check for app-specific token env var
-	if appConfig != nil && appConfig.APITokenEnv != "" {
-		if token := os.Getenv(appConfig.APITokenEnv); token != "" {
-			return token, nil
-		}
-		return "", fmt.Errorf("api token defined in config not found: %s environment variable not set", appConfig.APITokenEnv)
+	if appConfig != nil && appConfig.APIToken.Value != "" {
+		return appConfig.APIToken.Value, nil
 	}
 
 	configDir, err := config.ConfigDir()

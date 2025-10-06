@@ -277,7 +277,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `name` | string | **Yes** | Unique application name |
 | `image` | object | **Yes** | Docker image configuration |
 | `server` | string | No | Haloy server API URL |
-| `api_token_env` | string | No | Environment variable containing API token (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
+| `api_token` | object | No | API token configuration (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
 | `domains` | array | No | Domain configuration |
 | `acme_email` | string | No | Let's Encrypt email (required with domains) |
 | `replicas` | integer | No | Number of container instances (default: 1) |
@@ -310,7 +310,7 @@ When using multi-target deployments, each target can override any of the base co
 | Key | Type | Description |
 |-----|------|-------------|
 | `server` | string | Override the server for this target |
-| `api_token_env` | string | Override the API token environment variable |
+| `api_token` | object | Override the API token configuration |
 | `image` | object | Override image configuration (repository, tag, etc.) |
 | `domains` | array | Override domain configuration |
 | `acme_email` | string | Override ACME email |
@@ -815,7 +815,7 @@ Haloy uses standard system directories:
 
 Haloy supports managing multiple servers, each with their own API tokens. Haloy checks for API tokens in this order:
 
-1. **App config**: `api_token_env` field in your `haloy.yaml`
+1. **App config**: `api_token` field in your `haloy.yaml`
 2. **Client config**: Tokens stored via `haloy server add`
 
 ### Managing Multiple Servers
@@ -844,9 +844,9 @@ When you run `haloy server add`, Haloy creates two files:
 ```yaml
 servers:
   "production.haloy.com":
-    token_env: "HALOY_API_TOKEN_PRODUCTION_HALOY_COM"
+    token_env: "HALOY_API_TOKEN_PRODUCTION_HALOY_COM"  # Legacy format - still supported
   "staging.haloy.com":
-    token_env: "HALOY_API_TOKEN_STAGING_HALOY_COM"
+    token_env: "HALOY_API_TOKEN_STAGING_HALOY_COM"     # Legacy format - still supported
 ```
 
 **`~/.config/haloy/.env`** - Actual tokens:
@@ -858,7 +858,7 @@ HALOY_API_TOKEN_STAGING_HALOY_COM=def789token012
 When you deploy, Haloy:
 1. Loads `.env` files from current directory and config directory
 2. Gets server URL from your config
-3. Looks up the corresponding token environment variable
+3. Resolves the API token from your configuration (environment variable, secret, or direct value)
 4. Makes authenticated API calls to the specified server
 
 ### Server Selection Priority
@@ -873,10 +873,11 @@ Haloy determines which server to deploy to using this priority order:
 
 An alternative option is to set the API token in the app configuration file:
 
+**Simple environment variable (legacy style):**
 ```yaml
 name: "my-app"
 server: "api.haloy.dev"
-api_token_env: "PRODUCTION_DEPLOY_TOKEN"  # Use this token instead
+api_token: "PRODUCTION_DEPLOY_TOKEN"  # References environment variable
 image:
   repository: "my-app"
   tag: "latest"
@@ -887,7 +888,40 @@ Set the token in your environment:
 export PRODUCTION_DEPLOY_TOKEN="your_token_here"
 ```
 
-**Note:** The `api_token_env` field supports the same value resolution as environment variables. You can use `from.env` or `from.secret` references, though plain environment variable names are most common for API tokens.
+**Explicit value source (recommended):**
+```yaml
+name: "my-app"
+server: "api.haloy.dev"
+api_token:
+  from:
+    env: "PRODUCTION_DEPLOY_TOKEN"
+image:
+  repository: "my-app"
+  tag: "latest"
+```
+
+**Direct value (not recommended for production):**
+```yaml
+name: "my-app"
+server: "api.haloy.dev"
+api_token:
+  value: "your_token_here"
+image:
+  repository: "my-app"
+  tag: "latest"
+```
+
+**From secret provider:**
+```yaml
+name: "my-app"
+server: "api.haloy.dev"
+api_token:
+  from:
+    secret: "onepassword:api-tokens.production"
+image:
+  repository: "my-app"
+  tag: "latest"
+```
 
 ### Use Cases
 
@@ -895,11 +929,15 @@ export PRODUCTION_DEPLOY_TOKEN="your_token_here"
 ```bash
 # production.haloy.yaml
 server: production.haloy.com
-api_token_env: "PROD_TOKEN"
+api_token:
+  from:
+    env: "PROD_TOKEN"
 
 # staging.haloy.yaml  
 server: staging.haloy.com
-api_token_env: "STAGING_TOKEN"
+api_token:
+  from:
+    env: "STAGING_TOKEN"
 
 # Deploy to different environments
 export PROD_TOKEN="production_token_here"
@@ -918,15 +956,21 @@ export PROJECT_B_TOKEN="token_b"
 
 # project-a/production.haloy.yaml
 server: project-a-prod.haloy.com
-api_token_env: "PROJECT_A_PROD_TOKEN"
+api_token:
+  from:
+    env: "PROJECT_A_PROD_TOKEN"
 
 # project-a/staging.haloy.yaml
 server: project-a-staging.haloy.com
-api_token_env: "PROJECT_A_STAGING_TOKEN"
+api_token:
+  from:
+    env: "PROJECT_A_STAGING_TOKEN"
 
 # project-b/haloy.yaml
 server: project-b.haloy.com
-api_token_env: "PROJECT_B_TOKEN"
+api_token:
+  from:
+    env: "PROJECT_B_TOKEN"
 ```
 
 **Single server with multiple projects:**

@@ -13,7 +13,7 @@ import (
 func LoadEnvFiles(targets []string) {
 	_ = godotenv.Load(constants.ConfigEnvFileName)
 	for _, target := range targets {
-		_ = godotenv.Load(fmt.Sprintf(".env.%s"), target)
+		_ = godotenv.Load(fmt.Sprintf(".env.%s", target))
 	}
 
 	if configDir, err := ConfigDir(); err == nil {

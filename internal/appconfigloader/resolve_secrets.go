@@ -61,6 +61,8 @@ func gatherAllValueSources(appConfig *config.AppConfig) []*config.ValueSource {
 func gatherValueSources(targetConfig *config.TargetConfig) []*config.ValueSource {
 	var sources []*config.ValueSource
 
+	sources = append(sources, &targetConfig.APIToken)
+
 	for i := range targetConfig.Env {
 		sources = append(sources, &targetConfig.Env[i].ValueSource)
 	}
