@@ -20,7 +20,7 @@ func NewRootCmd() *cobra.Command {
 		Use:   "haloy",
 		Short: "haloy builds and runs Docker containers based on a YAML config",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			config.LoadEnvFiles() // load environment variables in .env for all commands.
+			config.LoadEnvFiles(appFlags.targets) // load environment variables in .env for all commands.
 
 			if cmd.Name() == "completion" || cmd.Parent().Name() == "server" {
 				return
