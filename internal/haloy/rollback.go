@@ -80,13 +80,12 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 						ui.Error("Unable to resolve secrets for the app config. This usually occurs when secrets names have been changed or deleted between deployments: %v", err)
 						return
 					}
-					path := fmt.Sprintf("rollback/%s", appName)
 					request := apitypes.RollbackRequest{
 						TargetDeploymentID:   targetDeploymentID,
 						NewDeploymentID:      newDeploymentID,
 						NewResolvedAppConfig: newResolvedAppConfig,
 					}
-					if err := api.Post(ctx, path, request, nil); err != nil {
+					if err := api.Post(ctx, "rollback", request, nil); err != nil {
 						ui.Error("Rollback failed: %v", err)
 						return
 					}
