@@ -290,6 +290,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `global_pre_deploy` | array | No | Commands to run once before all deployments (multi-target only) |
 | `global_post_deploy` | array | No | Commands to run once after all deployments (multi-target only) |
 | `targets` | object | No | Multiple deployment targets with overrides (see [Multi-Target Deployments](#multi-target-deployments-new)) |
+| `secret_providers` | object | No | Secret provider configuration for external secret management (see [Secret Providers](#secret-providers)) |
 | `network_mode` | string | No | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`) |
 
 #### Image Configuration
@@ -318,7 +319,6 @@ When using multi-target deployments, each target can override any of the base co
 | `port` | string | Override container port |
 | `health_check_path` | string | Override health check path |
 | `volumes` | array | Override volume mounts |
-| `deployments_to_keep` | integer | **Deprecated**: Override deployment history count (use `image.history.count` instead) |
 | `pre_deploy` | array | Override pre-deploy hooks |
 | `post_deploy` | array | Override post-deploy hooks |
 | `network_mode` | string | Override network mode |
@@ -332,7 +332,7 @@ When using multi-target deployments, each target can override any of the base co
 
 #### Environment Variables
 
-Environment variables can be configured in two ways:
+Environment variables can be configured in multiple ways:
 
 **1. Plain text values:**
 ```yaml
@@ -341,6 +341,90 @@ env:
     value: "postgres://localhost:5432/myapp"
   - name: "DEBUG"
     value: "true"
+```
+
+**2. From environment variables:**
+```yaml
+env:
+  - name: "DATABASE_URL"
+    from:
+      env: "PRODUCTION_DATABASE_URL"
+  - name: "API_KEY"
+    from:
+      env: "MY_API_KEY"
+```
+
+**3. From secret providers:**
+```yaml
+env:
+  - name: "DATABASE_PASSWORD"
+    from:
+      secret: "onepassword:production-db.password"
+  - name: "API_SECRET"
+    from:
+      secret: "onepassword:api-keys.secret-key"
+```
+
+**4. Environment files:**
+Haloy automatically loads environment variables from these files (in order):
+- `.env` in the current directory
+- `.env.{target}` for target-specific variables (e.g., `.env.production`)
+- `.env` in the Haloy config directory (`~/.config/haloy/`)
+
+**Example .env file:**
+```bash
+DATABASE_URL=postgres://localhost:5432/myapp
+API_KEY=your-secret-api-key
+DEBUG=true
+```
+
+#### Secret Providers
+
+Haloy supports integrating with external secret management services. Configure secret providers in your `haloy.yaml`:
+
+**1Password Integration:**
+```yaml
+name: "my-app"
+image:
+  repository: "ghcr.io/your-username/my-app"
+  tag: "latest"
+
+# Configure 1Password secret sources
+secretProviders:
+  onepassword:
+    production-db:  # Source name referenced in env vars
+      account: "my-account"  # Optional: 1Password account
+      vault: "Production"
+      item: "Database Credentials"
+    api-keys:
+      vault: "API Services"
+      item: "Third-party APIs"
+
+env:
+  - name: "DB_PASSWORD"
+    from:
+      secret: "onepassword:production-db.password"  # References vault item field
+  - name: "STRIPE_API_KEY"
+    from:
+      secret: "onepassword:api-keys.stripe-key"
+```
+
+**Requirements:**
+- 1Password CLI (`op`) must be installed and authenticated
+- The 1Password vault and item must exist with the referenced field names
+
+**Registry Authentication with Secrets:**
+```yaml
+image:
+  repository: "ghcr.io/your-org/private-app"
+  tag: "latest"
+  registry:
+    username:
+      from:
+        secret: "onepassword:registry-credentials.username"
+    password:
+      from:
+        secret: "onepassword:registry-credentials.password"
 ```
 
 #### Image History
@@ -494,7 +578,7 @@ haloy rollback-targets [config-path]
 haloy rollback-targets --target production
 
 # Rollback to specific deployment
-haloy rollback [config-path] <deployment-id>
+haloy rollback  <deployment-id>
 haloy rollback --target production <deployment-id>
 ```
 
@@ -802,6 +886,8 @@ Set the token in your environment:
 ```bash
 export PRODUCTION_DEPLOY_TOKEN="your_token_here"
 ```
+
+**Note:** The `api_token_env` field supports the same value resolution as environment variables. You can use `from.env` or `from.secret` references, though plain environment variable names are most common for API tokens.
 
 ### Use Cases
 
