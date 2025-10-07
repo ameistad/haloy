@@ -2,7 +2,6 @@ package haloyadm
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
-	"time"
 
 	"filippo.io/age"
 	"github.com/ameistad/haloy/internal/config"
@@ -22,7 +20,6 @@ import (
 )
 
 const (
-	initTimeout    = 5 * time.Minute
 	apiTokenLength = 32 // bytes, results in 64 character hex string
 )
 
@@ -56,6 +53,8 @@ The data directory can be customized by setting the %s environment variable.`,
 			constants.EnvVarDataDir,
 		),
 		Run: func(cmd *cobra.Command, args []string) {
+			ctx := cmd.Context()
+
 			if localInstall {
 				os.Setenv(constants.EnvVarSystemInstall, "false")
 			}
@@ -81,9 +80,6 @@ The data directory can be customized by setting the %s environment variable.`,
 					"Download from: https://www.docker.com/get-started")
 				return
 			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
-			defer cancel()
 
 			dataDir, err := config.DataDir()
 			if err != nil {
@@ -128,7 +124,7 @@ The data directory can be customized by setting the %s environment variable.`,
 				return
 			}
 
-			var emptyDirs = []string{
+			emptyDirs := []string{
 				filepath.Base(constants.HAProxyConfigDir),
 				filepath.Base(constants.DBDir),
 			}
@@ -178,7 +174,6 @@ The data directory can be customized by setting the %s environment variable.`,
 			}
 			ui.Info("You can now add this server to the haloy cli with:")
 			ui.Info(" haloy server add %s %s", apiDomainMessage, apiToken)
-
 		},
 	}
 
@@ -248,7 +243,6 @@ func copyDataFiles(dataDir string, emptyDirs []string) error {
 
 		return nil
 	})
-
 	if err != nil {
 		return err
 	}
@@ -260,6 +254,7 @@ func copyDataFiles(dataDir string, emptyDirs []string) error {
 
 	return nil
 }
+
 func copyConfigTemplateFiles(dataDir string) error {
 	haproxyConfigTemplateData := embed.HAProxyTemplateData{
 		HTTPFrontend:            "",

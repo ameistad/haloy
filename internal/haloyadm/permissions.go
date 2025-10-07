@@ -47,8 +47,7 @@ func checkDirectoryWritable(dir, dirType string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Directory doesn't exist - try to create it
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return formatPermissionError(dir, dirType, err)
 			}
 			return nil
@@ -64,7 +63,7 @@ func checkDirectoryWritable(dir, dirType string) error {
 
 	// Check if we can write to it by creating a temporary file
 	testFile := filepath.Join(dir, ".haloyadm-access-test")
-	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte("test"), 0o644); err != nil {
 		return formatPermissionError(dir, dirType, err)
 	}
 

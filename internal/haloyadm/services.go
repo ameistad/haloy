@@ -139,7 +139,6 @@ func startHAProxy(ctx context.Context, dataDir string) error {
 
 // containerExists checks if a haloy container with the given role exists (running or stopped).
 func containerExists(ctx context.Context, role string) (bool, error) {
-	// Use docker ps -a to list containers filtered by haloy role label
 	cmd := exec.CommandContext(ctx, "docker", "ps", "-a",
 		"--filter", fmt.Sprintf("label=%s=%s", config.LabelRole, role),
 		"--format", "{{.Names}}")
@@ -157,7 +156,6 @@ func containerExists(ctx context.Context, role string) (bool, error) {
 }
 
 func startServices(ctx context.Context, dataDir, configDir string, devMode, restart, debug bool) error {
-	// Check if containers exist
 	haloydExists, err := containerExists(ctx, config.HaloydLabelRole)
 	if err != nil {
 		return fmt.Errorf("failed to check haloyd container: %w", err)
@@ -168,7 +166,6 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 		return fmt.Errorf("failed to check haloy-haproxy container: %w", err)
 	}
 
-	// If containers exist and restart flag is not set, return error
 	if !restart {
 		if haloydExists {
 			return fmt.Errorf("haloyd container already exists, use --restart flag to restart it")
@@ -178,7 +175,6 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 		}
 	}
 
-	// If restart flag is set, stop existing containers
 	if restart {
 		if haloydExists {
 			ui.Info("haloyd is already running. Restarting...")
@@ -194,7 +190,6 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 		}
 	}
 
-	// Start the services
 	if err := startHaloyd(ctx, dataDir, configDir, devMode, debug); err != nil {
 		return err
 	}
@@ -207,7 +202,6 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 }
 
 func stopContainer(ctx context.Context, role string) error {
-	// First, get the container name by role
 	cmd := exec.CommandContext(ctx, "docker", "ps", "-a",
 		"--filter", fmt.Sprintf("label=%s=%s", config.LabelRole, role),
 		"--format", "{{.Names}}")
@@ -219,7 +213,6 @@ func stopContainer(ctx context.Context, role string) error {
 		return fmt.Errorf("failed to list containers with role %s: %w", role, err)
 	}
 
-	// If no container found, nothing to stop
 	output := strings.TrimSpace(out.String())
 	if output == "" {
 		return nil // No container to stop
@@ -229,7 +222,6 @@ func stopContainer(ctx context.Context, role string) error {
 	containerName := strings.Split(output, "\n")[0]
 	containerName = strings.TrimSpace(containerName)
 
-	// Now stop and remove the container
 	cmd = exec.CommandContext(ctx, "docker", "rm", "-f", containerName)
 
 	var stderr bytes.Buffer
@@ -256,7 +248,6 @@ func ensureNetwork(ctx context.Context) error {
 		return fmt.Errorf("failed to list Docker networks: %w", err)
 	}
 
-	// Check if the network exists.
 	networks := strings.Split(strings.TrimSpace(out.String()), "\n")
 	networkExists := slices.Contains(networks, constants.DockerNetwork)
 
@@ -264,8 +255,6 @@ func ensureNetwork(ctx context.Context) error {
 		return nil
 	}
 
-	// Create the network if it doesn't exist.
-	// Here we create a bridge network that is attachable and assign a label.
 	cmdCreate := exec.CommandContext(ctx, "docker", "network", "create",
 		"--driver", "bridge",
 		"--attachable",
@@ -289,7 +278,7 @@ func streamHaloydInitLogs(ctx context.Context, token string) error {
 
 	ui.Info("Connecting to haloyd API...")
 
-	waitCtx, waitCancel := context.WithTimeout(ctx, apiWaitTimeout)
+	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer waitCancel()
 
 	if err := waitForAPI(waitCtx, api); err != nil {
@@ -297,9 +286,6 @@ func streamHaloydInitLogs(ctx context.Context, token string) error {
 	}
 
 	ui.Info("Streaming haloyd initialization logs...")
-
-	streamCtx, streamCancel := context.WithCancel(ctx)
-	defer streamCancel()
 
 	streamHandler := func(data string) bool {
 		var logEntry logging.LogEntry
@@ -310,10 +296,9 @@ func streamHaloydInitLogs(ctx context.Context, token string) error {
 
 		ui.DisplayLogEntry(logEntry, "")
 
-		// Stop streaming when haloyd init is complete
 		return logEntry.IsHaloydInitComplete
 	}
-	return api.Stream(streamCtx, "logs", streamHandler)
+	return api.Stream(ctx, "logs", streamHandler)
 }
 
 // waitForAPI polls the API health endpoint until it's available

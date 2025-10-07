@@ -29,6 +29,8 @@ func APIDomainCmd() *cobra.Command {
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
+			ctx := cmd.Context()
+
 			if err := checkDirectoryAccess(RequiredAccess{
 				Config: true,
 				Data:   true,
@@ -97,9 +99,6 @@ func APIDomainCmd() *cobra.Command {
 			ui.Info("  Domain: %s", normalizedURL)
 			ui.Info("  Email: %s", email)
 			ui.Info("Restarting haloyd...")
-
-			ctx, cancel := context.WithTimeout(context.Background(), initTimeout)
-			defer cancel()
 
 			dataDir, err := config.DataDir()
 			if err != nil {

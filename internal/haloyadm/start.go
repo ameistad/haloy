@@ -1,19 +1,12 @@
 package haloyadm
 
 import (
-	"context"
 	"os"
-	"time"
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/spf13/cobra"
-)
-
-const (
-	startTimeout   = 5 * time.Minute
-	apiWaitTimeout = 30 * time.Second
 )
 
 func StartCmd() *cobra.Command {
@@ -28,8 +21,7 @@ func StartCmd() *cobra.Command {
 		Long:  "Start the haloy services, including HAProxy and haloyd.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
-			defer cancel()
+			ctx := cmd.Context()
 
 			dataDir, err := config.DataDir()
 			if err != nil {
@@ -43,7 +35,6 @@ func StartCmd() *cobra.Command {
 				return
 			}
 
-			// Ensure Docker network exists before starting services
 			if err := ensureNetwork(ctx); err != nil {
 				ui.Error("Failed to ensure Docker network exists: %v", err)
 				ui.Info("You can manually create it with:")
