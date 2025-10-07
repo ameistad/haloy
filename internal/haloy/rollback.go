@@ -230,9 +230,9 @@ func displayRollbackTargets(appName string, rollbackTargets []deploytypes.Rollba
 
 	ui.Table(headers, rows)
 	ui.Basic("To rollback, run:")
-	if configPath == "." {
-		ui.Basic("  haloy rollback <deployment-id>")
-	} else {
-		ui.Basic("  haloy rollback %s <deployment-id>", configPath)
+	ui.Basic("  haloy rollback <deployment-id>")
+	if configPath != "." {
+		ui.Basic("  # Or with explicit config:")
+		ui.Basic("  haloy rollback --config %s <deployment-id>", configPath)
 	}
 }

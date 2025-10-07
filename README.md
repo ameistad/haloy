@@ -203,8 +203,8 @@ replicas: 3
 
 Deploy using specific configuration files:
 ```bash
-haloy deploy production.haloy.yaml
-haloy deploy staging.haloy.yaml
+haloy deploy --config production.haloy.yaml
+haloy deploy --config staging.haloy.yaml
 ```
 
 ### Environment-Specific Configuration Files
@@ -238,8 +238,8 @@ replicas: 1
 
 Deploy to different environments:
 ```bash
-haloy deploy production.haloy.yaml
-haloy deploy staging.haloy.yaml
+haloy deploy --config production.haloy.yaml
+haloy deploy --config staging.haloy.yaml
 ```
 
 ### 4. Deploy
@@ -549,38 +549,45 @@ targets:
 ### Deployment Commands
 ```bash
 # Deploy application
-haloy deploy [config-path]
-haloy deploy --target production      # Deploy to specific target
-haloy deploy -t staging              # Short form
-haloy deploy --all                   # Deploy to all targets
-haloy deploy --no-logs              # Skip deployment logs
+haloy deploy
+haloy deploy --config path/to/config.yaml    # Specify config file
+haloy deploy --target production             # Deploy to specific target
+haloy deploy -t staging                      # Short form
+haloy deploy --all                           # Deploy to all targets
+haloy deploy --no-logs                       # Skip deployment logs
 
 # Check status
-haloy status [config-path]
-haloy status --target production     # Status for specific target
-haloy status --all                   # Status for all targets
+haloy status
+haloy status --config path/to/config.yaml    # Specify config file
+haloy status --target production             # Status for specific target
+haloy status --all                           # Status for all targets
 
 # Stop application containers
-haloy stop [config-path]
-haloy stop --target production       # Stop specific target
-haloy stop --all                     # Stop all targets
-haloy stop --remove-containers       # Remove containers after stopping
+haloy stop
+haloy stop --config path/to/config.yaml      # Specify config file
+haloy stop --target production               # Stop specific target
+haloy stop --all                             # Stop all targets
+haloy stop --remove-containers               # Remove containers after stopping
 
 # View logs
-haloy logs [config-path]
-haloy logs --target staging          # Logs from specific target
+haloy logs
+haloy logs --config path/to/config.yaml      # Specify config file
+haloy logs --target staging                  # Logs from specific target
 
 # Validate configuration file
-haloy validate-config [config-path]
-haloy validate-config --show-resolved-config [config-path]  # Display resolved config with secrets (use with caution)
-
+haloy validate-config
+haloy validate-config --config path/to/config.yaml                    # Specify config file
+haloy validate-config --show-resolved-config                          # Display resolved config with secrets (use with caution)
+haloy validate-config --config path/to/config.yaml --show-resolved-config  # Both options combined
 
 # List available rollback targets
-haloy rollback-targets [config-path]
+haloy rollback-targets
+haloy rollback-targets --config path/to/config.yaml    # Specify config file
 haloy rollback-targets --target production
 
 # Rollback to specific deployment
-haloy rollback  <deployment-id>
+haloy rollback <deployment-id>
+haloy rollback --config path/to/config.yaml <deployment-id>    # Specify config file
 haloy rollback --target production <deployment-id>
 ```
 
@@ -945,8 +952,8 @@ api_token:
 export PROD_TOKEN="production_token_here"
 export STAGING_TOKEN="staging_token_here"
 
-haloy deploy production.haloy.yaml
-haloy deploy staging.haloy.yaml
+haloy deploy --config production.haloy.yaml
+haloy deploy --config staging.haloy.yaml
 ```
 
 **CI/CD with multiple projects and servers:**
