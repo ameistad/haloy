@@ -31,22 +31,39 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			targets, _, err := appconfigloader.Load(ctx, *configPath, nil, true)
+			rawAppConfig, format, err := appconfigloader.LoadRawAppConfig(*configPath)
 			if err != nil {
-				ui.Error("Config validation failed: %v", err)
+				ui.Error("Unable to load config file from %s: %v", *configPath, err)
+				return
+			}
+
+			rawAppConfig.Normalize()
+
+			if err := rawAppConfig.Validate(format); err != nil {
+				ui.Error("Not a valid config: %v", err)
+				return
+			}
+
+			rawAppConfig.Format = format
+
+			resolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, rawAppConfig)
+			if err != nil {
+				ui.Error("Unable to resolve secrets: %v", err)
 				return
 			}
 
 			if showResolvedConfigFlag {
-				for _, target := range targets {
-					displayResolvedConfig(target.ResolvedAppConfig)
+				ui.Info("Resolved config:")
+				if err := displayResolvedConfig(resolvedAppConfig); err != nil {
+					ui.Error("Failed to display resolved config: %v", err)
+					return
 				}
 			}
 
 			ui.Success("Config file '%s' is valid!", filepath.Base(configFileName))
 		},
 	}
-	cmd.Flags().BoolVar(&showResolvedConfigFlag, "show-config", false, "Print the resolved config with secrets")
+	cmd.Flags().BoolVar(&showResolvedConfigFlag, "show-resolved-config", false, "Print the resolved configuration with all secrets resolved and visible in plain text (WARNING: sensitive data will be displayed)")
 	return cmd
 }
 

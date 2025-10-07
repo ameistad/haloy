@@ -26,7 +26,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 	baseAppConfig config.AppConfig,
 	err error,
 ) {
-	rawAppConfig, format, err := loadRawAppConfig(configPath)
+	rawAppConfig, format, err := LoadRawAppConfig(configPath)
 	if err != nil {
 		return nil, config.AppConfig{}, err
 	}
@@ -119,7 +119,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 	return finalAppConfigTargets, baseAppConfig, nil
 }
 
-func loadRawAppConfig(configPath string) (config.AppConfig, string, error) {
+func LoadRawAppConfig(configPath string) (config.AppConfig, string, error) {
 	configFile, err := FindConfigFile(configPath)
 	if err != nil {
 		return config.AppConfig{}, "", err

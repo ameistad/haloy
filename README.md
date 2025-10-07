@@ -572,6 +572,8 @@ haloy logs --target staging          # Logs from specific target
 
 # Validate configuration file
 haloy validate-config [config-path]
+haloy validate-config --show-resolved-config [config-path]  # Display resolved config with secrets (use with caution)
+
 
 # List available rollback targets
 haloy rollback-targets [config-path]
