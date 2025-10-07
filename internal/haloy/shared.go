@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -15,7 +16,8 @@ import (
 
 func createDeploymentID() string {
 	entropy := ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0)
-	return ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
+	id := ulid.MustNew(ulid.Timestamp(time.Now()), entropy).String()
+	return strings.ToLower(id)
 }
 
 func getToken(appConfig *config.AppConfig, url string) (string, error) {
