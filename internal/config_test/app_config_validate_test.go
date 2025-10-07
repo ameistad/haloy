@@ -1,17 +1,19 @@
-package config
+package config_test
 
 import (
+	"regexp"
 	"testing"
 
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
 // baseAppConfig can be used by multiple test functions
-func baseAppConfig(name string) AppConfig {
-	return AppConfig{
+func baseAppConfig(name string) config.AppConfig {
+	return config.AppConfig{
 		Name: name,
-		TargetConfig: TargetConfig{ // Initialize the embedded struct by its type name
-			Image: Image{
+		TargetConfig: config.TargetConfig{ // Initialize the embedded struct by its type name
+			Image: config.Image{
 				Repository: "example.com/repo",
 				Tag:        "latest",
 			},
@@ -77,9 +79,20 @@ func TestValidateDomain(t *testing.T) {
 func TestValidate_NoDomainsAndNoACMEEmail(t *testing.T) {
 	app := baseAppConfig("nodomains")
 	// Remove domains and ACME email to test that validation passes.
-	app.Domains = []Domain{}
+	app.Domains = []config.Domain{}
 	app.ACMEEmail = ""
 	if err := app.Validate("yaml"); err != nil {
 		t.Errorf("expected valid configuration with no domains and no ACME email; got error: %v", err)
 	}
+}
+
+func isValidAppName(name string) bool {
+	// Only allow alphanumeric, hyphens, and underscores
+	// Must start with alphanumeric character
+	// This is to satisfy docker container name restrictions
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`, name)
+	if err != nil {
+		return false
+	}
+	return matched
 }

@@ -11,10 +11,6 @@ type Domain struct {
 	Aliases   []string `yaml:"aliases,omitempty" json:"aliases,omitempty" toml:"aliases,omitempty"`
 }
 
-func (d *Domain) ToSlice() []string {
-	return append([]string{d.Canonical}, d.Aliases...)
-}
-
 func (d *Domain) Validate() error {
 	if err := helpers.IsValidDomain(d.Canonical); err != nil {
 		return err
