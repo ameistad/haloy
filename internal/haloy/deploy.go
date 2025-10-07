@@ -89,7 +89,7 @@ func deployTarget(ctx context.Context, target appconfigloader.AppConfigTarget, c
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", targetName)
+	pui.Info("Deployment started for %s", target.ResolvedAppConfig.Name)
 
 	if len(preDeploy) > 0 {
 		for _, hookCmd := range preDeploy {
