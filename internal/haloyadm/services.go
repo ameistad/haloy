@@ -168,22 +168,20 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 
 	if !restart {
 		if haloydExists {
-			return fmt.Errorf("haloyd container already exists, use --restart flag to restart it")
+			return fmt.Errorf("haloyd container already exists, use haloyadm restart instead")
 		}
 		if haproxyExists {
-			return fmt.Errorf("haloy-haproxy container already exists, use --restart flag to restart it")
+			return fmt.Errorf("haloy-haproxy container already exists, use haloyadm restart instead")
 		}
 	}
 
 	if restart {
 		if haloydExists {
-			ui.Info("haloyd is already running. Restarting...")
 			if err := stopContainer(ctx, config.HaloydLabelRole); err != nil {
 				return fmt.Errorf("failed to stop existing haloyd: %w", err)
 			}
 		}
 		if haproxyExists {
-			ui.Info("HAProxy is already running. Restarting...")
 			if err := stopContainer(ctx, config.HAProxyLabelRole); err != nil {
 				return fmt.Errorf("failed to stop existing haloy-haproxy: %w", err)
 			}

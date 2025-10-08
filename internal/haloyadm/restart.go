@@ -9,15 +9,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func StartCmd() *cobra.Command {
+func RestartCmd() *cobra.Command {
 	var devMode bool
 	var debug bool
 	var noLogs bool
 
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start the haloy services",
-		Long:  "Start the haloy services, including HAProxy and haloyd.",
+		Use:   "restart",
+		Short: "Restart the haloy services",
+		Long:  "Restart the haloy services, including HAProxy and haloyd.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := cmd.Context()
@@ -41,7 +41,7 @@ func StartCmd() *cobra.Command {
 				return
 			}
 
-			if err := startServices(ctx, dataDir, configDir, devMode, false, debug); err != nil {
+			if err := startServices(ctx, dataDir, configDir, devMode, true, debug); err != nil {
 				ui.Error("%s", err)
 				return
 			}
