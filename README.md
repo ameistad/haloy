@@ -638,9 +638,11 @@ sudo haloyadm init --local-install  # For non-root installations
 
 # Start/stop services
 sudo haloyadm start                  # Start haloyd and HAProxy
-sudo haloyadm start --restart        # Restart if already running
 sudo haloyadm start --dev            # Use local haloyd image (development)
 sudo haloyadm start --debug          # Enable debug mode
+sudo haloyadm restart                # Restart haloyd and HAProxy (same flags as start command)
+sudo haloyadm restart --dev
+sudo haloyadm restart --debug
 sudo haloyadm stop                   # Stop haloyd and HAProxy
 
 # API management
