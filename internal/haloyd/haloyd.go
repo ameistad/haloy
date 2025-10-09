@@ -47,7 +47,7 @@ func Run(debug bool) {
 		logLevel = slog.LevelDebug
 	}
 
-	// Use a log broker to allow streaming logs to the API server
+	// Allow streaming logs to the API server
 	logBroker := logging.NewLogBroker()
 	logger := logging.NewLogger(logLevel, logBroker)
 
@@ -138,7 +138,7 @@ func Run(debug bool) {
 	}
 
 	logger.Info("haloyd successfully initialized",
-		logging.AttrHaloydInitComplete, true, // signal that the initialization is complete
+		logging.AttrHaloydInitComplete, true, // signal that the initialization is complete, used for logs.
 	)
 
 	// Docker event listener
@@ -159,9 +159,11 @@ func Run(debug bool) {
 	for {
 		select {
 
+		// All docker events are piped to debouncer
 		case e := <-eventsChan:
 			appDebouncer.captureEvent(e.Labels.AppName, e)
 
+		// Debounced docker events
 		case de := <-debouncedEventsChan:
 			go func() {
 				deploymentLogger := logging.NewDeploymentLogger(de.DeploymentID, logLevel, logBroker)
@@ -186,8 +188,7 @@ func Run(debug bool) {
 					return
 				}
 
-				// If we captured a start event from the debounced events it indicates that this is a new deployment
-				// and we'll signal the logger that the deployment is done.
+				// Start event indicates that this is a new deployment and we'll signal the logger that the deployment is done.
 				if de.CapturedStartEvent {
 					canonicalDomains := make([]string, len(de.Domains))
 					for i, domain := range de.Domains {
@@ -323,7 +324,6 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 
 // IsAppContainer checks if a container should be handled by haloy.
 func IsAppContainer(container container.InspectResponse) bool {
-
 	if container.Config.Labels[config.LabelRole] != config.AppLabelRole {
 		return false
 	}

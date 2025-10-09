@@ -63,7 +63,11 @@ type CertificatesClientManager struct {
 	sharedHTTPProvider *http01.ProviderServer
 }
 
-func NewCertificatesClientManager(certDir string, tlsStaging bool, httpProviderPort string) (*CertificatesClientManager, error) {
+func NewCertificatesClientManager(
+	certDir string,
+	tlsStaging bool,
+	httpProviderPort string,
+) (*CertificatesClientManager, error) {
 	keyDir := filepath.Join(certDir, accountsDirName)
 
 	if err := os.MkdirAll(keyDir, constants.ModeDirPrivate); err != nil {
@@ -186,7 +190,7 @@ type CertificatesManager struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
 	clientManager *CertificatesClientManager
-	updateSignal  chan<- string // Channel to signal successful updates
+	updateSignal  chan<- string // signal successful updates
 	debouncer     *helpers.Debouncer
 }
 
@@ -427,73 +431,23 @@ Please add DNS records:
 func (cm *CertificatesManager) buildDomainErrorMessage(domain string, originalErr error) string {
 	errorStr := originalErr.Error()
 
-	// Extract parent domain for whois commands
-	parts := strings.Split(domain, ".")
-	var parentDomain string
-	if len(parts) >= 2 {
-		parentDomain = strings.Join(parts[len(parts)-2:], ".")
-	} else {
-		parentDomain = domain
-	}
-
 	if strings.Contains(errorStr, "NXDOMAIN") || strings.Contains(errorStr, "no such host") {
-		return fmt.Sprintf(`🔍 DNS Resolution Failed - Domain not found
-
-Common causes for "%s":
-
-1. 📅 DOMAIN EXPIRED
-   • Check expiry: whois %s | grep -i expir
-   • Renew at your registrar if expired
-
-2. 🌐 DNS NOT CONFIGURED
-   • Add A record: %s → YOUR_SERVER_IP
-   • In your DNS provider (Cloudflare, Route53, etc.)
-
-3. ⏰ DNS PROPAGATION DELAY
-   • Recent changes take 5-60 minutes
-   • Test: dig A %s @8.8.8.8
-
-4. 🎯 WRONG NAMESERVERS
-   • Check: dig NS %s
-   • Should point to your DNS provider
-
-🛠️  Quick Debug Commands:
-   dig A %s                    # Test resolution
-   whois %s | head -20         # Check registration
-   nslookup %s 8.8.8.8        # Test with Google DNS`,
-			domain, parentDomain, domain, domain, parentDomain, domain, parentDomain, domain)
+		return fmt.Sprintf("Domain %s not found. Check if domain exists and DNS A record is configured.", domain)
 	}
 
 	if strings.Contains(errorStr, "timeout") {
-		return fmt.Sprintf(`⏰ DNS Timeout - Slow or unreachable DNS servers
-
-For domain "%s":
-• Try different DNS: dig A %s @1.1.1.1
-• Check network connectivity
-• DNS servers may be overloaded`, domain, domain)
+		return fmt.Sprintf("DNS timeout for %s. Check network connectivity or try different DNS server.", domain)
 	}
 
-	// Generic fallback
-	return fmt.Sprintf(`❌ DNS Resolution Error for "%s"
-
-Troubleshooting steps:
-1. Check domain exists: whois %s
-2. Verify DNS records: dig A %s
-3. Test different DNS: nslookup %s 8.8.8.8
-4. Check nameservers: dig NS %s
-
-If domain recently changed, wait 1-24 hours for propagation.`,
-		domain, domain, domain, domain, domain)
+	return fmt.Sprintf("DNS resolution failed for %s. Verify domain exists and has proper DNS records.", domain)
 }
 
-// obtainCertificate requests a certificate from ACME provider for the canonical domain and its aliases.
 func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain, logger *slog.Logger) (obtainedDomain CertificatesDomain, err error) {
 	canonicalDomain := managedDomain.Canonical
 	email := managedDomain.Email
 	aliases := managedDomain.Aliases
 	allDomains := append([]string{canonicalDomain}, aliases...)
 
-	// Validate domain resolves before attempting certificate
 	if err := m.validateDomain(canonicalDomain); err != nil {
 		return obtainedDomain, fmt.Errorf("domain validation failed for %s: %w", canonicalDomain, err)
 	}
@@ -628,7 +582,6 @@ type CertificatesKeyManager struct {
 	keyDir string
 }
 
-// NewCertificatesKeyManager creates a new key manager
 func NewCertificatesKeyManager(keyDir string) (*CertificatesKeyManager, error) {
 	stat, err := os.Stat(keyDir)
 	if err != nil {
@@ -646,7 +599,6 @@ func NewCertificatesKeyManager(keyDir string) (*CertificatesKeyManager, error) {
 	}, nil
 }
 
-// LoadOrCreateKey loads an existing account key or creates a new one
 func (km *CertificatesKeyManager) LoadOrCreateKey(email string) (crypto.PrivateKey, error) {
 	// Sanitize email for filename
 	filename := helpers.SanitizeString(email) + keyCertExt
@@ -660,21 +612,17 @@ func (km *CertificatesKeyManager) LoadOrCreateKey(email string) (crypto.PrivateK
 	return km.createKey(keyPath)
 }
 
-// loadKey loads a private key from disk
 func (km *CertificatesKeyManager) loadKey(path string) (crypto.PrivateKey, error) {
-	// Read key file
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file: %w", err)
 	}
 
-	// Decode PEM
 	keyBlock, _ := pem.Decode(keyBytes)
 	if keyBlock == nil {
 		return nil, fmt.Errorf("failed to decode PEM block")
 	}
 
-	// Parse private key
 	switch keyBlock.Type {
 	case "EC PRIVATE KEY":
 		return x509.ParseECPrivateKey(keyBlock.Bytes)
@@ -683,7 +631,6 @@ func (km *CertificatesKeyManager) loadKey(path string) (crypto.PrivateKey, error
 	}
 }
 
-// createKey creates a new ECDSA private key and saves it to disk
 func (km *CertificatesKeyManager) createKey(path string) (crypto.PrivateKey, error) {
 	// Generate new ECDSA key (P-256 for good balance of security and performance)
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

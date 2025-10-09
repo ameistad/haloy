@@ -25,7 +25,6 @@ type Deployment struct {
 	Instances []DeploymentInstance
 }
 
-// FailedContainerInfo holds information about a container that failed processing.
 type FailedContainerInfo struct {
 	ContainerID string
 	Error       string
