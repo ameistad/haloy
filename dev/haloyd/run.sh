@@ -1,4 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+set -e
+
 DOCKER_NETWORK=haloy-public
 
 cd $(git rev-parse --show-toplevel)

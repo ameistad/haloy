@@ -1,4 +1,5 @@
-#!/bin/bash
+/#!/usr/bin/env bash
+
 set -e
 
 # Ensure an argument is provided

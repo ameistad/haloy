@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+
+set -e
 
 DEPLOYMENT_ID=$(date +%Y%m%d%H%M%S)
 DEPLOYMENT_ID_STATIC=20250318152205
