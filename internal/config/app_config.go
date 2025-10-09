@@ -3,15 +3,18 @@ package config
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"strconv"
 
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 type TargetConfig struct {
 	Image           Image       `json:"image" yaml:"image" toml:"image"`
 	Server          string      `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
-	APIToken        ValueSource `json:"apiToken,omitempty" yaml:"api_token,omitempty" toml:"api_token,omitempty"`
+	APIToken        ValueSource `json:"apiToken" yaml:"api_token" toml:"api_token"`
 	Domains         []Domain    `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
 	ACMEEmail       string      `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
 	Env             []EnvVar    `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
@@ -163,4 +166,41 @@ func (ev *EnvVar) Validate(format string) error {
 	}
 
 	return nil
+}
+
+// Using custom Port type so we can use both string and int for port in the config.
+type Port string
+
+func (p Port) String() string {
+	return string(p)
+}
+
+func PortDecodeHook() mapstructure.DecodeHookFuncType {
+	return func(
+		f reflect.Type,
+		t reflect.Type,
+		data any,
+	) (any, error) {
+		// Only process if target type is Port
+		if t != reflect.TypeOf(Port("")) {
+			return data, nil
+		}
+
+		switch v := data.(type) {
+		case string:
+			return Port(v), nil
+		case int:
+			return Port(strconv.Itoa(v)), nil
+		case int64:
+			return Port(strconv.FormatInt(v, 10)), nil
+		case float64:
+			// Handle case where YAML/JSON might parse integers as floats
+			if v == float64(int(v)) {
+				return Port(strconv.Itoa(int(v))), nil
+			}
+			return nil, fmt.Errorf("port must be an integer, got float: %v", v)
+		default:
+			return nil, fmt.Errorf("port must be a string or integer, got %T: %v", data, data)
+		}
+	}
 }
