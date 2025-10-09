@@ -1,7 +1,11 @@
 package config
 
 import (
+	"errors"
+	"fmt"
+
 	"github.com/ameistad/haloy/internal/constants"
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
 type TargetConfig struct {
@@ -123,4 +127,40 @@ func (ac *AppConfig) Normalize() {
 		defaultReplicas := constants.DefaultReplicas
 		ac.Replicas = &defaultReplicas
 	}
+}
+
+type Domain struct {
+	Canonical string   `yaml:"domain" json:"domain" toml:"domain"`
+	Aliases   []string `yaml:"aliases,omitempty" json:"aliases,omitempty" toml:"aliases,omitempty"`
+}
+
+func (d *Domain) Validate() error {
+	if err := helpers.IsValidDomain(d.Canonical); err != nil {
+		return err
+	}
+
+	for _, alias := range d.Aliases {
+		if err := helpers.IsValidDomain(alias); err != nil {
+			return fmt.Errorf("alias '%s': %w", alias, err)
+		}
+	}
+	return nil
+}
+
+type EnvVar struct {
+	Name        string `json:"name" yaml:"name" toml:"name"`
+	ValueSource `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
+}
+
+func (ev *EnvVar) Validate(format string) error {
+	if ev.Name == "" {
+		return errors.New("environment variable 'name' cannot be empty")
+	}
+
+	if err := ev.ValueSource.Validate(); err != nil {
+		// Add context to the error returned from the embedded struct's validation.
+		return fmt.Errorf("environment variable '%s': %w", ev.Name, err)
+	}
+
+	return nil
 }

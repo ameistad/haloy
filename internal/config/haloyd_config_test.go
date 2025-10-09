@@ -1,28 +1,26 @@
-package config_test
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/ameistad/haloy/internal/config"
 )
 
 func TestHaloydConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  config.HaloydConfig
+		config  HaloydConfig
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name:    "valid empty config",
-			config:  config.HaloydConfig{},
+			config:  HaloydConfig{},
 			wantErr: false,
 		},
 		{
 			name: "valid config with domain and email",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -34,7 +32,7 @@ func TestHaloydConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "valid config with only email",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				Certificates: struct {
 					AcmeEmail string `json:"acmeEmail" yaml:"acme_email" toml:"acme_email"`
 				}{AcmeEmail: "admin@example.com"},
@@ -43,7 +41,7 @@ func TestHaloydConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "invalid domain format",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "invalid domain"},
@@ -56,7 +54,7 @@ func TestHaloydConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "invalid email format",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -69,7 +67,7 @@ func TestHaloydConfig_Validate(t *testing.T) {
 		},
 		{
 			name: "domain without email",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -100,15 +98,15 @@ func TestHaloydConfig_Validate(t *testing.T) {
 func TestHaloydConfig_Normalize(t *testing.T) {
 	tests := []struct {
 		name   string
-		config config.HaloydConfig
+		config HaloydConfig
 	}{
 		{
 			name:   "empty config",
-			config: config.HaloydConfig{},
+			config: HaloydConfig{},
 		},
 		{
 			name: "config with values",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -139,7 +137,7 @@ func TestLoadHaloydConfig(t *testing.T) {
 		content     string
 		extension   string
 		expectError bool
-		expected    *config.HaloydConfig
+		expected    *HaloydConfig
 	}{
 		{
 			name: "load valid yaml config",
@@ -149,7 +147,7 @@ certificates:
   acme_email: admin@example.com
 `,
 			extension: ".yaml",
-			expected: &config.HaloydConfig{
+			expected: &HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -169,7 +167,7 @@ certificates:
   }
 }`,
 			extension: ".json",
-			expected: &config.HaloydConfig{
+			expected: &HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -190,10 +188,10 @@ certificates:
 			content: `api:
   domain: ""
 certificates:
-  acmeEmail: ""
+  acme_email: ""
 `,
 			extension: ".yaml",
-			expected: &config.HaloydConfig{
+			expected: &HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: ""},
@@ -208,7 +206,7 @@ certificates:
   domain: api.example.com
     invalid_indent: value
 certificates:
-  acmeEmail: admin@example.com
+  acme_email: admin@example.com
 `,
 			extension:   ".yaml",
 			expectError: true,
@@ -228,7 +226,7 @@ certificates:
 				path = filepath.Join(tempDir, "nonexistent.yaml")
 			}
 
-			result, err := config.LoadHaloydConfig(path)
+			result, err := LoadHaloydConfig(path)
 
 			if tt.expectError {
 				if err == nil {
@@ -267,13 +265,13 @@ func TestSaveHaloydConfig(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		config      config.HaloydConfig
+		config      HaloydConfig
 		extension   string
 		expectError bool
 	}{
 		{
 			name: "save yaml config",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -285,7 +283,7 @@ func TestSaveHaloydConfig(t *testing.T) {
 		},
 		{
 			name: "save json config",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -297,12 +295,12 @@ func TestSaveHaloydConfig(t *testing.T) {
 		},
 		{
 			name:      "save empty config",
-			config:    config.HaloydConfig{},
+			config:    HaloydConfig{},
 			extension: ".yaml",
 		},
 		{
 			name: "save config with only domain",
-			config: config.HaloydConfig{
+			config: HaloydConfig{
 				API: struct {
 					Domain string `json:"domain" yaml:"domain" toml:"domain"`
 				}{Domain: "api.example.com"},
@@ -314,7 +312,7 @@ func TestSaveHaloydConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(tempDir, "haloyd"+tt.extension)
-			err := config.SaveHaloydConfig(&tt.config, path)
+			err := SaveHaloydConfig(&tt.config, path)
 
 			if tt.expectError {
 				if err == nil {
@@ -326,7 +324,7 @@ func TestSaveHaloydConfig(t *testing.T) {
 				}
 
 				// Verify the file was created and can be loaded back
-				loaded, err := config.LoadHaloydConfig(path)
+				loaded, err := LoadHaloydConfig(path)
 				if err != nil {
 					t.Errorf("SaveHaloydConfig() file could not be loaded back: %v", err)
 				}

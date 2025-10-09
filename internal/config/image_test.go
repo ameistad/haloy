@@ -1,20 +1,18 @@
-package config_test
+package config
 
 import (
 	"testing"
-
-	"github.com/ameistad/haloy/internal/config"
 )
 
 func TestImage_ImageRef(t *testing.T) {
 	tests := []struct {
 		name     string
-		image    config.Image
+		image    Image
 		expected string
 	}{
 		{
 			name: "repository with tag",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21",
 			},
@@ -22,7 +20,7 @@ func TestImage_ImageRef(t *testing.T) {
 		},
 		{
 			name: "repository without tag defaults to latest",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "",
 			},
@@ -30,7 +28,7 @@ func TestImage_ImageRef(t *testing.T) {
 		},
 		{
 			name: "repository with whitespace in tag",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        " 1.21 ",
 			},
@@ -38,7 +36,7 @@ func TestImage_ImageRef(t *testing.T) {
 		},
 		{
 			name: "repository with whitespace in repository",
-			image: config.Image{
+			image: Image{
 				Repository: " nginx ",
 				Tag:        "1.21",
 			},
@@ -46,7 +44,7 @@ func TestImage_ImageRef(t *testing.T) {
 		},
 		{
 			name: "full registry path",
-			image: config.Image{
+			image: Image{
 				Repository: "registry.example.com/myapp",
 				Tag:        "v1.0.0",
 			},
@@ -67,13 +65,13 @@ func TestImage_ImageRef(t *testing.T) {
 func TestImage_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		image   config.Image
+		image   Image
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid image with repository and tag",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21",
 			},
@@ -81,25 +79,25 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "valid image with registry source",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21",
-				Source:     config.ImageSourceRegistry,
+				Source:     ImageSourceRegistry,
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid image with local source",
-			image: config.Image{
+			image: Image{
 				Repository: "myapp",
 				Tag:        "latest",
-				Source:     config.ImageSourceLocal,
+				Source:     ImageSourceLocal,
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty repository",
-			image: config.Image{
+			image: Image{
 				Repository: "",
 				Tag:        "1.21",
 			},
@@ -108,7 +106,7 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "repository with whitespace",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx latest",
 				Tag:        "1.21",
 			},
@@ -117,7 +115,7 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "invalid source",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21",
 				Source:     "invalid-source",
@@ -127,7 +125,7 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "tag with whitespace",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21 2.0",
 			},
@@ -136,11 +134,11 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "registry strategy with latest tag",
-			image: config.Image{
+			image: Image{
 				Repository: "nginx",
 				Tag:        "latest",
-				History: &config.ImageHistory{
-					Strategy: config.HistoryStrategyRegistry,
+				History: &ImageHistory{
+					Strategy: HistoryStrategyRegistry,
 					Count:    intPtr(5),
 					Pattern:  "v*",
 				},
@@ -150,11 +148,11 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "registry strategy with mutable tag",
-			image: config.Image{
+			image: Image{
 				Repository: "myapp",
 				Tag:        "main",
-				History: &config.ImageHistory{
-					Strategy: config.HistoryStrategyRegistry,
+				History: &ImageHistory{
+					Strategy: HistoryStrategyRegistry,
 					Count:    intPtr(5),
 					Pattern:  "v*",
 				},
@@ -164,11 +162,11 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "valid registry strategy with immutable tag",
-			image: config.Image{
+			image: Image{
 				Repository: "myapp",
 				Tag:        "v1.2.3",
-				History: &config.ImageHistory{
-					Strategy: config.HistoryStrategyRegistry,
+				History: &ImageHistory{
+					Strategy: HistoryStrategyRegistry,
 					Count:    intPtr(5),
 					Pattern:  "v*",
 				},
@@ -177,25 +175,25 @@ func TestImage_Validate(t *testing.T) {
 		},
 		{
 			name: "valid registry auth",
-			image: config.Image{
+			image: Image{
 				Repository: "private.registry.com/myapp",
 				Tag:        "v1.0.0",
-				RegistryAuth: &config.RegistryAuth{
-					Username: config.ValueSource{Value: "user"},
-					Password: config.ValueSource{Value: "pass"},
+				RegistryAuth: &RegistryAuth{
+					Username: ValueSource{Value: "user"},
+					Password: ValueSource{Value: "pass"},
 				},
 			},
 			wantErr: false,
 		},
 		{
 			name: "registry auth with whitespace in server",
-			image: config.Image{
+			image: Image{
 				Repository: "private.registry.com/myapp",
 				Tag:        "v1.0.0",
-				RegistryAuth: &config.RegistryAuth{
+				RegistryAuth: &RegistryAuth{
 					Server:   "private registry.com",
-					Username: config.ValueSource{Value: "user"},
-					Password: config.ValueSource{Value: "pass"},
+					Username: ValueSource{Value: "user"},
+					Password: ValueSource{Value: "pass"},
 				},
 			},
 			wantErr: true,
@@ -224,22 +222,22 @@ func TestImage_Validate(t *testing.T) {
 func TestImageHistory_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		history config.ImageHistory
+		history ImageHistory
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid local strategy with count",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyLocal,
+			history: ImageHistory{
+				Strategy: HistoryStrategyLocal,
 				Count:    intPtr(5),
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid registry strategy with count and pattern",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyRegistry,
+			history: ImageHistory{
+				Strategy: HistoryStrategyRegistry,
 				Count:    intPtr(10),
 				Pattern:  "v*",
 			},
@@ -247,21 +245,21 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "valid none strategy",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyNone,
+			history: ImageHistory{
+				Strategy: HistoryStrategyNone,
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty strategy defaults to valid",
-			history: config.ImageHistory{
+			history: ImageHistory{
 				Strategy: "",
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid strategy",
-			history: config.ImageHistory{
+			history: ImageHistory{
 				Strategy: "invalid-strategy",
 			},
 			wantErr: true,
@@ -269,8 +267,8 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "local strategy missing count",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyLocal,
+			history: ImageHistory{
+				Strategy: HistoryStrategyLocal,
 				Count:    nil,
 			},
 			wantErr: true,
@@ -278,8 +276,8 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "registry strategy missing count",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyRegistry,
+			history: ImageHistory{
+				Strategy: HistoryStrategyRegistry,
 				Count:    nil,
 			},
 			wantErr: true,
@@ -287,8 +285,8 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "local strategy with zero count",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyLocal,
+			history: ImageHistory{
+				Strategy: HistoryStrategyLocal,
 				Count:    intPtr(0),
 			},
 			wantErr: true,
@@ -296,8 +294,8 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "registry strategy with negative count",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyRegistry,
+			history: ImageHistory{
+				Strategy: HistoryStrategyRegistry,
 				Count:    intPtr(-1),
 			},
 			wantErr: true,
@@ -305,8 +303,8 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "registry strategy missing pattern",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyRegistry,
+			history: ImageHistory{
+				Strategy: HistoryStrategyRegistry,
 				Count:    intPtr(5),
 				Pattern:  "",
 			},
@@ -315,8 +313,8 @@ func TestImageHistory_Validate(t *testing.T) {
 		},
 		{
 			name: "registry strategy with whitespace pattern",
-			history: config.ImageHistory{
-				Strategy: config.HistoryStrategyRegistry,
+			history: ImageHistory{
+				Strategy: HistoryStrategyRegistry,
 				Count:    intPtr(5),
 				Pattern:  "   ",
 			},

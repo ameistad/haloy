@@ -1,43 +1,41 @@
-package config_test
+package config
 
 import (
 	"testing"
-
-	"github.com/ameistad/haloy/internal/config"
 )
 
 func TestClientConfig_AddServer(t *testing.T) {
 	tests := []struct {
 		name        string
-		initial     config.ClientConfig
+		initial     ClientConfig
 		url         string
 		tokenEnv    string
 		force       bool
 		expectError bool
 		errMsg      string
-		expected    map[string]config.ServerConfig
+		expected    map[string]ServerConfig
 	}{
 		{
 			name:     "add new server to empty config",
-			initial:  config.ClientConfig{},
+			initial:  ClientConfig{},
 			url:      "https://api.example.com",
 			tokenEnv: "API_TOKEN",
 			force:    false,
-			expected: map[string]config.ServerConfig{
+			expected: map[string]ServerConfig{
 				"api.example.com": {TokenEnv: "API_TOKEN"},
 			},
 		},
 		{
 			name: "add new server to existing config",
-			initial: config.ClientConfig{
-				Servers: map[string]config.ServerConfig{
+			initial: ClientConfig{
+				Servers: map[string]ServerConfig{
 					"existing.com": {TokenEnv: "EXISTING_TOKEN"},
 				},
 			},
 			url:      "new.example.com",
 			tokenEnv: "NEW_TOKEN",
 			force:    false,
-			expected: map[string]config.ServerConfig{
+			expected: map[string]ServerConfig{
 				"existing.com":    {TokenEnv: "EXISTING_TOKEN"},
 				"new.example.com": {TokenEnv: "NEW_TOKEN"},
 			},
@@ -77,18 +75,18 @@ func TestClientConfig_AddServer(t *testing.T) {
 func TestClientConfig_ListServers(t *testing.T) {
 	tests := []struct {
 		name     string
-		config   config.ClientConfig
+		config   ClientConfig
 		expected []string
 	}{
 		{
 			name:     "empty config",
-			config:   config.ClientConfig{},
+			config:   ClientConfig{},
 			expected: []string{},
 		},
 		{
 			name: "single server",
-			config: config.ClientConfig{
-				Servers: map[string]config.ServerConfig{
+			config: ClientConfig{
+				Servers: map[string]ServerConfig{
 					"https://api.example.com": {TokenEnv: "API_TOKEN"},
 				},
 			},
@@ -109,17 +107,4 @@ func TestClientConfig_ListServers(t *testing.T) {
 			}
 		})
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsSubstring(s, substr)))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

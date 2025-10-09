@@ -1,42 +1,40 @@
-package config_test
+package config
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/ameistad/haloy/internal/config"
 )
 
 func TestPortDecodeHook(t *testing.T) {
-	decodeHook := config.PortDecodeHook()
-	portType := reflect.TypeOf(config.Port(""))
+	decodeHook := PortDecodeHook()
+	portType := reflect.TypeOf(Port(""))
 
 	tests := []struct {
 		name        string
 		data        interface{}
 		expectError bool
-		expected    config.Port
+		expected    Port
 		errMsg      string
 	}{
 		{
 			name:     "string port",
 			data:     "8080",
-			expected: config.Port("8080"),
+			expected: Port("8080"),
 		},
 		{
 			name:     "integer port",
 			data:     8080,
-			expected: config.Port("8080"),
+			expected: Port("8080"),
 		},
 		{
 			name:     "int64 port",
 			data:     int64(8080),
-			expected: config.Port("8080"),
+			expected: Port("8080"),
 		},
 		{
 			name:     "float64 port that is integer",
 			data:     8080.0,
-			expected: config.Port("8080"),
+			expected: Port("8080"),
 		},
 		{
 			name:        "float64 port that is not integer",
@@ -59,12 +57,12 @@ func TestPortDecodeHook(t *testing.T) {
 		{
 			name:     "zero integer",
 			data:     0,
-			expected: config.Port("0"),
+			expected: Port("0"),
 		},
 		{
 			name:     "empty string",
 			data:     "",
-			expected: config.Port(""),
+			expected: Port(""),
 		},
 	}
 
@@ -91,7 +89,7 @@ func TestPortDecodeHook(t *testing.T) {
 }
 
 func TestPortDecodeHook_NonPortType(t *testing.T) {
-	decodeHook := config.PortDecodeHook()
+	decodeHook := PortDecodeHook()
 	stringType := reflect.TypeOf("")
 
 	// Test that the hook returns data unchanged when target is not Port type
