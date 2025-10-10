@@ -34,19 +34,10 @@ The `haloy` CLI tool will trigger deployments from your local machine.
 curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
 ```
 
-2. Ensure `~/.local/bin` is in your PATH:
+2. Ensure `~/.local/bin` is in your PATH by adding the following to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
-    Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
-
-3. Add server:
-```bash
-# Add a single server
-haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
-``` 
-> [!TIP]
-> See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
 
 ### 2. Install and Initialize the Haloyd Daemon (haloyd) on Your Server
 The next step is to install `haloyd` on your server. If you need multiple servers just repeat these steps.
@@ -71,6 +62,15 @@ The next step is to install `haloyd` on your server. If you need multiple server
 
 > [!NOTE]
 > For development or non-root installations, you can install in [user mode](#non-root-install).
+
+3. Add server:
+```bash
+haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
+``` 
+> [!TIP]
+> See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
+
+
 
 ### 3. Create `haloy.yaml`
 In your application's project directory, create a `haloy.yaml` file:
