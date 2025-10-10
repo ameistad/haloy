@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -215,19 +214,4 @@ func extractValues(sources []*config.ValueSource, cache map[groupKey]map[string]
 		vs.From = nil
 	}
 	return nil
-}
-
-func executeCommand(ctx context.Context, name string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	output, err := cmd.Output()
-	if err != nil {
-		if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
-			return "", fmt.Errorf("command not found: '%s'. Is the required CLI tool installed and in your PATH?", name)
-		}
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("command '%s' failed: %s", name, string(exitErr.Stderr))
-		}
-		return "", fmt.Errorf("failed to execute command '%s': %w", name, err)
-	}
-	return strings.TrimSpace(string(output)), nil
 }

@@ -41,22 +41,6 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 	// Set the format the app config was loaded in
 	rawAppConfig.Format = format
 
-	// Deep copy to preserve original so we can return hooks
-	if err := copier.Copy(&baseAppConfig, &rawAppConfig); err != nil {
-		return nil, config.AppConfig{}, fmt.Errorf("failed to copy base app config: %w", err)
-	}
-
-	// Resolve secrets and environment variables.
-	resolvedAppConfig, err := ResolveSecrets(ctx, rawAppConfig)
-	if err != nil {
-		return nil, config.AppConfig{}, err
-	}
-
-	rawAppConfig.GlobalPreDeploy = nil
-	rawAppConfig.GlobalPostDeploy = nil
-	resolvedAppConfig.GlobalPreDeploy = nil
-	resolvedAppConfig.GlobalPostDeploy = nil
-
 	isMultiTarget := len(rawAppConfig.Targets) > 0
 
 	var targetsToProcess []string
@@ -90,6 +74,22 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 		}
 		targetsToProcess = []string{""} // Use an empty string to signify processing the base config itself.
 	}
+
+	// Deep copy to preserve original so we can return hooks
+	if err := copier.Copy(&baseAppConfig, &rawAppConfig); err != nil {
+		return nil, config.AppConfig{}, fmt.Errorf("failed to copy base app config: %w", err)
+	}
+
+	// Resolve secrets and environment variables.
+	resolvedAppConfig, err := ResolveSecrets(ctx, rawAppConfig)
+	if err != nil {
+		return nil, config.AppConfig{}, err
+	}
+
+	rawAppConfig.GlobalPreDeploy = nil
+	rawAppConfig.GlobalPostDeploy = nil
+	resolvedAppConfig.GlobalPreDeploy = nil
+	resolvedAppConfig.GlobalPostDeploy = nil
 
 	var finalAppConfigTargets []AppConfigTarget
 	for _, target := range targetsToProcess {

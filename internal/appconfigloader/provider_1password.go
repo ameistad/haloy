@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ameistad/haloy/internal/cmdexec"
 	"github.com/ameistad/haloy/internal/config"
 )
 
@@ -26,7 +27,7 @@ func fetchFrom1Password(ctx context.Context, config config.OnePasswordSourceConf
 		} `json:"fields"`
 	}
 
-	output, err := executeCommand(ctx, "op", args...)
+	output, err := cmdexec.RunCLICommand(ctx, "op", args...)
 	if err != nil {
 		return nil, err
 	}

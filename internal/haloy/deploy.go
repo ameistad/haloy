@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/appconfigloader"
+	"github.com/ameistad/haloy/internal/cmdexec"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
@@ -39,7 +38,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 			if len(baseAppConfig.GlobalPreDeploy) > 0 {
 				for _, hookCmd := range baseAppConfig.GlobalPreDeploy {
-					if err := executeHook(hookCmd, getHooksWorkDir(*configPath)); err != nil {
+					if err := cmdexec.RunCommand(ctx, hookCmd, getHooksWorkDir(*configPath)); err != nil {
 						ui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "GlobalPreDeploy", baseAppConfig.Format), err)
 						return
 					}
@@ -60,7 +59,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 			if len(baseAppConfig.GlobalPostDeploy) > 0 {
 				for _, hookCmd := range baseAppConfig.GlobalPostDeploy {
-					if err := executeHook(hookCmd, getHooksWorkDir(*configPath)); err != nil {
+					if err := cmdexec.RunCommand(ctx, hookCmd, getHooksWorkDir(*configPath)); err != nil {
 						ui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "GlobalPostDeploy", baseAppConfig.Format), err)
 						return
 					}
@@ -93,7 +92,7 @@ func deployTarget(ctx context.Context, target appconfigloader.AppConfigTarget, c
 
 	if len(preDeploy) > 0 {
 		for _, hookCmd := range preDeploy {
-			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+			if err := cmdexec.RunCommand(ctx, hookCmd, getHooksWorkDir(configPath)); err != nil {
 				pui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "PreDeploy", format), err)
 				return
 			}
@@ -145,25 +144,11 @@ func deployTarget(ctx context.Context, target appconfigloader.AppConfigTarget, c
 
 	if len(postDeploy) > 0 {
 		for _, hookCmd := range postDeploy {
-			if err := executeHook(hookCmd, getHooksWorkDir(configPath)); err != nil {
+			if err := cmdexec.RunCommand(ctx, hookCmd, getHooksWorkDir(configPath)); err != nil {
 				pui.Error("%s hook failed: %v", config.GetFieldNameForFormat(config.AppConfig{}, "PostDeploy", format), err)
 			}
 		}
 	}
-}
-
-// executeHook runs a single hook command in the specified working directory.
-func executeHook(command string, workDir string) error {
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return fmt.Errorf("empty hook command")
-	}
-	cmd := exec.Command("sh", "-c", command)
-	cmd.Dir = workDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
 }
 
 func getHooksWorkDir(configPath string) string {
