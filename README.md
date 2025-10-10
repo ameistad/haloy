@@ -298,9 +298,91 @@ Haloy supports YAML, JSON, and TOML formats:
 |-----|------|----------|-------------|
 | `repository` | string | **Yes** | Docker image name |
 | `tag` | string | No | Image tag (default: "latest") |
-| `registry` | object | No | Private registry authentication |
+| `registry` | object | No | Private registry authentication ( see [Registry Docker Authentication](#docker-registry-authentication) |
 | `source` | string | No | Where the source for the image is. If set to local it will only look for images already on the server. (default: registry) |
 | `history` | object | No | Image history and rollback strategy (see [Image History](#image-history)) |
+
+#### Docker Registry Authentication
+
+Haloy supports authenticating with private Docker registries including Docker Hub, GitHub Container Registry (GHCR), Azure Container Registry (ACR), AWS Elastic Container Registry (ECR), and self-hosted registries.
+
+**Basic Registry Authentication:**
+```yaml
+image:
+  repository: "ghcr.io/your-org/private-app"
+  tag: "latest"
+  registry:
+    username: "your-username"
+    password: "your-password"
+```
+
+**Registry Authentication with Environment Variables:**
+```yaml
+image:
+  repository: "ghcr.io/your-org/private-app"
+  tag: "latest"
+  registry:
+    username:
+      from:
+        env: "REGISTRY_USERNAME"
+    password:
+      from:
+        env: "REGISTRY_PASSWORD"
+```
+
+**Registry Authentication with Secret Providers:**
+```yaml
+image:
+  repository: "ghcr.io/your-org/private-app"
+  tag: "latest"
+  registry:
+    username:
+      from:
+        secret: "onepassword:registry-credentials.username"
+    password:
+      from:
+        secret: "onepassword:registry-credentials.password"
+```
+
+**Custom Registry Server:**
+```yaml
+image:
+  repository: "myregistry.example.com/my-app"
+  tag: "latest"
+  registry:
+    server: "myregistry.example.com"
+    username: "your-username"
+    password: "your-password"
+```
+
+**Docker Hub Authentication:**
+```yaml
+image:
+  repository: "your-dockerhub-username/private-app"
+  tag: "latest"
+  registry:
+    username: "your-dockerhub-username"
+    password: "your-dockerhub-token"
+```
+
+**Registry Authentication Configuration:**
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `server` | string | No | Registry server URL (optional, auto-detected from repository) |
+| `username` | ValueSource | **Yes** | Registry username (supports direct values, environment variables, or secrets) |
+| `password` | ValueSource | **Yes** | Registry password or token (supports direct values, environment variables, or secrets) |
+
+The `server` field is optional. If not provided, Haloy will automatically detect it from your repository URL:
+- `ghcr.io/your-org/app` → server: `ghcr.io`
+- `myregistry.example.com/my-app` → server: `myregistry.example.com`
+- `your-username/app` → server: `index.docker.io` (Docker Hub)
+
+**Security Best Practices:**
+- Use environment variables or secret providers instead of hardcoding credentials
+- Use registry tokens instead of passwords when possible
+- For GitHub Container Registry, use a GitHub Personal Access Token
+- For Docker Hub, use an access token instead of your account password
 
 #### Target Configuration
 
