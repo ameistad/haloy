@@ -26,9 +26,30 @@ haloy status                                 # Check deployment status
 - **Local**: Docker for building your app
 - **Domain**: To access the Haloy API remotely (optional for local development)
 
-### 1. Install and Initialize the Haloyd Daemon (haloyd) on Your Servers
+### 1. Install the `haloy` CLI Tool
+The `haloy` CLI tool will trigger deployments from your local machine. 
 
-Repeat these steps for each server you want to deploy to:
+1. Install `haloy`
+```bash
+curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
+```
+
+2. Ensure `~/.local/bin` is in your PATH:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+    Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
+
+3. Add server:
+```bash
+# Add a single server
+haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
+``` 
+> [!TIP]
+> See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
+
+### 2. Install and Initialize the Haloyd Daemon (haloyd) on Your Server
+The next step is to install `haloyd` on your server. If you need multiple servers just repeat these steps.
 
 1. Install `haloyadm`:
     ```bash
@@ -50,28 +71,6 @@ Repeat these steps for each server you want to deploy to:
 
 > [!NOTE]
 > For development or non-root installations, you can install in [user mode](#non-root-install).
-
-### 2. Install `haloy` Client
-The next step is to install the `haloy` CLI tool that will interact with the haloy server.
-
-1. Install `haloy`
-```bash
-curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash
-```
-
-2. Ensure `~/.local/bin` is in your PATH:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-    Add this to your `~/.bashrc`, `~/.zshrc`, or equivalent shell profile.
-
-3. Add server:
-```bash
-# Add a single server
-haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
-``` 
-> [!TIP]
-> See [Authentication & Token Management](#authentication--token-management) for more options on how to manage API tokens.
 
 ### 3. Create `haloy.yaml`
 In your application's project directory, create a `haloy.yaml` file:
