@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
@@ -64,8 +65,8 @@ func getVersion(ctx context.Context, appConfig *config.AppConfig, targetServer s
 		ui.Error("Failed to create API client: %v", err)
 		return
 	}
-	response, err := api.Version(ctx)
-	if err != nil {
+	var response apitypes.VersionResponse
+	if err := api.Get(ctx, "version", &response); err != nil {
 		ui.Error("Failed to get version from API: %v", err)
 		return
 	}

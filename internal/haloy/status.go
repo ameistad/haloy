@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/helpers"
@@ -62,26 +63,28 @@ func getAppStatus(ctx context.Context, appConfig *config.AppConfig, targetServer
 		ui.Error("Failed to create API client: %v", err)
 		return
 	}
-	status, err := api.AppStatus(ctx, appName)
-	if err != nil {
+	path := fmt.Sprintf("status/%s", appName)
+	var response apitypes.AppStatusResponse
+	if err := api.Get(ctx, path, &response); err != nil {
 		ui.Error("Failed to get app status: %v", err)
 		return
+
 	}
 
-	containerIDs := make([]string, 0, len(status.ContainerIDs))
-	for _, id := range status.ContainerIDs {
+	containerIDs := make([]string, 0, len(response.ContainerIDs))
+	for _, id := range response.ContainerIDs {
 		containerIDs = append(containerIDs, helpers.SafeIDPrefix(id))
 	}
 
-	canonicalDomains := make([]string, 0, len(status.Domains))
-	for _, domain := range status.Domains {
+	canonicalDomains := make([]string, 0, len(response.Domains))
+	for _, domain := range response.Domains {
 		canonicalDomains = append(canonicalDomains, domain.Canonical)
 	}
 
-	state := displayState(status.State)
+	state := displayState(response.State)
 	formattedOutput := []string{
 		fmt.Sprintf("State: %s", state),
-		fmt.Sprintf("Deployment ID: %s", status.DeploymentID),
+		fmt.Sprintf("Deployment ID: %s", response.DeploymentID),
 		fmt.Sprintf("Running container(s): %s", strings.Join(containerIDs, ", ")),
 		fmt.Sprintf("Domain(s): %s", strings.Join(canonicalDomains, ", ")),
 	}

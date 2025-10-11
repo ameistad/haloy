@@ -31,7 +31,7 @@ type AppStatusResponse struct {
 	State        string          `json:"state"`
 	DeploymentID string          `json:"deploymentId"`
 	ContainerIDs []string        `json:"containerIds"`
-	Domains      []config.Domain `json:"domains"` // TODO: add env vars
+	Domains      []config.Domain `json:"domains"`
 }
 
 type StopAppResponse struct {

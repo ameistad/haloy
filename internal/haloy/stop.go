@@ -2,9 +2,11 @@ package haloy
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/ameistad/haloy/internal/apiclient"
+	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/ui"
@@ -68,8 +70,15 @@ func stopApp(ctx context.Context, appConfig *config.AppConfig, targetServer, app
 		ui.Error("Failed to create API client: %v", err)
 		return
 	}
-	response, err := api.StopApp(ctx, appName, removeContainers)
-	if err != nil {
+	path := fmt.Sprintf("stop/%s", appName)
+
+	// Add query parameter if removeContainers is true
+	if removeContainers {
+		path += "?remove-containers=true"
+	}
+
+	var response apitypes.StopAppResponse
+	if err := api.Post(ctx, path, nil, &response); err != nil {
 		ui.Error("Failed to stop app: %v", err)
 		return
 	}
