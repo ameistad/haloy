@@ -25,12 +25,9 @@ type ContainerRunResult struct {
 func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRef string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
-	// Check image platform compatibility. Avoids common error that image is built for wrong architecture.
 	if err := checkImagePlatformCompatibility(ctx, cli, imageRef); err != nil {
 		return result, err
 	}
-
-	// Convert AppConfig to ContainerLabels
 	cl := config.ContainerLabels{
 		AppName:         appConfig.Name,
 		DeploymentID:    deploymentID,
@@ -42,7 +39,6 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 	}
 	labels := cl.ToLabels()
 
-	// Process environment variables
 	var envVars []string
 
 	for _, envVar := range appConfig.Env {
@@ -53,7 +49,6 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 	if appConfig.NetworkMode != "" {
 		networkMode = container.NetworkMode(appConfig.NetworkMode)
 	}
-	// Attach to the default docker network if not specified. If not using default network HAProxy will not work.
 	hostConfig := &container.HostConfig{
 		NetworkMode:   networkMode,
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
@@ -102,7 +97,6 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 }
 
 func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string) (stoppedIDs []string, err error) {
-	// Get all containers including stopped ones to be thorough
 	containerList, err := GetAppContainers(ctx, cli, true, appName)
 	if err != nil {
 		return stoppedIDs, err
@@ -123,7 +117,6 @@ func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger
 	stopCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
-	// For small numbers of containers, sequential is simpler and more reliable
 	if len(containersToStop) <= 3 {
 		return stopContainersSequential(stopCtx, cli, logger, containersToStop)
 	}
@@ -159,19 +152,18 @@ func stopContainersConcurrent(ctx context.Context, cli *client.Client, logger *s
 	}
 
 	resultChan := make(chan result, len(containers))
-	semaphore := make(chan struct{}, 3) // Limit to 3 concurrent stops
+	semaphore := make(chan struct{}, 3)
 
 	for _, containerInfo := range containers {
 		go func(container container.Summary) {
-			semaphore <- struct{}{}        // Acquire
-			defer func() { <-semaphore }() // Release
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 
 			err := stopSingleContainer(ctx, cli, logger, container.ID)
 			resultChan <- result{containerID: container.ID, error: err}
 		}(containerInfo)
 	}
 
-	// Collect all results
 	var stoppedIDs []string
 	var errors []error
 
@@ -203,7 +195,6 @@ func stopSingleContainer(ctx context.Context, cli *client.Client, logger *slog.L
 
 	logger.Warn("Graceful stop failed, attempting force kill", "container_id", helpers.SafeIDPrefix(containerID), "error", err)
 
-	// If graceful stop fails, force kill
 	killErr := cli.ContainerKill(ctx, containerID, "SIGKILL")
 	if killErr != nil {
 		return fmt.Errorf("both stop and kill failed - stop: %v, kill: %v", err, killErr)
@@ -249,7 +240,6 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 	var containerInfo container.InspectResponse
 	var err error
 
-	// Wait for container to be running
 	for {
 		containerInfo, err = cli.ContainerInspect(startCtx, containerID)
 		if err != nil {
@@ -278,13 +268,11 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 		}
 	}
 
-	// Check if container has built-in Docker healthcheck
 	if containerInfo.State.Health != nil {
 		if containerInfo.State.Health.Status == "healthy" {
 			return nil
 		}
 
-		// Wait for Docker healthcheck to transition from starting state
 		if containerInfo.State.Health.Status == "starting" {
 			healthCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
@@ -302,7 +290,6 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 				case <-healthCtx.Done():
 					return fmt.Errorf("timed out waiting for container health check to complete")
 				case <-time.After(1 * time.Second):
-					// Continue polling
 				}
 			}
 		}
@@ -324,7 +311,6 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 		}
 	}
 
-	// Rest of the existing HTTP health check code remains the same...
 	labels, err := config.ParseContainerLabels(containerInfo.Config.Labels)
 	if err != nil {
 		return fmt.Errorf("failed to parse container labels: %w", err)
@@ -343,10 +329,7 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 		return fmt.Errorf("failed to get container IP address: %w", err)
 	}
 
-	// Construct URL for health check
 	healthCheckURL := fmt.Sprintf("http://%s:%s%s", targetIP, labels.Port, labels.HealthCheckPath)
-
-	// Perform health check with retries
 	maxRetries := 5
 	backoff := 500 * time.Millisecond
 
@@ -354,12 +337,11 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 		Timeout: 5 * time.Second,
 	}
 
-	// Use traditional for loop for clarity
 	for retry := 0; retry < maxRetries; retry++ {
 		if retry > 0 {
 			logger.Info("Retrying health check...", "backoff", backoff, "attempt", retry+1, "max_retries", maxRetries)
 			time.Sleep(backoff)
-			backoff *= 2 // Exponential backoff
+			backoff *= 2
 		}
 
 		req, err := http.NewRequestWithContext(ctx, "GET", healthCheckURL, nil)
@@ -420,7 +402,6 @@ func GetAppContainers(ctx context.Context, cli *client.Client, listAll bool, app
 
 // ContainerNetworkInfo extracts the container's IP address
 func ContainerNetworkIP(containerInfo container.InspectResponse, networkName string) (string, error) {
-	// Add more detailed logging to help debug
 	if containerInfo.State == nil {
 		return "", fmt.Errorf("container state is nil")
 	}
@@ -434,7 +415,7 @@ func ContainerNetworkIP(containerInfo container.InspectResponse, networkName str
 	}
 
 	if _, exists := containerInfo.NetworkSettings.Networks[networkName]; !exists {
-		var availableNetworks []string // List available networks for debugging
+		var availableNetworks []string
 		for netName := range containerInfo.NetworkSettings.Networks {
 			availableNetworks = append(availableNetworks, netName)
 		}

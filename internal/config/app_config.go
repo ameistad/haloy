@@ -32,7 +32,7 @@ type AppConfig struct {
 
 	// Not read from the config file and populated on load.
 	TargetName string `json:"-" yaml:"-" toml:"-"`
-	Format     string `json:"-" yaml:"-" toml:"-"` // format of the config file (json, yaml or toml)
+	Format     string `json:"-" yaml:"-" toml:"-"`
 
 	TargetConfig     `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
 	Targets          map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
@@ -50,7 +50,6 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 		return &mergedConfig
 	}
 
-	// Apply overrides from the target. Target values take precedence.
 	if override.Image.Repository != "" {
 		mergedConfig.Image.Repository = override.Image.Repository
 	}
@@ -103,7 +102,6 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 		mergedConfig.PostDeploy = override.PostDeploy
 	}
 
-	// The final, merged config has no concept of targets.
 	mergedConfig.Targets = nil
 
 	return &mergedConfig

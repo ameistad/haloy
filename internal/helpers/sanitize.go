@@ -12,21 +12,18 @@ func SanitizeString(input string) string {
 		return ""
 	}
 	var result strings.Builder
-	result.Grow(len(input))        // Pre-allocate roughly the right size
-	lastCharWasUnderscore := false // Track if the last added char was a replacement underscore
+	result.Grow(len(input))
+	lastCharWasUnderscore := false
 
 	for _, r := range input {
-		// Whitelist allowed characters
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
 			result.WriteRune(r)
-			lastCharWasUnderscore = false // Reset flag if allowed char is added
+			lastCharWasUnderscore = false
 		} else {
-			// Only add an underscore if the previous char wasn't already a replacement underscore
 			if !lastCharWasUnderscore {
 				result.WriteRune('_')
-				lastCharWasUnderscore = true // Set flag as we added a replacement underscore
+				lastCharWasUnderscore = true
 			}
-			// If lastCharWasUnderscore is true, we skip adding another underscore
 		}
 	}
 	return result.String()
