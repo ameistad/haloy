@@ -42,7 +42,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ### 2. Install and Initialize the Haloyd Daemon (haloyd) on Your Server
 The next step is to install `haloyd` on your server. If you need multiple servers just repeat these steps.
 
-1. Install `haloyadm`:
+1. Install `haloyadm` (with root access):
     ```bash
     curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | sudo bash
     ```
