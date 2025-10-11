@@ -605,7 +605,6 @@ func (km *CertificatesKeyManager) LoadOrCreateKey(email string) (crypto.PrivateK
 	keyPath := filepath.Join(km.keyDir, filename)
 
 	if _, err := os.Stat(keyPath); err == nil {
-		// Key exists, load it
 		return km.loadKey(keyPath)
 	}
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 )
@@ -25,7 +26,7 @@ func (s *APIServer) bearerTokenAuthMiddleware(next http.HandlerFunc) http.Handle
 			return
 		}
 
-		if token != s.apiToken {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(s.apiToken)) != 1 {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}

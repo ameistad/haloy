@@ -68,7 +68,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 			targetsToProcess = targets
 		}
 	} else {
-		// This is a single-target configuration file.
+
 		if len(targets) > 0 || allTargets {
 			return nil, config.AppConfig{}, fmt.Errorf("the --targets and --all flags are not applicable for a single-target configuration file")
 		}

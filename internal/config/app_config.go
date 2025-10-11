@@ -109,7 +109,7 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 	return &mergedConfig
 }
 
-// Normalize will set default values which will be inherited by all targets.
+// Normalize sets default values inherited by all targets.
 func (ac *AppConfig) Normalize() {
 	if ac.Image.History == nil {
 		defaultCount := constants.DefaultDeploymentsToKeep

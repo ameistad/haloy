@@ -227,7 +227,6 @@ type compareResult struct {
 // 1. Updated deployments - same app name but different deployment ID or instance configuration
 // 2. Removed deployments - deployments that existed before but are no longer present
 // 3. Added deployments - new deployments that didn't exist in the previous state
-// This comparison is critical for determining when HAProxy configuration should be updated.
 func compareDeployments(oldDeployments, newDeployments map[string]Deployment) compareResult {
 	updatedDeployments := make(map[string]Deployment)
 	removedDeployments := make(map[string]Deployment)

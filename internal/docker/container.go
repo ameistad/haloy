@@ -78,18 +78,15 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 			return result, fmt.Errorf("failed to create container: %w", err)
 		}
 
-		// Ensure the container is removed on error
-		// This is important to avoid leaving dangling containers in case of failure.
-		// We use a deferred function to ensure cleanup happens even if the function exits early.
-		defer func() {
-			if err != nil && resp.ID != "" {
+		defer func(containerID string) {
+			if err != nil && containerID != "" {
 				// Try to remove container on error
-				removeErr := cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+				removeErr := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 				if removeErr != nil {
 					fmt.Printf("Failed to clean up container after error: %v\n", removeErr)
 				}
 			}
-		}()
+		}(resp.ID)
 
 		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 			return result, fmt.Errorf("failed to start container: %w", err)
@@ -288,8 +285,6 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 
 	// Check if container has built-in Docker healthcheck
 	if containerInfo.State.Health != nil {
-
-		// If container has healthcheck and it's healthy, we can skip our manual check
 		if containerInfo.State.Health.Status == "healthy" {
 			return nil
 		}
@@ -317,7 +312,6 @@ func HealthCheckContainer(ctx context.Context, cli *client.Client, logger *slog.
 			}
 		}
 
-		// If container has healthcheck and it's healthy, we can skip our manual check@
 		switch containerInfo.State.Health.Status {
 		case "healthy":
 			logger.Debug("Container is healthy according to Docker healthcheck", "container_id", helpers.SafeIDPrefix(containerID))
@@ -416,7 +410,7 @@ func GetAppContainers(ctx context.Context, cli *client.Client, listAll bool, app
 	}
 	containerList, err := cli.ContainerList(ctx, container.ListOptions{
 		Filters: filterArgs,
-		All:     listAll, // If all is true, include stopped containers
+		All:     listAll,
 	})
 	if err != nil {
 		if appName != "" {
