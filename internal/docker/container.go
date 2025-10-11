@@ -25,7 +25,7 @@ type ContainerRunResult struct {
 func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRef string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
 	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
 
-	// Check image platform compatibility before creating containers
+	// Check image platform compatibility. Avoids common error that image is built for wrong architecture.
 	if err := checkImagePlatformCompatibility(ctx, cli, imageRef); err != nil {
 		return result, err
 	}
@@ -54,7 +54,6 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 		networkMode = container.NetworkMode(appConfig.NetworkMode)
 	}
 	// Attach to the default docker network if not specified. If not using default network HAProxy will not work.
-	// Prepare host configuration - set restart policy and volumes to mount.
 	hostConfig := &container.HostConfig{
 		NetworkMode:   networkMode,
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
@@ -73,27 +72,26 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 			containerName += fmt.Sprintf("-replica-%d", i+1)
 		}
 
-		resp, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
+		createResponse, err := cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
 		if err != nil {
 			return result, fmt.Errorf("failed to create container: %w", err)
 		}
 
 		defer func(containerID string) {
 			if err != nil && containerID != "" {
-				// Try to remove container on error
 				removeErr := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 				if removeErr != nil {
 					fmt.Printf("Failed to clean up container after error: %v\n", removeErr)
 				}
 			}
-		}(resp.ID)
+		}(createResponse.ID)
 
-		if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		if err := cli.ContainerStart(ctx, createResponse.ID, container.StartOptions{}); err != nil {
 			return result, fmt.Errorf("failed to start container: %w", err)
 		}
 
 		result = append(result, ContainerRunResult{
-			ID:           resp.ID,
+			ID:           createResponse.ID,
 			DeploymentID: deploymentID,
 			ReplicaID:    i + 1,
 		})
@@ -122,7 +120,6 @@ func StopContainers(ctx context.Context, cli *client.Client, logger *slog.Logger
 		return stoppedIDs, nil
 	}
 
-	// Create a context with reasonable timeout for the entire operation
 	stopCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
@@ -164,7 +161,6 @@ func stopContainersConcurrent(ctx context.Context, cli *client.Client, logger *s
 	resultChan := make(chan result, len(containers))
 	semaphore := make(chan struct{}, 3) // Limit to 3 concurrent stops
 
-	// Start all goroutines
 	for _, containerInfo := range containers {
 		go func(container container.Summary) {
 			semaphore <- struct{}{}        // Acquire
@@ -197,7 +193,6 @@ func stopContainersConcurrent(ctx context.Context, cli *client.Client, logger *s
 }
 
 func stopSingleContainer(ctx context.Context, cli *client.Client, logger *slog.Logger, containerID string) error {
-	// First try a graceful stop
 	timeout := 20
 	stopOptions := container.StopOptions{Timeout: &timeout}
 
