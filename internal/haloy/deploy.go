@@ -42,6 +42,12 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
+			targets, err := appconfigloader.CreateTargets(rawAppConfig, resolvedAppConfig)
+			if err != nil {
+				ui.Error("Unable to create deploy targets: %v", err)
+				return
+			}
+
 			deploymentID := createDeploymentID()
 
 			if len(rawAppConfig.GlobalPreDeploy) > 0 {
@@ -56,37 +62,13 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			// TODO: Build and push images here
 
 			var wg sync.WaitGroup
-			if len(resolvedAppConfig.Targets) > 0 {
-				// Multi-target deployment
-				for targetName, resolvedTarget := range resolvedAppConfig.Targets {
-					rawTarget := rawAppConfig.Targets[targetName]
-
-					mergedRawAppConfig, mergeErr := rawAppConfig.MergeWithTarget(targetName, rawTarget)
-					if mergeErr != nil {
-						ui.Error("Failed to merge raw config for target '%s': %v", targetName, mergeErr)
-						return
-					}
-
-					mergedResolvedAppConfig, mergeErr := resolvedAppConfig.MergeWithTarget(targetName, resolvedTarget)
-					if mergeErr != nil {
-						ui.Error("Failed to merge resolved config for target '%s': %v", targetName, mergeErr)
-						return
-					}
-
-					wg.Add(1)
-					go func(raw, resolved config.AppConfig) {
-						defer wg.Done()
-						deployTarget(ctx, raw, resolved, *configPath, deploymentID, noLogsFlag, true)
-					}(*mergedRawAppConfig, *mergedResolvedAppConfig)
-				}
-			} else {
-				// Single-target deployment
+			for _, target := range targets {
 				wg.Add(1)
-				go func(raw, resolved config.AppConfig) {
+				go func(target appconfigloader.AppConfigTarget) {
 					defer wg.Done()
-					deployTarget(ctx, raw, resolved, *configPath, deploymentID, noLogsFlag, false)
-				}(rawAppConfig, resolvedAppConfig)
 
+					deployTarget(ctx, target, *configPath, deploymentID, noLogsFlag, len(targets) > 1)
+				}(target)
 			}
 
 			wg.Wait()
@@ -109,12 +91,12 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func deployTarget(ctx context.Context, rawAppConfig, resolvedAppConfig config.AppConfig, configPath, deploymentID string, noLogs, showTargetName bool) {
-	targetName := resolvedAppConfig.TargetName
-	format := resolvedAppConfig.Format
-	server := resolvedAppConfig.Server
-	preDeploy := resolvedAppConfig.PreDeploy
-	postDeploy := resolvedAppConfig.PostDeploy
+func deployTarget(ctx context.Context, target appconfigloader.AppConfigTarget, configPath, deploymentID string, noLogs, showTargetName bool) {
+	targetName := target.ResolvedAppConfig.TargetName
+	format := target.ResolvedAppConfig.Format
+	server := target.ResolvedAppConfig.Server
+	preDeploy := target.ResolvedAppConfig.PreDeploy
+	postDeploy := target.ResolvedAppConfig.PostDeploy
 
 	prefix := ""
 	if showTargetName {
@@ -122,7 +104,7 @@ func deployTarget(ctx context.Context, rawAppConfig, resolvedAppConfig config.Ap
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", resolvedAppConfig.Name)
+	pui.Info("Deployment started for %s", target.ResolvedAppConfig.Name)
 
 	if len(preDeploy) > 0 {
 		for _, hookCmd := range preDeploy {
@@ -133,7 +115,7 @@ func deployTarget(ctx context.Context, rawAppConfig, resolvedAppConfig config.Ap
 		}
 	}
 
-	token, err := getToken(&resolvedAppConfig, server)
+	token, err := getToken(&target.ResolvedAppConfig, server)
 	if err != nil {
 		pui.Error("%v", err)
 		return
@@ -147,8 +129,8 @@ func deployTarget(ctx context.Context, rawAppConfig, resolvedAppConfig config.Ap
 	}
 
 	request := apitypes.DeployRequest{
-		RawAppConfig:      rawAppConfig,
-		ResolvedAppConfig: resolvedAppConfig,
+		RawAppConfig:      target.RawAppConfig,
+		ResolvedAppConfig: target.ResolvedAppConfig,
 		DeploymentID:      deploymentID,
 	}
 	err = api.Post(ctx, "deploy", request, nil)

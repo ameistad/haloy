@@ -68,6 +68,43 @@ type AppConfigTarget struct {
 	RawAppConfig      config.AppConfig
 }
 
+func CreateTargets(rawAppConfig, resolvedAppConfig config.AppConfig) ([]AppConfigTarget, error) {
+	var appConfigTargets []AppConfigTarget
+
+	if len(resolvedAppConfig.Targets) > 0 {
+		// Multi-target deployment
+		for targetName, resolvedTarget := range resolvedAppConfig.Targets {
+			rawTarget, exists := rawAppConfig.Targets[targetName]
+			if !exists {
+				return nil, fmt.Errorf("target '%s' exists in resolved config but not in raw config", targetName)
+			}
+
+			mergedRawAppConfig, err := rawAppConfig.MergeWithTarget(targetName, rawTarget)
+			if err != nil {
+				return nil, fmt.Errorf("failed to merge raw config for target '%s': %w", targetName, err)
+			}
+
+			mergedResolvedAppConfig, err := resolvedAppConfig.MergeWithTarget(targetName, resolvedTarget)
+			if err != nil {
+				return nil, fmt.Errorf("failed to merge resolved config for target '%s': %w", targetName, err)
+			}
+
+			appConfigTargets = append(appConfigTargets, AppConfigTarget{
+				RawAppConfig:      *mergedRawAppConfig,
+				ResolvedAppConfig: *mergedResolvedAppConfig,
+			})
+		}
+	} else {
+		// Single-target deployment
+		appConfigTargets = append(appConfigTargets, AppConfigTarget{
+			RawAppConfig:      rawAppConfig,
+			ResolvedAppConfig: resolvedAppConfig,
+		})
+	}
+
+	return appConfigTargets, nil
+}
+
 func Load(ctx context.Context, configPath string, targets []string, allTargets bool) (
 	appConfigTargets []AppConfigTarget,
 	baseAppConfig config.AppConfig,
