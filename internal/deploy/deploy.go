@@ -17,7 +17,7 @@ import (
 func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, resolvedAppConfig, rawAppConfig config.AppConfig, logger *slog.Logger) error {
 	imageRef := resolvedAppConfig.Image.ImageRef()
 
-	err := docker.EnsureImageUpToDate(ctx, cli, logger, resolvedAppConfig.Image)
+	err := docker.EnsureImageUpToDate(ctx, cli, logger, *resolvedAppConfig.Image)
 	if err != nil {
 		return err
 	}

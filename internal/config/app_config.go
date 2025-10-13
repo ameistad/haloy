@@ -52,6 +52,30 @@ type AppConfig struct {
 func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image) (*Image, error) {
 	// Priority: target.Image > target.ImageRef > base.Image
 	if tc.Image != nil {
+		// If base image exists, merge the override with the base
+		if baseImage != nil {
+			merged := *baseImage // Copy base image
+			// Override with target's image fields if they are set
+			if tc.Image.Repository != "" {
+				merged.Repository = tc.Image.Repository
+			}
+			if tc.Image.Tag != "" {
+				merged.Tag = tc.Image.Tag
+			}
+			if tc.Image.Source != "" {
+				merged.Source = tc.Image.Source
+			}
+			if tc.Image.History != nil {
+				merged.History = tc.Image.History
+			}
+			if tc.Image.RegistryAuth != nil {
+				merged.RegistryAuth = tc.Image.RegistryAuth
+			}
+			if tc.Image.Builder != nil {
+				merged.Builder = tc.Image.Builder
+			}
+			return &merged, nil
+		}
 		return tc.Image, nil
 	}
 

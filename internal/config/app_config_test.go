@@ -179,7 +179,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, _ := tt.base.MergeWithTarget(tt.override)
+			result, _ := tt.base.MergeWithTarget("test-target", tt.override)
 
 			if result.Name != tt.expectedName {
 				t.Errorf("MergeWithTarget() Name = %s, expected %s", result.Name, tt.expectedName)
@@ -240,11 +240,13 @@ func TestAppConfig_Normalize(t *testing.T) {
 		{
 			name: "empty config gets defaults",
 			config: AppConfig{
-				Name: "myapp",
+				TargetConfig: TargetConfig{
+					Name: "myapp",
+				},
 			},
 			expected: AppConfig{
-				Name: "myapp",
 				TargetConfig: TargetConfig{
+					Name:            "myapp",
 					HealthCheckPath: "/",       // Default from constants
 					Port:            "8080",    // Default from constants
 					Replicas:        intPtr(1), // Default from constants
@@ -254,16 +256,16 @@ func TestAppConfig_Normalize(t *testing.T) {
 		{
 			name: "config with existing values keeps them",
 			config: AppConfig{
-				Name: "myapp",
 				TargetConfig: TargetConfig{
+					Name:            "myapp",
 					HealthCheckPath: "/custom-health",
 					Port:            "9090",
 					Replicas:        intPtr(3),
 				},
 			},
 			expected: AppConfig{
-				Name: "myapp",
 				TargetConfig: TargetConfig{
+					Name:            "myapp",
 					HealthCheckPath: "/custom-health",
 					Port:            "9090",
 					Replicas:        intPtr(3),
@@ -273,9 +275,9 @@ func TestAppConfig_Normalize(t *testing.T) {
 		{
 			name: "config with image history keeps it",
 			config: AppConfig{
-				Name: "myapp",
 				TargetConfig: TargetConfig{
-					Image: Image{
+					Name: "myapp",
+					Image: &Image{
 						History: &ImageHistory{
 							Strategy: HistoryStrategyLocal,
 							Count:    intPtr(5),
@@ -284,12 +286,12 @@ func TestAppConfig_Normalize(t *testing.T) {
 				},
 			},
 			expected: AppConfig{
-				Name: "myapp",
 				TargetConfig: TargetConfig{
+					Name:            "myapp",
 					HealthCheckPath: "/",
 					Port:            "8080",
 					Replicas:        intPtr(1),
-					Image: Image{
+					Image: &Image{
 						History: &ImageHistory{
 							Strategy: HistoryStrategyLocal,
 							Count:    intPtr(5),
@@ -326,8 +328,8 @@ func TestAppConfig_Normalize(t *testing.T) {
 				t.Errorf("Normalize() Replicas = %d, expected %d", replicas, expectedReplicas)
 			}
 
-			if tt.expected.TargetConfig.Image.History != nil {
-				if tt.config.TargetConfig.Image.History == nil {
+			if tt.expected.TargetConfig.Image != nil && tt.expected.TargetConfig.Image.History != nil {
+				if tt.config.TargetConfig.Image == nil || tt.config.TargetConfig.Image.History == nil {
 					t.Errorf("Normalize() Image.History should not be nil")
 				} else {
 					if tt.config.TargetConfig.Image.History.Strategy != tt.expected.TargetConfig.Image.History.Strategy {
@@ -343,9 +345,9 @@ func TestAppConfig_Normalize(t *testing.T) {
 // baseAppConfig can be used by multiple test functions
 func baseAppConfig(name string) AppConfig {
 	return AppConfig{
-		Name: name,
 		TargetConfig: TargetConfig{ // Initialize the embedded struct by its type name
-			Image: Image{
+			Name: name,
+			Image: &Image{
 				Repository: "example.com/repo",
 				Tag:        "latest",
 			},
@@ -429,10 +431,12 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "valid minimal config",
 			config: AppConfig{
-				Name: "myapp",
+				TargetConfig: TargetConfig{
+					Name: "myapp",
+				},
 				Targets: map[string]*TargetConfig{
 					"prod": {
-						Image: Image{
+						Image: &Image{
 							Repository: "nginx",
 							Tag:        "latest",
 						},
@@ -446,10 +450,12 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid target config",
 			config: AppConfig{
-				Name: "myapp",
+				TargetConfig: TargetConfig{
+					Name: "myapp",
+				},
 				Targets: map[string]*TargetConfig{
 					"prod": {
-						Image: Image{
+						Image: &Image{
 							Tag: "latest", // Missing repository
 						},
 						Server: "prod.server.com",
@@ -463,9 +469,9 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "valid config with all fields",
 			config: AppConfig{
-				Name: "myapp",
 				TargetConfig: TargetConfig{
-					Image: Image{
+					Name: "myapp",
+					Image: &Image{
 						Repository: "nginx",
 						Tag:        "1.21",
 						Source:     ImageSourceRegistry,
@@ -524,7 +530,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "valid minimal target config",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
@@ -535,7 +542,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "valid target config with all fields",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "1.21",
 					Source:     ImageSourceRegistry,
@@ -565,7 +573,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid image - missing repository",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Tag: "latest",
 				},
 			},
@@ -576,7 +585,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid ACME email",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
@@ -589,7 +599,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid domain",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
@@ -604,7 +615,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid env var",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
@@ -622,7 +634,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid volume mapping",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
@@ -635,7 +648,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid health check path",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
@@ -648,7 +662,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid replicas",
 			target: TargetConfig{
-				Image: Image{
+				Name: "test-app",
+				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
 				},
