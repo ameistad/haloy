@@ -13,9 +13,9 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 	defaultCount := 10
 
 	baseConfig := AppConfig{
-		Name: "myapp",
 		TargetConfig: TargetConfig{
-			Image: Image{
+			Name: "myapp",
+			Image: &Image{
 				Repository: "nginx",
 				Tag:        "1.20",
 				Source:     ImageSourceRegistry,
@@ -57,13 +57,13 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			},
 			expectedName:   "myapp",
 			expectedServer: "override.server.com",
-			expectedImage:  baseConfig.Image, // Should remain unchanged
+			expectedImage:  *baseConfig.Image, // Should remain unchanged
 		},
 		{
 			name: "override image repository and tag",
 			base: baseConfig,
 			override: &TargetConfig{
-				Image: Image{
+				Image: &Image{
 					Repository: "custom-nginx",
 					Tag:        "1.21",
 				},
@@ -80,7 +80,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			name: "override all fields",
 			base: baseConfig,
 			override: &TargetConfig{
-				Image: Image{
+				Image: &Image{
 					Repository: "apache",
 					Tag:        "2.4",
 					Source:     ImageSourceLocal,
@@ -107,7 +107,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			name: "override with image history",
 			base: baseConfig,
 			override: &TargetConfig{
-				Image: Image{
+				Image: &Image{
 					History: &ImageHistory{
 						Strategy: HistoryStrategyRegistry,
 						Count:    &defaultCount,
@@ -132,7 +132,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			name: "override with registry auth",
 			base: baseConfig,
 			override: &TargetConfig{
-				Image: Image{
+				Image: &Image{
 					RegistryAuth: &RegistryAuth{
 						Server:   "private.registry.com",
 						Username: ValueSource{Value: "user"},
@@ -179,7 +179,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.base.MergeWithTarget(tt.override)
+			result, _ := tt.base.MergeWithTarget(tt.override)
 
 			if result.Name != tt.expectedName {
 				t.Errorf("MergeWithTarget() Name = %s, expected %s", result.Name, tt.expectedName)

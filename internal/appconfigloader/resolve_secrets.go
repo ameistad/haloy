@@ -16,8 +16,7 @@ func ResolveSecrets(ctx context.Context, appConfig config.AppConfig) (config.App
 		return config.AppConfig{}, fmt.Errorf("failed to copy config for resolution: %w", err)
 	}
 
-	// Gather ValueSources across base config and all targets
-	allSources := gatherAllValueSources(&resolvedConfig)
+	allSources := gatherValueSources(&resolvedConfig)
 	if len(allSources) == 0 {
 		return resolvedConfig, nil
 	}
@@ -33,7 +32,6 @@ func ResolveSecrets(ctx context.Context, appConfig config.AppConfig) (config.App
 		return config.AppConfig{}, fmt.Errorf("failed to fetch grouped sources: %w", err)
 	}
 
-	// Extract values into all the sources we gathered
 	if err := extractValues(allSources, fetchedDataCache); err != nil {
 		return config.AppConfig{}, fmt.Errorf("failed to extract values: %w", err)
 	}
@@ -41,42 +39,58 @@ func ResolveSecrets(ctx context.Context, appConfig config.AppConfig) (config.App
 	return resolvedConfig, nil
 }
 
-// gatherAllValueSources collects ValueSource pointers from the entire AppConfig tree
-func gatherAllValueSources(appConfig *config.AppConfig) []*config.ValueSource {
+func gatherValueSources(appConfig *config.AppConfig) []*config.ValueSource {
 	var sources []*config.ValueSource
 
-	for _, image := range appConfig.Images {
-		if image.Builder != nil {
-			for i := range image.Builder.Args {
-				sources = append(sources, &image.Builder.Args[i].ValueSource)
-			}
-		}
+	sources = append(sources, &appConfig.APIToken)
+
+	for i := range appConfig.Env {
+		sources = append(sources, &appConfig.Env[i].ValueSource)
 	}
 
-	// Base config sources
-	sources = append(sources, gatherValueSources(&appConfig.TargetConfig)...)
+	if appConfig.Image != nil {
+		sources = append(sources, gatherImageValueSources(appConfig.Image)...)
+	}
 
-	// Target-specific sources
+	for _, image := range appConfig.Images {
+		sources = append(sources, gatherImageValueSources(image)...)
+	}
+
 	for _, targetConfig := range appConfig.Targets {
-		sources = append(sources, gatherValueSources(targetConfig)...)
+		sources = append(sources, gatherTargetValueSources(targetConfig)...)
 	}
 
 	return sources
 }
 
-// gatherValueSources extracts ValueSources from a TargetConfig (works for both base and target overrides)
-func gatherValueSources(targetConfig *config.TargetConfig) []*config.ValueSource {
+func gatherImageValueSources(img *config.Image) []*config.ValueSource {
 	var sources []*config.ValueSource
 
-	sources = append(sources, &targetConfig.APIToken)
-
-	for i := range targetConfig.Env {
-		sources = append(sources, &targetConfig.Env[i].ValueSource)
+	if img.RegistryAuth != nil {
+		sources = append(sources, &img.RegistryAuth.Username)
+		sources = append(sources, &img.RegistryAuth.Password)
 	}
 
-	if targetConfig.Image.RegistryAuth != nil {
-		sources = append(sources, &targetConfig.Image.RegistryAuth.Username)
-		sources = append(sources, &targetConfig.Image.RegistryAuth.Password)
+	if img.Builder != nil {
+		for i := range img.Builder.Args {
+			sources = append(sources, &img.Builder.Args[i].ValueSource)
+		}
+	}
+
+	return sources
+}
+
+func gatherTargetValueSources(tc *config.TargetConfig) []*config.ValueSource {
+	var sources []*config.ValueSource
+
+	sources = append(sources, &tc.APIToken)
+
+	for i := range tc.Env {
+		sources = append(sources, &tc.Env[i].ValueSource)
+	}
+
+	if tc.Image != nil {
+		sources = append(sources, gatherImageValueSources(tc.Image)...)
 	}
 
 	return sources
