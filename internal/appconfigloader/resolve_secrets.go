@@ -45,6 +45,14 @@ func ResolveSecrets(ctx context.Context, appConfig config.AppConfig) (config.App
 func gatherAllValueSources(appConfig *config.AppConfig) []*config.ValueSource {
 	var sources []*config.ValueSource
 
+	for _, image := range appConfig.Images {
+		if image.Builder != nil {
+			for i := range image.Builder.Args {
+				sources = append(sources, &image.Builder.Args[i].ValueSource)
+			}
+		}
+	}
+
 	// Base config sources
 	sources = append(sources, gatherValueSources(&appConfig.TargetConfig)...)
 

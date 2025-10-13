@@ -12,7 +12,15 @@ import (
 )
 
 type TargetConfig struct {
-	Image           Image       `json:"image" yaml:"image" toml:"image"`
+	// Name is the application name for this deployment.
+	// In a multi-target file, if this is omitted, the map key from 'targets' is used.
+	// In a single-deployment file, this is required at the top level.
+	Name string `json:"name,omitempty" yaml:"name,omitempty" toml:"name,omitempty"`
+
+	// Image can be defined inline OR reference a named image from the Images map
+	Image    *Image `json:"image,omitempty" yaml:"image,omitempty" toml:"image,omitempty"`
+	ImageRef string `json:"imageRef,omitempty" yaml:"image_ref,omitempty" toml:"image_ref,omitempty"`
+
 	Server          string      `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
 	APIToken        ValueSource `json:"apiToken" yaml:"api_token" toml:"api_token"`
 	Domains         []Domain    `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
@@ -28,43 +36,73 @@ type TargetConfig struct {
 }
 
 type AppConfig struct {
-	Name string `json:"name" yaml:"name" toml:"name"`
-
-	// Not read from the config file and populated on load.
-	TargetName string `json:"-" yaml:"-" toml:"-"`
-	Format     string `json:"-" yaml:"-" toml:"-"`
-
+	Images           map[string]*Image `json:"images,omitempty" yaml:"images,omitempty" toml:"images,omitempty"`
 	TargetConfig     `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
 	Targets          map[string]*TargetConfig `json:"targets,omitempty" yaml:"targets,omitempty" toml:"targets,omitempty"`
 	SecretProviders  *SecretProviders         `json:"secretProviders,omitempty" yaml:"secret_providers,omitempty" toml:"secret_providers,omitempty"`
 	GlobalPreDeploy  []string                 `json:"globalPreDeploy,omitempty" yaml:"global_pre_deploy,omitempty" toml:"global_pre_deploy,omitempty"`
 	GlobalPostDeploy []string                 `json:"globalPostDeploy,omitempty" yaml:"global_post_deploy,omitempty" toml:"global_post_deploy,omitempty"`
+
+	// Non config fields. Not read from the config file and populated on load.
+	TargetName string `json:"-" yaml:"-" toml:"-"`
+	Format     string `json:"-" yaml:"-" toml:"-"`
+}
+
+// ResolveImage returns the effective Image for this target
+func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image) (*Image, error) {
+	// Priority: target.Image > target.ImageRef > base.Image
+	if tc.Image != nil {
+		return tc.Image, nil
+	}
+
+	if tc.ImageRef != "" {
+		if images == nil {
+			return nil, fmt.Errorf("imageRef '%s' specified but no images map defined", tc.ImageRef)
+		}
+		img, exists := images[tc.ImageRef]
+		if !exists {
+			return nil, fmt.Errorf("imageRef '%s' not found in images map", tc.ImageRef)
+		}
+		return img, nil
+	}
+
+	if baseImage != nil {
+		return baseImage, nil
+	}
+
+	return nil, fmt.Errorf("no image specified for target")
 }
 
 // mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.
-func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
+func (ac *AppConfig) MergeWithTarget(targetName string, override *TargetConfig) (*AppConfig, error) {
 	mergedConfig := *ac
 
 	if override == nil {
 		mergedConfig.Targets = nil
-		return &mergedConfig
+		return &mergedConfig, nil
 	}
 
-	if override.Image.Repository != "" {
-		mergedConfig.Image.Repository = override.Image.Repository
+	mergedConfig.TargetName = targetName
+
+	if override.Name != "" {
+		mergedConfig.Name = override.Name
 	}
-	if override.Image.Tag != "" {
-		mergedConfig.Image.Tag = override.Image.Tag
+
+	// If name was not set in either top-level config or in target, we'll use TargetName (key of target)
+	if mergedConfig.Name == "" {
+		mergedConfig.Name = targetName
 	}
-	if override.Image.Source != "" {
-		mergedConfig.Image.Source = override.Image.Source
+
+	// Resolve the effective image for this target
+	resolvedImage, err := override.ResolveImage(ac.Images, ac.Image)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve image for target '%s': %w", targetName, err)
 	}
-	if override.Image.History != nil {
-		mergedConfig.Image.History = override.Image.History
-	}
-	if override.Image.RegistryAuth != nil {
-		mergedConfig.Image.RegistryAuth = override.Image.RegistryAuth
-	}
+
+	// Set the resolved image as the single image for the merged config
+	mergedConfig.Image = resolvedImage
+	mergedConfig.Images = nil // Clear the images map since we now have a single resolved image
+
 	if override.Server != "" {
 		mergedConfig.Server = override.Server
 	}
@@ -104,12 +142,12 @@ func (ac *AppConfig) MergeWithTarget(override *TargetConfig) *AppConfig {
 
 	mergedConfig.Targets = nil
 
-	return &mergedConfig
+	return &mergedConfig, nil
 }
 
 // Normalize sets default values inherited by all targets.
 func (ac *AppConfig) Normalize() {
-	if ac.Image.History == nil {
+	if ac.Image != nil && ac.Image.History == nil {
 		defaultCount := constants.DefaultDeploymentsToKeep
 		ac.Image.History = &ImageHistory{
 			Strategy: HistoryStrategyLocal,

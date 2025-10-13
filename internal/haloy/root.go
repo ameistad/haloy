@@ -1,6 +1,8 @@
 package haloy
 
 import (
+	"fmt"
+
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -10,6 +12,13 @@ type appCmdFlags struct {
 	configPath string
 	targets    []string
 	all        bool
+}
+
+func (f *appCmdFlags) validateTargetFlags() error {
+	if len(f.targets) > 0 && f.all {
+		return fmt.Errorf("cannot specify both --targets and --all flags; use one or the other")
+	}
+	return nil
 }
 
 func NewRootCmd() *cobra.Command {

@@ -2,6 +2,7 @@ package appconfigloader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,52 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
+
+func LoadImproved(
+	ctx context.Context,
+	configPath string,
+	targets []string,
+	allTargets bool,
+) (config.AppConfig, error) {
+	rawAppConfig, format, err := LoadRawAppConfig(configPath)
+	if err != nil {
+		return config.AppConfig{}, err
+	}
+
+	rawAppConfig.Format = format
+	rawAppConfig.Normalize()
+
+	if len(rawAppConfig.Targets) > 0 { // is multi target
+
+		if len(targets) == 0 && !allTargets {
+			return config.AppConfig{}, errors.New("multiple targets available, please specify targets with --targets or use --all")
+		}
+
+		if len(targets) > 0 {
+
+			filteredTargets := make(map[string]*config.TargetConfig)
+			for _, targetName := range targets {
+				if _, exists := rawAppConfig.Targets[targetName]; exists {
+					filteredTargets[targetName] = rawAppConfig.Targets[targetName]
+				} else {
+					return config.AppConfig{}, fmt.Errorf("target '%s' not found in configuration", targetName)
+				}
+			}
+			rawAppConfig.Targets = filteredTargets
+		}
+
+	} else {
+		if len(targets) > 0 || allTargets {
+			return config.AppConfig{}, errors.New("the --targets and --all flags are not applicable for a single-target configuration file")
+		}
+	}
+
+	if err := rawAppConfig.Validate(format); err != nil {
+		return config.AppConfig{}, err
+	}
+
+	return rawAppConfig, nil
+}
 
 type AppConfigTarget struct {
 	ResolvedAppConfig config.AppConfig // with secrets resolved
@@ -80,7 +127,7 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 		return nil, config.AppConfig{}, fmt.Errorf("failed to copy base app config: %w", err)
 	}
 
-	// Resolve secrets and environment variables.
+	// Resolve secrets in registry auth, environment variables and build args
 	resolvedAppConfig, err := ResolveSecrets(ctx, rawAppConfig)
 	if err != nil {
 		return nil, config.AppConfig{}, err
@@ -92,23 +139,26 @@ func Load(ctx context.Context, configPath string, targets []string, allTargets b
 	resolvedAppConfig.GlobalPostDeploy = nil
 
 	var finalAppConfigTargets []AppConfigTarget
-	for _, target := range targetsToProcess {
+	for _, targetName := range targetsToProcess {
 		var rawTargetAppConfig *config.AppConfig
 		var resolvedTargetAppConfig *config.AppConfig
 
 		if isMultiTarget {
-			rawOverrides := rawAppConfig.Targets[target]
-			resolvedOverrides := resolvedAppConfig.Targets[target]
+			rawOverrides := rawAppConfig.Targets[targetName]
+			resolvedOverrides := resolvedAppConfig.Targets[targetName]
 
-			rawTargetAppConfig = rawAppConfig.MergeWithTarget(rawOverrides)
-			resolvedTargetAppConfig = resolvedAppConfig.MergeWithTarget(resolvedOverrides)
+			rawTargetAppConfig, err = rawAppConfig.MergeWithTarget(targetName, rawOverrides)
+			if err != nil {
+				return nil, config.AppConfig{}, fmt.Errorf("unable to resolve raw config for '%s': %w", targetName, err)
+			}
+			resolvedTargetAppConfig, err = resolvedAppConfig.MergeWithTarget(targetName, resolvedOverrides)
+			if err != nil {
+				return nil, config.AppConfig{}, fmt.Errorf("unable to resolve resolved config for '%s': %w", targetName, err)
+			}
 		} else {
 			rawTargetAppConfig = &rawAppConfig
 			resolvedTargetAppConfig = &resolvedAppConfig
 		}
-
-		rawTargetAppConfig.TargetName = target
-		resolvedTargetAppConfig.TargetName = target
 
 		finalAppConfigTargets = append(finalAppConfigTargets, AppConfigTarget{
 			RawAppConfig:      *rawTargetAppConfig,

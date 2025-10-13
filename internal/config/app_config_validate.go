@@ -12,7 +12,7 @@ import (
 
 func (ac *AppConfig) isEmpty() bool {
 	return ac.Name == "" &&
-		ac.Image.Repository == "" &&
+		(ac.Image != nil || ac.Image.Repository == "") &&
 		ac.Server == "" &&
 		len(ac.Domains) == 0 &&
 		len(ac.Env) == 0 &&
@@ -29,28 +29,25 @@ func (ac *AppConfig) Validate(format string) error {
 		return fmt.Errorf("app configuration is required")
 	}
 
-	if ac.Name == "" {
-		return fmt.Errorf("app 'name' is required")
-	}
+	isMultiTarget := len(ac.Targets) > 0
 
-	if !isValidAppName(ac.Name) {
-		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", ac.Name)
-	}
-
-	if ac.Server != "" && len(ac.Targets) > 0 {
-		return fmt.Errorf("configuration cannot contain both 'server' and 'targets'; please use one method")
-	}
-
-	// If using targets, validate each merged target configuration
-	if len(ac.Targets) > 0 {
-		for name, overrides := range ac.Targets {
-			mergedConfig := ac.MergeWithTarget(overrides)
+	if isMultiTarget {
+		if ac.Server != "" {
+			return fmt.Errorf("configuration cannot contain both 'server' and 'targets'; please use one method")
+		}
+		for targetName, overrides := range ac.Targets {
+			mergedConfig, err := ac.MergeWithTarget(targetName, overrides)
+			if err != nil {
+				return fmt.Errorf("unable to resolve config for target '%s': %w", targetName, err)
+			}
 			if err := mergedConfig.TargetConfig.Validate(format); err != nil {
-				return fmt.Errorf("validation failed for target '%s': %w", name, err)
+				return fmt.Errorf("validation failed for target '%s': %w", targetName, err)
 			}
 		}
-		// Single target with embedded TargetConfig
 	} else {
+		if ac.Image == nil {
+			return fmt.Errorf("image is required for single-target configuration")
+		}
 		if err := ac.TargetConfig.Validate(format); err != nil {
 			return err
 		}
@@ -60,6 +57,18 @@ func (ac *AppConfig) Validate(format string) error {
 }
 
 func (tc *TargetConfig) Validate(format string) error {
+	if tc.Name == "" {
+		return fmt.Errorf("app 'name' is required")
+	}
+
+	if !isValidAppName(tc.Name) {
+		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", tc.Name)
+	}
+
+	if tc.Image != nil && tc.ImageRef != "" {
+		return fmt.Errorf("cannot specify both 'image' and 'imageRef' in target config")
+	}
+
 	if err := tc.Image.Validate(); err != nil {
 		return fmt.Errorf("invalid image: %w", err)
 	}

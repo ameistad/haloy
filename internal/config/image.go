@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -19,6 +20,7 @@ type Image struct {
 	Tag          string        `json:"tag,omitempty" yaml:"tag,omitempty" toml:"tag,omitempty"`
 	History      *ImageHistory `json:"history,omitempty" yaml:"history,omitempty" toml:"history,omitempty"`
 	RegistryAuth *RegistryAuth `json:"registry,omitempty" yaml:"registry,omitempty" toml:"registry,omitempty"`
+	Builder      *Builder      `json:"builder,omitempty" yaml:"builder,omitempty" toml:"builder,omitempty"`
 }
 
 type RegistryAuth struct {
@@ -127,6 +129,46 @@ func (h *ImageHistory) Validate() error {
 	// Pattern validation for registry strategy
 	if h.Strategy == HistoryStrategyRegistry && strings.TrimSpace(h.Pattern) == "" {
 		return fmt.Errorf("image.history.pattern is required for registry strategy")
+	}
+
+	return nil
+}
+
+func (b *Builder) Validate(format string) error {
+	if b == nil {
+		return nil
+	}
+
+	// TODO: add more validation, Dockerfile, Context, Platform
+
+	for i, arg := range b.Args {
+		if err := arg.Validate(format); err != nil {
+			return fmt.Errorf("args[%d]: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
+type Builder struct {
+	Context    string     `json:"context,omitempty" yaml:"context,omitempty" toml:"context,omitempty"`
+	Dockerfile string     `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty" toml:"dockerfile,omitempty"`
+	Platform   string     `json:"platform,omitempty" yaml:"platform,omitempty" toml:"platform,omitempty"`
+	Args       []BuildArg `json:"args,omitempty" yaml:"args,omitempty" toml:"args,omitempty"`
+}
+
+type BuildArg struct {
+	Name        string `json:"name" yaml:"name" toml:"name"`
+	ValueSource `mapstructure:",squash" json:",inline" yaml:",inline" toml:",inline"`
+}
+
+func (ba *BuildArg) Validate(format string) error {
+	if ba.Name == "" {
+		return errors.New("build argument 'name' cannot be empty")
+	}
+
+	if err := ba.ValueSource.Validate(); err != nil {
+		return fmt.Errorf("build argument '%s': %w", ba.Name, err)
 	}
 
 	return nil
