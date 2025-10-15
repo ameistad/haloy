@@ -42,7 +42,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			targets, err := appconfigloader.CreateTargets(rawAppConfig, resolvedAppConfig)
+			targets, err := appconfigloader.ResolveTargetPairs(rawAppConfig, resolvedAppConfig)
 			if err != nil {
 				ui.Error("Unable to create deploy targets: %v", err)
 				return
@@ -64,7 +64,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			var wg sync.WaitGroup
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target appconfigloader.AppConfigTarget) {
+				go func(target appconfigloader.AppConfigPairs) {
 					defer wg.Done()
 
 					deployTarget(ctx, target, *configPath, deploymentID, noLogsFlag, len(targets) > 1)
@@ -91,7 +91,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func deployTarget(ctx context.Context, target appconfigloader.AppConfigTarget, configPath, deploymentID string, noLogs, showTargetName bool) {
+func deployTarget(ctx context.Context, target appconfigloader.AppConfigPairs, configPath, deploymentID string, noLogs, showTargetName bool) {
 	targetName := target.ResolvedAppConfig.TargetName
 	format := target.ResolvedAppConfig.Format
 	server := target.ResolvedAppConfig.Server
