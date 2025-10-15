@@ -98,7 +98,7 @@ func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image)
 }
 
 // mergeWithTarget creates a new AppConfig by applying a target's overrides to the base config.
-func (ac *AppConfig) MergeWithTarget(targetName string, override *TargetConfig) (*AppConfig, error) {
+func (ac *AppConfig) ResolveTarget(targetName string, override *TargetConfig) (*AppConfig, error) {
 	mergedConfig := *ac
 
 	if override == nil {

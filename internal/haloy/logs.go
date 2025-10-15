@@ -29,10 +29,15 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 			if serverFlag != "" {
 				streamLogs(ctx, nil, serverFlag)
 			} else {
-
-				targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+				rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
+					return
+				}
+
+				targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+				if err != nil {
+					ui.Error("Unable to create deploy targets: %v", err)
 					return
 				}
 
@@ -41,8 +46,8 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 					wg.Add(1)
 					go func(appConfig config.AppConfig) {
 						defer wg.Done()
-						streamLogs(ctx, &appConfig, target.ResolvedAppConfig.Server)
-					}(target.RawAppConfig) // using Raw, because why not?
+						streamLogs(ctx, &appConfig, target.Server)
+					}(target)
 				}
 
 				wg.Wait()

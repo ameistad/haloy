@@ -9,6 +9,7 @@ import (
 	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/appconfigloader"
+	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/deploytypes"
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
@@ -30,9 +31,15 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 			ctx := cmd.Context()
 			targetDeploymentID := args[0]
 
-			targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+			rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("%v", err)
+				return
+			}
+
+			targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+			if err != nil {
+				ui.Error("Unable to create deploy targets: %v", err)
 				return
 			}
 
@@ -42,27 +49,24 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target appconfigloader.AppConfigTarget) {
+				go func(target config.AppConfig) {
 					defer wg.Done()
 
-					appName := target.ResolvedAppConfig.Name
-					server := target.ResolvedAppConfig.Server
-
-					token, err := getToken(&target.ResolvedAppConfig, server)
+					token, err := getToken(&target, target.Server)
 					if err != nil {
 						ui.Error("%v", err)
 						return
 					}
-					ui.Info("Starting rollback for application: %s using server %s", appName, server)
+					ui.Info("Starting rollback for application: %s using server %s", target.Name, target.Server)
 
-					api, err := apiclient.New(server, token)
+					api, err := apiclient.New(target.Server, token)
 					if err != nil {
 						ui.Error("Failed to create API client: %v", err)
 						return
 					}
-					rollbackTargetsResponse, err := getRollbackTargets(ctx, api, appName)
+					rollbackTargetsResponse, err := getRollbackTargets(ctx, api, target.Name)
 					if err != nil {
-						ui.Error("Failed to get available rollback targets for %s: %v", target.ResolvedAppConfig.TargetName, err)
+						ui.Error("Failed to get available rollback targets for %s: %v", target.TargetName, err)
 						return
 					}
 					var availableTarget deploytypes.RollbackTarget
@@ -131,9 +135,16 @@ func RollbackTargetsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := cmd.Context()
-			targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+
+			rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("%v", err)
+				return
+			}
+
+			targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+			if err != nil {
+				ui.Error("Unable to create deploy targets: %v", err)
 				return
 			}
 
@@ -142,34 +153,31 @@ func RollbackTargetsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			for _, target := range targets {
 				wg.Add(1)
 
-				go func(target appconfigloader.AppConfigTarget) {
+				go func(target config.AppConfig) {
 					defer wg.Done()
 
-					appName := target.ResolvedAppConfig.Name
-					server := target.ResolvedAppConfig.Server
-
-					token, err := getToken(&target.ResolvedAppConfig, server)
+					token, err := getToken(&target, target.Server)
 					if err != nil {
 						ui.Error("%v", err)
 						return
 					}
 
-					api, err := apiclient.New(server, token)
+					api, err := apiclient.New(target.Server, token)
 					if err != nil {
 						ui.Error("Failed to create API client: %v", err)
 						return
 					}
-					rollbackTargets, err := getRollbackTargets(ctx, api, appName)
+					rollbackTargets, err := getRollbackTargets(ctx, api, target.Name)
 					if err != nil {
 						ui.Error("Failed to get rollback targets: %v", err)
 						return
 					}
 					if len(rollbackTargets.Targets) == 0 {
-						ui.Info("No rollback targets available for app '%s'", appName)
+						ui.Info("No rollback targets available for app '%s'", target.Name)
 						return
 					}
 
-					displayRollbackTargets(appName, rollbackTargets.Targets, *configPath, target.ResolvedAppConfig.TargetName)
+					displayRollbackTargets(target.Name, rollbackTargets.Targets, *configPath, target.TargetName)
 				}(target)
 			}
 

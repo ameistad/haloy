@@ -36,7 +36,7 @@ func (ac *AppConfig) Validate(format string) error {
 			return fmt.Errorf("configuration cannot contain both 'server' and 'targets'; please use one method")
 		}
 		for targetName, overrides := range ac.Targets {
-			mergedConfig, err := ac.MergeWithTarget(targetName, overrides)
+			mergedConfig, err := ac.ResolveTarget(targetName, overrides)
 			if err != nil {
 				return fmt.Errorf("unable to resolve config for target '%s': %w", targetName, err)
 			}

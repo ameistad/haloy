@@ -179,7 +179,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, _ := tt.base.MergeWithTarget("test-target", tt.override)
+			result, _ := tt.base.ResolveTarget("test-target", tt.override)
 
 			if result.Name != tt.expectedName {
 				t.Errorf("MergeWithTarget() Name = %s, expected %s", result.Name, tt.expectedName)
@@ -1039,7 +1039,7 @@ func TestPortDecodeHook(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		data        interface{}
+		data        any
 		expectError bool
 		expected    Port
 		errMsg      string

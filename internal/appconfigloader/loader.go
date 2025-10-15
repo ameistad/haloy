@@ -12,7 +12,6 @@ import (
 
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/jinzhu/copier"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -63,147 +62,56 @@ func LoadImproved(
 	return rawAppConfig, nil
 }
 
-type AppConfigTarget struct {
+func ResolveTargets(appConfig config.AppConfig) ([]config.AppConfig, error) {
+	var resolvedConfigs []config.AppConfig
+
+	if len(appConfig.Targets) > 0 {
+		// Multi-target deployment
+		for targetName, target := range appConfig.Targets {
+			mergedConfig, err := appConfig.ResolveTarget(targetName, target)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve target '%s': %w", targetName, err)
+			}
+			resolvedConfigs = append(resolvedConfigs, *mergedConfig)
+		}
+	} else {
+		// Single-target deployment
+		resolvedConfigs = append(resolvedConfigs, appConfig)
+	}
+
+	return resolvedConfigs, nil
+}
+
+type AppConfigPairs struct {
 	ResolvedAppConfig config.AppConfig // with secrets resolved
 	RawAppConfig      config.AppConfig
 }
 
-func CreateTargets(rawAppConfig, resolvedAppConfig config.AppConfig) ([]AppConfigTarget, error) {
-	var appConfigTargets []AppConfigTarget
+func ResolveTargetPairs(rawAppConfig, resolvedAppConfig config.AppConfig) ([]AppConfigPairs, error) {
+	rawTargets, err := ResolveTargets(rawAppConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve raw targets: %w", err)
+	}
 
-	if len(resolvedAppConfig.Targets) > 0 {
-		// Multi-target deployment
-		for targetName, resolvedTarget := range resolvedAppConfig.Targets {
-			rawTarget, exists := rawAppConfig.Targets[targetName]
-			if !exists {
-				return nil, fmt.Errorf("target '%s' exists in resolved config but not in raw config", targetName)
-			}
+	resolvedTargets, err := ResolveTargets(resolvedAppConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve resolved targets: %w", err)
+	}
 
-			mergedRawAppConfig, err := rawAppConfig.MergeWithTarget(targetName, rawTarget)
-			if err != nil {
-				return nil, fmt.Errorf("failed to merge raw config for target '%s': %w", targetName, err)
-			}
+	// Ensure we have the same number of targets
+	if len(rawTargets) != len(resolvedTargets) {
+		return nil, fmt.Errorf("mismatch in number of raw (%d) and resolved (%d) targets", len(rawTargets), len(resolvedTargets))
+	}
 
-			mergedResolvedAppConfig, err := resolvedAppConfig.MergeWithTarget(targetName, resolvedTarget)
-			if err != nil {
-				return nil, fmt.Errorf("failed to merge resolved config for target '%s': %w", targetName, err)
-			}
-
-			appConfigTargets = append(appConfigTargets, AppConfigTarget{
-				RawAppConfig:      *mergedRawAppConfig,
-				ResolvedAppConfig: *mergedResolvedAppConfig,
-			})
-		}
-	} else {
-		// Single-target deployment
-		appConfigTargets = append(appConfigTargets, AppConfigTarget{
-			RawAppConfig:      rawAppConfig,
-			ResolvedAppConfig: resolvedAppConfig,
+	var appConfigTargets []AppConfigPairs
+	for i := range rawTargets {
+		appConfigTargets = append(appConfigTargets, AppConfigPairs{
+			RawAppConfig:      rawTargets[i],
+			ResolvedAppConfig: resolvedTargets[i],
 		})
 	}
 
 	return appConfigTargets, nil
-}
-
-func Load(ctx context.Context, configPath string, targets []string, allTargets bool) (
-	appConfigTargets []AppConfigTarget,
-	baseAppConfig config.AppConfig,
-	err error,
-) {
-	rawAppConfig, format, err := LoadRawAppConfig(configPath)
-	if err != nil {
-		return nil, config.AppConfig{}, err
-	}
-
-	// Set default values
-	rawAppConfig.Normalize()
-
-	if err := rawAppConfig.Validate(format); err != nil {
-		return nil, config.AppConfig{}, err
-	}
-
-	// Set the format the app config was loaded in
-	rawAppConfig.Format = format
-
-	isMultiTarget := len(rawAppConfig.Targets) > 0
-
-	var targetsToProcess []string
-
-	if isMultiTarget {
-		if len(targets) == 0 && !allTargets {
-			var availableTargets []string
-			for name := range rawAppConfig.Targets {
-				availableTargets = append(availableTargets, name)
-			}
-			return nil, config.AppConfig{}, fmt.Errorf("multiple targets available (%s); please specify targets with --targets or use --all", strings.Join(availableTargets, ", "))
-		}
-		if allTargets {
-			// User wants all available targets.
-			for name := range rawAppConfig.Targets {
-				targetsToProcess = append(targetsToProcess, name)
-			}
-		} else {
-			// User specified a subset of targets.
-			for _, name := range targets {
-				if _, exists := rawAppConfig.Targets[name]; !exists {
-					return nil, config.AppConfig{}, fmt.Errorf("target '%s' not found in configuration", name)
-				}
-			}
-			targetsToProcess = targets
-		}
-	} else {
-
-		if len(targets) > 0 || allTargets {
-			return nil, config.AppConfig{}, fmt.Errorf("the --targets and --all flags are not applicable for a single-target configuration file")
-		}
-		targetsToProcess = []string{""} // Use an empty string to signify processing the base config itself.
-	}
-
-	// Deep copy to preserve original so we can return hooks
-	if err := copier.Copy(&baseAppConfig, &rawAppConfig); err != nil {
-		return nil, config.AppConfig{}, fmt.Errorf("failed to copy base app config: %w", err)
-	}
-
-	// Resolve secrets in registry auth, environment variables and build args
-	resolvedAppConfig, err := ResolveSecrets(ctx, rawAppConfig)
-	if err != nil {
-		return nil, config.AppConfig{}, err
-	}
-
-	rawAppConfig.GlobalPreDeploy = nil
-	rawAppConfig.GlobalPostDeploy = nil
-	resolvedAppConfig.GlobalPreDeploy = nil
-	resolvedAppConfig.GlobalPostDeploy = nil
-
-	var finalAppConfigTargets []AppConfigTarget
-	for _, targetName := range targetsToProcess {
-		var rawTargetAppConfig *config.AppConfig
-		var resolvedTargetAppConfig *config.AppConfig
-
-		if isMultiTarget {
-			rawOverrides := rawAppConfig.Targets[targetName]
-			resolvedOverrides := resolvedAppConfig.Targets[targetName]
-
-			rawTargetAppConfig, err = rawAppConfig.MergeWithTarget(targetName, rawOverrides)
-			if err != nil {
-				return nil, config.AppConfig{}, fmt.Errorf("unable to resolve raw config for '%s': %w", targetName, err)
-			}
-			resolvedTargetAppConfig, err = resolvedAppConfig.MergeWithTarget(targetName, resolvedOverrides)
-			if err != nil {
-				return nil, config.AppConfig{}, fmt.Errorf("unable to resolve resolved config for '%s': %w", targetName, err)
-			}
-		} else {
-			rawTargetAppConfig = &rawAppConfig
-			resolvedTargetAppConfig = &resolvedAppConfig
-		}
-
-		finalAppConfigTargets = append(finalAppConfigTargets, AppConfigTarget{
-			RawAppConfig:      *rawTargetAppConfig,
-			ResolvedAppConfig: *resolvedTargetAppConfig,
-		})
-	}
-
-	return finalAppConfigTargets, baseAppConfig, nil
 }
 
 func LoadRawAppConfig(configPath string) (config.AppConfig, string, error) {

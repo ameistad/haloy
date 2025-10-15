@@ -27,18 +27,24 @@ func StopAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			if serverFlag != "" {
 				stopApp(ctx, nil, serverFlag, "", removeContainersFlag)
 			} else {
-				targets, _, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
+				rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
+					return
+				}
+
+				targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+				if err != nil {
+					ui.Error("Unable to create deploy targets: %v", err)
 					return
 				}
 
 				var wg sync.WaitGroup
 				for _, target := range targets {
 					wg.Add(1)
-					go func(target appconfigloader.AppConfigTarget) {
+					go func(target config.AppConfig) {
 						defer wg.Done()
-						stopApp(ctx, &target.ResolvedAppConfig, target.ResolvedAppConfig.Server, target.ResolvedAppConfig.Name, removeContainersFlag)
+						stopApp(ctx, &target, target.Server, target.Name, removeContainersFlag)
 					}(target)
 				}
 
