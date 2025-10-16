@@ -82,7 +82,6 @@ func TestImage_Validate(t *testing.T) {
 			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21",
-				Source:     ImageSourceRegistry,
 			},
 			wantErr: false,
 		},
@@ -91,7 +90,6 @@ func TestImage_Validate(t *testing.T) {
 			image: Image{
 				Repository: "myapp",
 				Tag:        "latest",
-				Source:     ImageSourceLocal,
 			},
 			wantErr: false,
 		},
@@ -118,7 +116,6 @@ func TestImage_Validate(t *testing.T) {
 			image: Image{
 				Repository: "nginx",
 				Tag:        "1.21",
-				Source:     "invalid-source",
 			},
 			wantErr: true,
 			errMsg:  "must be 'registry' or 'local'",
@@ -203,7 +200,7 @@ func TestImage_Validate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.image.Validate()
+			err := tt.image.Validate("yaml")
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")

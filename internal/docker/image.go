@@ -15,7 +15,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func getRegistryAuthString(imageConfig config.Image) (string, error) {
+func getRegistryAuthString(imageConfig *config.Image) (string, error) {
 	auth := imageConfig.RegistryAuth
 	if auth == nil {
 		return "", nil
@@ -48,20 +48,16 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 	local, err := cli.ImageInspect(ctx, imageRef)
 	localExists := (err == nil)
 
-	source := imageConfig.Source
-	if source == "" {
-		source = config.ImageSourceRegistry // Default to registry if not specified
-	}
-
-	if source == config.ImageSourceLocal {
+	// If Builder.UploadToServer is set to true, we'll assume the local image should be used.
+	if imageConfig.Builder != nil && imageConfig.Builder.UploadToServer {
 		if !localExists {
-			return fmt.Errorf("local image %s not found", imageRef)
+			return fmt.Errorf("uploaded image '%s' not found", imageRef)
 		}
 		logger.Debug("Using local image", "image", imageRef)
 		return nil
 	}
 
-	registryAuth, err := getRegistryAuthString(imageConfig)
+	registryAuth, err := getRegistryAuthString(&imageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to resolve registry auth for image %s: %w", imageRef, err)
 	}
@@ -74,10 +70,12 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 		}
 
 		remoteDigest := remote.Descriptor.Digest.String()
-		for _, rd := range local.RepoDigests {
-			if strings.HasSuffix(rd, "@"+remoteDigest) {
-				logger.Debug("Registry image is up to date", "image", imageRef)
-				return nil // Local matches remote - use local
+		if local.RepoDigests != nil {
+			for _, rd := range local.RepoDigests {
+				if strings.HasSuffix(rd, "@"+remoteDigest) {
+					logger.Debug("Registry image is up to date", "image", imageRef)
+					return nil // Local matches remote - use local
+				}
 			}
 		}
 		logger.Debug("Local image outdated, pulling from registry", "image", imageRef)

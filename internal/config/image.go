@@ -7,16 +7,8 @@ import (
 	"strings"
 )
 
-type ImageSource string
-
-const (
-	ImageSourceRegistry ImageSource = "registry"
-	ImageSourceLocal    ImageSource = "local"
-)
-
 type Image struct {
 	Repository   string        `json:"repository" yaml:"repository" toml:"repository"`
-	Source       ImageSource   `json:"source,omitempty" yaml:"source,omitempty" toml:"source,omitempty"`
 	Tag          string        `json:"tag,omitempty" yaml:"tag,omitempty" toml:"tag,omitempty"`
 	History      *ImageHistory `json:"history,omitempty" yaml:"history,omitempty" toml:"history,omitempty"`
 	RegistryAuth *RegistryAuth `json:"registry,omitempty" yaml:"registry,omitempty" toml:"registry,omitempty"`
@@ -39,7 +31,7 @@ func (is *Image) ImageRef() string {
 	return fmt.Sprintf("%s:%s", repo, tag)
 }
 
-func (i *Image) Validate() error {
+func (i *Image) Validate(format string) error {
 	if strings.TrimSpace(i.Repository) == "" {
 		return fmt.Errorf("image.repository is required")
 	}
@@ -47,14 +39,12 @@ func (i *Image) Validate() error {
 		return fmt.Errorf("image.repository '%s' contains whitespace", i.Repository)
 	}
 
-	if i.Source != "" {
-		if i.Source != ImageSourceRegistry && i.Source != ImageSourceLocal {
-			return fmt.Errorf("image.source '%s' is invalid (must be 'registry' or 'local')", i.Source)
-		}
-	}
-
 	if strings.ContainsAny(i.Tag, " \t\n\r") {
 		return fmt.Errorf("image.tag '%s' contains whitespace", i.Tag)
+	}
+
+	if i.RegistryAuth != nil && i.Builder != nil && i.Builder.UploadToServer {
+		return fmt.Errorf("image.registry cannot be set when image.%s is true - uploaded images don't use registry authentication", GetFieldNameForFormat(Builder{}, "UploadToServer", format))
 	}
 
 	if i.History != nil {
@@ -70,10 +60,8 @@ func (i *Image) Validate() error {
 			}
 
 			mutableTags := []string{"main", "master", "develop", "staging", "production"}
-			for _, mutable := range mutableTags {
-				if tag == mutable {
-					return fmt.Errorf("image.tag '%s' is mutable and not recommended with registry strategy - use immutable tags like 'v1.2.3'", tag)
-				}
+			if slices.Contains(mutableTags, tag) {
+				return fmt.Errorf("image.tag '%s' is mutable and not recommended with registry strategy - use immutable tags like 'v1.2.3'", tag)
 			}
 		}
 	}
@@ -91,6 +79,13 @@ func (i *Image) Validate() error {
 			return err
 		}
 	}
+
+	if i.Builder != nil {
+		if err := i.Builder.Validate(format); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -139,7 +134,17 @@ func (b *Builder) Validate(format string) error {
 		return nil
 	}
 
-	// TODO: add more validation, Dockerfile, Context, Platform
+	if b.Dockerfile != "" {
+		if strings.ContainsAny(b.Dockerfile, " \t\n\r") {
+			return fmt.Errorf("dockerfile path '%s' contains whitespace", b.Dockerfile)
+		}
+	}
+
+	if b.Context != "" {
+		if strings.ContainsAny(b.Context, " \t\n\r") {
+			return fmt.Errorf("context path '%s' contains whitespace", b.Context)
+		}
+	}
 
 	for i, arg := range b.Args {
 		if err := arg.Validate(format); err != nil {
@@ -151,10 +156,11 @@ func (b *Builder) Validate(format string) error {
 }
 
 type Builder struct {
-	Context    string     `json:"context,omitempty" yaml:"context,omitempty" toml:"context,omitempty"`
-	Dockerfile string     `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty" toml:"dockerfile,omitempty"`
-	Platform   string     `json:"platform,omitempty" yaml:"platform,omitempty" toml:"platform,omitempty"`
-	Args       []BuildArg `json:"args,omitempty" yaml:"args,omitempty" toml:"args,omitempty"`
+	Context        string     `json:"context,omitempty" yaml:"context,omitempty" toml:"context,omitempty"`
+	Dockerfile     string     `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty" toml:"dockerfile,omitempty"`
+	Platform       string     `json:"platform,omitempty" yaml:"platform,omitempty" toml:"platform,omitempty"`
+	Args           []BuildArg `json:"args,omitempty" yaml:"args,omitempty" toml:"args,omitempty"`
+	UploadToServer bool       `json:"uploadToServer,omitempty" yaml:"upload_to_server,omitempty" toml:"upload_to_server,omitempty"`
 }
 
 type BuildArg struct {

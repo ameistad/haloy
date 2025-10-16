@@ -62,9 +62,6 @@ func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image)
 			if tc.Image.Tag != "" {
 				merged.Tag = tc.Image.Tag
 			}
-			if tc.Image.Source != "" {
-				merged.Source = tc.Image.Source
-			}
 			if tc.Image.History != nil {
 				merged.History = tc.Image.History
 			}

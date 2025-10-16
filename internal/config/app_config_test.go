@@ -18,7 +18,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			Image: &Image{
 				Repository: "nginx",
 				Tag:        "1.20",
-				Source:     ImageSourceRegistry,
 			},
 			Server:          "default.server.com",
 			ACMEEmail:       "admin@default.com",
@@ -73,7 +72,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			expectedImage: Image{
 				Repository: "custom-nginx",
 				Tag:        "1.21",
-				Source:     ImageSourceRegistry, // Source should be inherited
 			},
 		},
 		{
@@ -83,7 +81,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				Image: &Image{
 					Repository: "apache",
 					Tag:        "2.4",
-					Source:     ImageSourceLocal,
 				},
 				Server:          "prod.server.com",
 				ACMEEmail:       "admin@prod.com",
@@ -100,7 +97,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			expectedImage: Image{
 				Repository: "apache",
 				Tag:        "2.4",
-				Source:     ImageSourceLocal,
 			},
 		},
 		{
@@ -120,7 +116,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			expectedImage: Image{
 				Repository: "nginx", // Base repository
 				Tag:        "1.20",  // Base tag
-				Source:     ImageSourceRegistry,
 				History: &ImageHistory{
 					Strategy: HistoryStrategyRegistry,
 					Count:    &defaultCount,
@@ -145,7 +140,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			expectedImage: Image{
 				Repository: "nginx", // Base repository
 				Tag:        "1.20",  // Base tag
-				Source:     ImageSourceRegistry,
 				RegistryAuth: &RegistryAuth{
 					Server:   "private.registry.com",
 					Username: ValueSource{Value: "user"},
@@ -201,10 +195,6 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				if result.Image.Tag != tt.expectedImage.Tag {
 					t.Errorf("MergeWithTarget() Image.Tag = %s, expected %s",
 						result.Image.Tag, tt.expectedImage.Tag)
-				}
-				if result.Image.Source != tt.expectedImage.Source {
-					t.Errorf("MergeWithTarget() Image.Source = %s, expected %s",
-						result.Image.Source, tt.expectedImage.Source)
 				}
 				if tt.expectedImage.History != nil {
 					if result.Image.History == nil {
@@ -474,7 +464,6 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 					Image: &Image{
 						Repository: "nginx",
 						Tag:        "1.21",
-						Source:     ImageSourceRegistry,
 					},
 					Server:          "server.com",
 					ACMEEmail:       "admin@example.com",
@@ -546,7 +535,6 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "1.21",
-					Source:     ImageSourceRegistry,
 				},
 				Server:          "server.com",
 				ACMEEmail:       "admin@example.com",

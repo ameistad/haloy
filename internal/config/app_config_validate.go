@@ -12,7 +12,7 @@ import (
 
 func (ac *AppConfig) isEmpty() bool {
 	return ac.Name == "" &&
-		(ac.Image != nil || ac.Image.Repository == "") &&
+		(ac.Image == nil || ac.Image.Repository == "") &&
 		ac.Server == "" &&
 		len(ac.Domains) == 0 &&
 		len(ac.Env) == 0 &&
@@ -69,8 +69,14 @@ func (tc *TargetConfig) Validate(format string) error {
 		return fmt.Errorf("cannot specify both 'image' and 'imageRef' in target config")
 	}
 
-	if err := tc.Image.Validate(); err != nil {
-		return fmt.Errorf("invalid image: %w", err)
+	if tc.Image == nil && tc.ImageRef == "" {
+		return fmt.Errorf("either 'image' or 'imageRef' must be specified")
+	}
+
+	if tc.Image != nil {
+		if err := tc.Image.Validate(format); err != nil {
+			return fmt.Errorf("invalid image: %w", err)
+		}
 	}
 
 	if len(tc.Domains) > 0 {
@@ -82,7 +88,7 @@ func (tc *TargetConfig) Validate(format string) error {
 	}
 
 	if tc.ACMEEmail != "" && !helpers.IsValidEmail(tc.ACMEEmail) {
-		return fmt.Errorf("%s is invalid '%s'; must be a valid email address", GetFieldNameForFormat(*tc, "ACMEEmail", format), tc.ACMEEmail)
+		return fmt.Errorf("%s is invalid '%s'; must be a valid email address", GetFieldNameForFormat(TargetConfig{}, "ACMEEmail", format), tc.ACMEEmail)
 	}
 
 	for j, envVar := range tc.Env {
@@ -109,7 +115,7 @@ func (tc *TargetConfig) Validate(format string) error {
 
 	if tc.HealthCheckPath != "" {
 		if tc.HealthCheckPath[0] != '/' {
-			return fmt.Errorf("%s must start with a slash", GetFieldNameForFormat(*tc, "HealthCheckPath", format))
+			return fmt.Errorf("%s must start with a slash", GetFieldNameForFormat(TargetConfig{}, "HealthCheckPath", format))
 		}
 	}
 
