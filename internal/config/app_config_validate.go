@@ -65,11 +65,11 @@ func (tc *TargetConfig) Validate(format string) error {
 		return fmt.Errorf("invalid app name '%s'; must contain only alphanumeric characters, hyphens, and underscores", tc.Name)
 	}
 
-	if tc.Image != nil && tc.ImageRef != "" {
+	if tc.Image != nil && tc.ImageKey != "" {
 		return fmt.Errorf("cannot specify both 'image' and 'imageRef' in target config")
 	}
 
-	if tc.Image == nil && tc.ImageRef == "" {
+	if tc.Image == nil && tc.ImageKey == "" {
 		return fmt.Errorf("either 'image' or 'imageRef' must be specified")
 	}
 

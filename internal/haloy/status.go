@@ -24,7 +24,7 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, _ []string) {
 			ctx := cmd.Context()
-			rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
+			rawAppConfig, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("%v", err)
 				return

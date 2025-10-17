@@ -17,10 +17,9 @@ type TargetConfig struct {
 	// In a single-deployment file, this is required at the top level.
 	Name string `json:"name,omitempty" yaml:"name,omitempty" toml:"name,omitempty"`
 
-	// Image can be defined inline OR reference a named image from the Images map
-	Image    *Image `json:"image,omitempty" yaml:"image,omitempty" toml:"image,omitempty"`
-	ImageRef string `json:"imageRef,omitempty" yaml:"image_ref,omitempty" toml:"image_ref,omitempty"`
-
+	// Image can be defined inline OR reference a named image (ImageKey) from the Images map
+	Image           *Image      `json:"image,omitempty" yaml:"image,omitempty" toml:"image,omitempty"`
+	ImageKey        string      `json:"imageKey,omitempty" yaml:"image_key,omitempty" toml:"image_key,omitempty"`
 	Server          string      `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
 	APIToken        ValueSource `json:"apiToken" yaml:"api_token" toml:"api_token"`
 	Domains         []Domain    `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
@@ -50,7 +49,7 @@ type AppConfig struct {
 
 // ResolveImage returns the effective Image for this target
 func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image) (*Image, error) {
-	// Priority: target.Image > target.ImageRef > base.Image
+	// Priority: target.Image > target.ImageKey > base.Image
 	if tc.Image != nil {
 		// If base image exists, merge the override with the base
 		if baseImage != nil {
@@ -76,13 +75,13 @@ func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image)
 		return tc.Image, nil
 	}
 
-	if tc.ImageRef != "" {
+	if tc.ImageKey != "" {
 		if images == nil {
-			return nil, fmt.Errorf("imageRef '%s' specified but no images map defined", tc.ImageRef)
+			return nil, fmt.Errorf("imageRef '%s' specified but no images map defined", tc.ImageKey)
 		}
-		img, exists := images[tc.ImageRef]
+		img, exists := images[tc.ImageKey]
 		if !exists {
-			return nil, fmt.Errorf("imageRef '%s' not found in images map", tc.ImageRef)
+			return nil, fmt.Errorf("imageRef '%s' not found in images map", tc.ImageKey)
 		}
 		return img, nil
 	}

@@ -30,7 +30,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 		Run: func(cmd *cobra.Command, _ []string) {
 			ctx := cmd.Context()
 
-			rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
+			rawAppConfig, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -42,10 +42,31 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			targets, err := appconfigloader.ResolveTargetPairs(rawAppConfig, resolvedAppConfig)
+			rawTargets, err := appconfigloader.ResolveTargets(rawAppConfig)
 			if err != nil {
-				ui.Error("Unable to create deploy targets: %v", err)
+				ui.Error("%v", err)
 				return
+			}
+
+			resolvedTargets, err := appconfigloader.ResolveTargets(resolvedAppConfig)
+			if err != nil {
+				ui.Error("%v", err)
+				return
+			}
+
+			if len(rawTargets) != len(resolvedTargets) {
+				ui.Error("Mismatch between raw targets (%d) and resolved targets (%d). This indicates a configuration processing error.", len(rawTargets), len(resolvedTargets))
+				return
+			}
+
+			builds, _ := ResolveImageBuilds(resolvedTargets)
+			if len(builds) > 0 {
+				for imageRef, image := range builds {
+					if err := BuildImage(ctx, imageRef, image, *configPath); err != nil {
+						ui.Error("%v", err)
+						return
+					}
+				}
 			}
 
 			deploymentID := createDeploymentID()
@@ -59,16 +80,24 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 			}
 
-			// TODO: Build and push images here
-
 			var wg sync.WaitGroup
-			for _, target := range targets {
+			for i, rawTarget := range rawTargets {
+				resolvedTarget := resolvedTargets[i]
+
 				wg.Add(1)
-				go func(target appconfigloader.AppConfigPairs) {
+				go func(rawTarget config.AppConfig) {
 					defer wg.Done()
 
-					deployTarget(ctx, target, *configPath, deploymentID, noLogsFlag, len(targets) > 1)
-				}(target)
+					deployTarget(
+						ctx,
+						rawTarget,
+						resolvedTarget,
+						*configPath,
+						deploymentID,
+						noLogsFlag,
+						len(rawTargets) > 1,
+					)
+				}(rawTarget)
 			}
 
 			wg.Wait()
@@ -91,12 +120,12 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func deployTarget(ctx context.Context, target appconfigloader.AppConfigPairs, configPath, deploymentID string, noLogs, showTargetName bool) {
-	targetName := target.ResolvedAppConfig.TargetName
-	format := target.ResolvedAppConfig.Format
-	server := target.ResolvedAppConfig.Server
-	preDeploy := target.ResolvedAppConfig.PreDeploy
-	postDeploy := target.ResolvedAppConfig.PostDeploy
+func deployTarget(ctx context.Context, rawAppConfig, resolvedAppConfig config.AppConfig, configPath, deploymentID string, noLogs, showTargetName bool) {
+	targetName := rawAppConfig.TargetName
+	format := rawAppConfig.Format
+	server := rawAppConfig.Server
+	preDeploy := rawAppConfig.PreDeploy
+	postDeploy := rawAppConfig.PostDeploy
 
 	prefix := ""
 	if showTargetName {
@@ -104,7 +133,7 @@ func deployTarget(ctx context.Context, target appconfigloader.AppConfigPairs, co
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", target.ResolvedAppConfig.Name)
+	pui.Info("Deployment started for %s", rawAppConfig.Name)
 
 	if len(preDeploy) > 0 {
 		for _, hookCmd := range preDeploy {
@@ -115,7 +144,7 @@ func deployTarget(ctx context.Context, target appconfigloader.AppConfigPairs, co
 		}
 	}
 
-	token, err := getToken(&target.ResolvedAppConfig, server)
+	token, err := getToken(&resolvedAppConfig, server)
 	if err != nil {
 		pui.Error("%v", err)
 		return
@@ -129,8 +158,8 @@ func deployTarget(ctx context.Context, target appconfigloader.AppConfigPairs, co
 	}
 
 	request := apitypes.DeployRequest{
-		RawAppConfig:      target.RawAppConfig,
-		ResolvedAppConfig: target.ResolvedAppConfig,
+		RawAppConfig:      rawAppConfig,
+		ResolvedAppConfig: resolvedAppConfig,
 		DeploymentID:      deploymentID,
 	}
 	err = api.Post(ctx, "deploy", request, nil)

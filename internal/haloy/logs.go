@@ -29,7 +29,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 			if serverFlag != "" {
 				streamLogs(ctx, nil, serverFlag)
 			} else {
-				rawAppConfig, err := appconfigloader.LoadImproved(ctx, *configPath, flags.targets, flags.all)
+				rawAppConfig, err := appconfigloader.Load(ctx, *configPath, flags.targets, flags.all)
 				if err != nil {
 					ui.Error("%v", err)
 					return

@@ -16,7 +16,7 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
-func LoadImproved(
+func Load(
 	ctx context.Context,
 	configPath string,
 	targets []string,
@@ -80,38 +80,6 @@ func ResolveTargets(appConfig config.AppConfig) ([]config.AppConfig, error) {
 	}
 
 	return resolvedConfigs, nil
-}
-
-type AppConfigPairs struct {
-	ResolvedAppConfig config.AppConfig // with secrets resolved
-	RawAppConfig      config.AppConfig
-}
-
-func ResolveTargetPairs(rawAppConfig, resolvedAppConfig config.AppConfig) ([]AppConfigPairs, error) {
-	rawTargets, err := ResolveTargets(rawAppConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve raw targets: %w", err)
-	}
-
-	resolvedTargets, err := ResolveTargets(resolvedAppConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve resolved targets: %w", err)
-	}
-
-	// Ensure we have the same number of targets
-	if len(rawTargets) != len(resolvedTargets) {
-		return nil, fmt.Errorf("mismatch in number of raw (%d) and resolved (%d) targets", len(rawTargets), len(resolvedTargets))
-	}
-
-	var appConfigTargets []AppConfigPairs
-	for i := range rawTargets {
-		appConfigTargets = append(appConfigTargets, AppConfigPairs{
-			RawAppConfig:      rawTargets[i],
-			ResolvedAppConfig: resolvedTargets[i],
-		})
-	}
-
-	return appConfigTargets, nil
 }
 
 func LoadRawAppConfig(configPath string) (config.AppConfig, string, error) {
