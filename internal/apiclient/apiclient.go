@@ -17,7 +17,6 @@ import (
 
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
-	"github.com/ameistad/haloy/internal/ui"
 )
 
 // APIClient handles communication with the haloy API
@@ -196,7 +195,6 @@ func (c *APIClient) PostFile(ctx context.Context, path, fieldName, filePath stri
 	}
 
 	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
-	ui.Debug("upload to: %s", url)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, &requestBody)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

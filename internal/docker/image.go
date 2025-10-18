@@ -207,9 +207,6 @@ func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, 
 }
 
 func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) error {
-	fmt.Printf("=== DOCKER LOAD DEBUG START ===\n")
-	fmt.Printf("Loading image from tar: %s\n", tarPath)
-
 	file, err := os.Open(tarPath)
 	if err != nil {
 		fmt.Printf("Failed to open tar file: %v\n", err)
@@ -223,12 +220,10 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 		return fmt.Errorf("failed to load image: %w", err)
 	}
 	defer response.Body.Close()
-	fmt.Printf("ImageLoad call completed\n")
 
 	// Read and parse the JSON response
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Printf("Failed to read response body: %v\n", err)
 		return fmt.Errorf("failed to read load response: %w", err)
 	}
 
@@ -265,12 +260,8 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	}
 
 	if len(loadedImages) == 0 {
-		fmt.Printf("WARNING: No 'Loaded image:' messages found in Docker response\n")
 		return fmt.Errorf("no images were loaded from tar file")
 	}
-
-	fmt.Printf("Successfully loaded images: %v\n", loadedImages)
-	fmt.Printf("=== DOCKER LOAD DEBUG END ===\n")
 
 	return nil
 }

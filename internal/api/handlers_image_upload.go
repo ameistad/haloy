@@ -16,47 +16,37 @@ import (
 // handleImageUpload handles uploading Docker image tar files
 func (s *APIServer) handleImageUpload() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("=== IMAGE UPLOAD DEBUG START ===\n")
-
 		// Parse multipart form (32MB max memory)
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			fmt.Printf("Failed to parse multipart form: %v\n", err)
 			http.Error(w, "Failed to parse multipart form", http.StatusBadRequest)
 			return
 		}
-		fmt.Printf("Multipart form parsed successfully\n")
 
 		// Get the uploaded file
 		file, header, err := r.FormFile("image")
 		if err != nil {
-			fmt.Printf("Failed to get form file: %v\n", err)
 			http.Error(w, "Missing 'image' file in form data", http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
-		fmt.Printf("Got uploaded file: %s\n", header.Filename)
 
 		// Validate file extension
 		if !strings.HasSuffix(header.Filename, ".tar") {
-			fmt.Printf("Invalid file extension: %s\n", header.Filename)
 			http.Error(w, "File must be a .tar archive", http.StatusBadRequest)
 			return
 		}
-		fmt.Printf("File extension validated\n")
 
 		// Create temporary file, we defer delete it
 		tempFile, err := os.CreateTemp("", "haloy-image-*.tar")
 		if err != nil {
-			fmt.Printf("Failed to create temp file: %v\n", err)
 			http.Error(w, "Failed to create temporary file", http.StatusInternalServerError)
 			return
 		}
 		defer func() {
-			fmt.Printf("Cleaning up temp file: %s\n", tempFile.Name())
 			os.Remove(tempFile.Name())
 		}()
 		defer tempFile.Close()
-		fmt.Printf("Created temp file: %s\n", tempFile.Name())
 
 		// Copy uploaded data to temp file
 		bytesWritten, err := io.Copy(tempFile, file)
@@ -93,7 +83,6 @@ func (s *APIServer) handleImageUpload() http.HandlerFunc {
 			http.Error(w, fmt.Sprintf("Failed to load image: %v", err), http.StatusInternalServerError)
 			return
 		}
-		fmt.Printf("Image loaded successfully\n")
 
 		// Verify image was loaded
 		images, err := cli.ImageList(ctx, image.ListOptions{})
