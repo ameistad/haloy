@@ -225,7 +225,7 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	defer file.Close()
 	fmt.Printf("Tar file opened successfully\n")
 
-	response, err := cli.ImageLoad(ctx, file, nil)
+	response, err := cli.ImageLoad(ctx, file)
 	if err != nil {
 		fmt.Printf("ImageLoad failed: %v\n", err)
 		return fmt.Errorf("failed to load image: %w", err)
