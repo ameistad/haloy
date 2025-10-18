@@ -206,12 +206,67 @@ func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, 
 }
 
 func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) error {
+	fmt.Printf("=== DOCKER LOAD DEBUG START ===\n")
+	fmt.Printf("Loading image from tar: %s\n", tarPath)
+
+	// Check if file exists and is readable
+	if stat, err := os.Stat(tarPath); err != nil {
+		fmt.Printf("Tar file stat failed: %v\n", err)
+		return fmt.Errorf("tar file not accessible: %w", err)
+	} else {
+		fmt.Printf("Tar file exists, size: %d bytes\n", stat.Size())
+	}
+
 	file, err := os.Open(tarPath)
 	if err != nil {
-		return err
+		fmt.Printf("Failed to open tar file: %v\n", err)
+		return fmt.Errorf("failed to open tar file: %w", err)
 	}
 	defer file.Close()
+	fmt.Printf("Tar file opened successfully\n")
 
-	_, err = cli.ImageLoad(ctx, file)
-	return err
+	response, err := cli.ImageLoad(ctx, file, false)
+	if err != nil {
+		fmt.Printf("ImageLoad failed: %v\n", err)
+		return fmt.Errorf("failed to load image: %w", err)
+	}
+	defer response.Body.Close()
+	fmt.Printf("ImageLoad call completed\n")
+
+	// Read and log the response - this is crucial!
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response body: %v\n", err)
+		return fmt.Errorf("failed to read load response: %w", err)
+	}
+
+	responseText := string(body)
+	fmt.Printf("Docker load response length: %d\n", len(responseText))
+	fmt.Printf("Docker load response: '%s'\n", responseText)
+
+	// Parse the response line by line to see what images were loaded
+	lines := strings.Split(responseText, "\n")
+	fmt.Printf("Response has %d lines:\n", len(lines))
+	loadedImages := []string{}
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			fmt.Printf("  Line %d: '%s'\n", i, line)
+			// Look for "Loaded image:" messages
+			if strings.HasPrefix(line, "Loaded image:") {
+				loadedImage := strings.TrimSpace(strings.TrimPrefix(line, "Loaded image:"))
+				loadedImages = append(loadedImages, loadedImage)
+			}
+		}
+	}
+
+	if len(loadedImages) == 0 {
+		fmt.Printf("WARNING: No 'Loaded image:' messages found in Docker response\n")
+		return fmt.Errorf("no images were loaded from tar file - Docker response: %s", responseText)
+	}
+
+	fmt.Printf("Successfully loaded images: %v\n", loadedImages)
+	fmt.Printf("=== DOCKER LOAD DEBUG END ===\n")
+
+	return nil
 }
