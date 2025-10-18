@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -209,21 +210,12 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	fmt.Printf("=== DOCKER LOAD DEBUG START ===\n")
 	fmt.Printf("Loading image from tar: %s\n", tarPath)
 
-	// Check if file exists and is readable
-	if stat, err := os.Stat(tarPath); err != nil {
-		fmt.Printf("Tar file stat failed: %v\n", err)
-		return fmt.Errorf("tar file not accessible: %w", err)
-	} else {
-		fmt.Printf("Tar file exists, size: %d bytes\n", stat.Size())
-	}
-
 	file, err := os.Open(tarPath)
 	if err != nil {
 		fmt.Printf("Failed to open tar file: %v\n", err)
 		return fmt.Errorf("failed to open tar file: %w", err)
 	}
 	defer file.Close()
-	fmt.Printf("Tar file opened successfully\n")
 
 	response, err := cli.ImageLoad(ctx, file)
 	if err != nil {
@@ -233,7 +225,7 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	defer response.Body.Close()
 	fmt.Printf("ImageLoad call completed\n")
 
-	// Read and log the response - this is crucial!
+	// Read and parse the JSON response
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		fmt.Printf("Failed to read response body: %v\n", err)
@@ -241,28 +233,40 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	}
 
 	responseText := string(body)
-	fmt.Printf("Docker load response length: %d\n", len(responseText))
-	fmt.Printf("Docker load response: '%s'\n", responseText)
+	fmt.Printf("Docker load response: %s\n", responseText)
 
-	// Parse the response line by line to see what images were loaded
+	// Parse JSON lines to find loaded images
 	lines := strings.Split(responseText, "\n")
-	fmt.Printf("Response has %d lines:\n", len(lines))
 	loadedImages := []string{}
-	for i, line := range lines {
+
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line != "" {
-			fmt.Printf("  Line %d: '%s'\n", i, line)
-			// Look for "Loaded image:" messages
-			if strings.HasPrefix(line, "Loaded image:") {
-				loadedImage := strings.TrimSpace(strings.TrimPrefix(line, "Loaded image:"))
-				loadedImages = append(loadedImages, loadedImage)
-			}
+		if line == "" {
+			continue
+		}
+
+		// Parse each JSON line
+		var jsonResponse struct {
+			Stream string `json:"stream"`
+			Status string `json:"status"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &jsonResponse); err != nil {
+			// Skip non-JSON lines
+			continue
+		}
+
+		// Look for "Loaded image:" in the stream field
+		if jsonResponse.Stream != "" && strings.HasPrefix(jsonResponse.Stream, "Loaded image:") {
+			loadedImage := strings.TrimSpace(strings.TrimPrefix(jsonResponse.Stream, "Loaded image:"))
+			loadedImages = append(loadedImages, loadedImage)
+			fmt.Printf("Found loaded image: %s\n", loadedImage)
 		}
 	}
 
 	if len(loadedImages) == 0 {
 		fmt.Printf("WARNING: No 'Loaded image:' messages found in Docker response\n")
-		return fmt.Errorf("no images were loaded from tar file - Docker response: %s", responseText)
+		return fmt.Errorf("no images were loaded from tar file")
 	}
 
 	fmt.Printf("Successfully loaded images: %v\n", loadedImages)
