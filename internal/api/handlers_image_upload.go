@@ -10,6 +10,7 @@ import (
 
 	"github.com/ameistad/haloy/internal/apitypes"
 	"github.com/ameistad/haloy/internal/docker"
+	"github.com/docker/docker/api/types/image"
 )
 
 // handleImageUpload handles uploading Docker image tar files
@@ -95,7 +96,7 @@ func (s *APIServer) handleImageUpload() http.HandlerFunc {
 		fmt.Printf("Image loaded successfully\n")
 
 		// Verify image was loaded
-		images, err := cli.ImageList(ctx, types.ImageListOptions{})
+		images, err := cli.ImageList(ctx, image.ListOptions{})
 		if err != nil {
 			fmt.Printf("Failed to list images: %v\n", err)
 		} else {
