@@ -49,7 +49,7 @@ func (s *APIServer) handleAppStatus() http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusOK, response)
+		encodeJSON(w, http.StatusOK, response)
 	}
 }
 

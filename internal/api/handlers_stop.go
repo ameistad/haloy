@@ -54,7 +54,7 @@ func (s *APIServer) handleStopApp() http.HandlerFunc {
 			Message: "Stop operation started. Use 'haloy logs' to monitor progress.",
 		}
 
-		if err := writeJSON(w, http.StatusAccepted, response); err != nil {
+		if err := encodeJSON(w, http.StatusAccepted, response); err != nil {
 			logger.Error("Failed to write response", "error", err)
 		}
 	}

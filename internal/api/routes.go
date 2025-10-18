@@ -7,6 +7,9 @@ func (s *APIServer) setupRoutes() {
 	s.router.Handle("POST /v1/deploy", authMiddleware(s.handleDeploy()))
 	s.router.Handle("GET /v1/deploy/{deploymentID}/logs", authMiddleware(s.handleDeploymentLogs()))
 
+	// Image upload route
+	s.router.Handle("POST /v1/images/upload", authMiddleware(s.handleImageUpload()))
+
 	// Logs stream
 	s.router.Handle("GET /v1/logs", authMiddleware(s.handleLogs()))
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"sort"
 	"strings"
 
@@ -202,4 +203,15 @@ func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, 
 	}
 
 	return nil
+}
+
+func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) error {
+	file, err := os.Open(tarPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = cli.ImageLoad(ctx, file)
+	return err
 }

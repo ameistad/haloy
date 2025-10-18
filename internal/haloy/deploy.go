@@ -59,10 +59,16 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			builds, _ := ResolveImageBuilds(resolvedTargets)
-			if len(builds) > 0 {
-				for imageRef, image := range builds {
-					if err := BuildImage(ctx, imageRef, image, *configPath); err != nil {
+			builds, uploads := ResolveImageBuilds(resolvedTargets)
+			for imageRef, image := range builds {
+				if err := BuildImage(ctx, imageRef, image, *configPath); err != nil {
+					ui.Error("%v", err)
+					return
+				}
+			}
+			for imageRef, appConfigs := range uploads {
+				for _, appConfig := range appConfigs {
+					if err := UploadImage(ctx, imageRef, *appConfig); err != nil {
 						ui.Error("%v", err)
 						return
 					}
@@ -120,7 +126,12 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func deployTarget(ctx context.Context, rawAppConfig, resolvedAppConfig config.AppConfig, configPath, deploymentID string, noLogs, showTargetName bool) {
+func deployTarget(
+	ctx context.Context,
+	rawAppConfig, resolvedAppConfig config.AppConfig,
+	configPath, deploymentID string,
+	noLogs, showTargetName bool,
+) {
 	targetName := rawAppConfig.TargetName
 	format := rawAppConfig.Format
 	server := rawAppConfig.Server

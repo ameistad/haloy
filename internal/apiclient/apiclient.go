@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +27,10 @@ type APIClient struct {
 }
 
 func New(url, token string) (*APIClient, error) {
+	return NewWithTimeout(url, token, 30*time.Second)
+}
+
+func NewWithTimeout(url, token string, timeout time.Duration) (*APIClient, error) {
 	normalizedUrl, err := helpers.NormalizeServerURL(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to normalize url: %w", err)
@@ -32,7 +39,7 @@ func New(url, token string) (*APIClient, error) {
 
 	cli := &APIClient{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: timeout,
 		},
 		baseURL:  serverUrl,
 		apiToken: token,
@@ -153,6 +160,69 @@ func (c *APIClient) Post(ctx context.Context, path string, request, response any
 		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 			return fmt.Errorf("failed to decode response: %w", err)
 		}
+	}
+
+	return nil
+}
+
+// PostFile uploads a file using multipart form data
+func (c *APIClient) PostFile(ctx context.Context, path, fieldName, filePath string) error {
+	if err := c.HealthCheck(ctx); err != nil {
+		return fmt.Errorf("server not available at %s: %w", c.baseURL, err)
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	// Create multipart form
+	var requestBody bytes.Buffer
+	writer := multipart.NewWriter(&requestBody)
+
+	part, err := writer.CreateFormFile(fieldName, filepath.Base(filePath))
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %w", err)
+	}
+
+	if _, err := io.Copy(part, file); err != nil {
+		return fmt.Errorf("failed to copy file data: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close multipart writer: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/v1/%s", c.baseURL, path)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, &requestBody)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	c.setAuthHeader(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("file upload failed with status %d (unable to read error details: %v)", resp.StatusCode, readErr)
+		}
+
+		errorMessage := strings.TrimSpace(string(bodyBytes))
+		if errorMessage == "" {
+			errorMessage = "no error details provided"
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("authentication failed - check your %s", constants.EnvVarAPIToken)
+		}
+		return fmt.Errorf("file upload failed with status %d: %s", resp.StatusCode, errorMessage)
 	}
 
 	return nil

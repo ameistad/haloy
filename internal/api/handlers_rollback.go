@@ -89,6 +89,6 @@ func (s *APIServer) handleRollbackTargets() http.HandlerFunc {
 			Targets: targets,
 		}
 
-		writeJSON(w, http.StatusOK, response)
+		encodeJSON(w, http.StatusOK, response)
 	}
 }

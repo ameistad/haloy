@@ -38,6 +38,11 @@ type StopAppResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+type ImageUploadResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 type VersionResponse struct {
 	Version        string `json:"haloyd"`
 	HAProxyVersion string `json:"haproxy"`

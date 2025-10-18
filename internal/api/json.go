@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-// writeJSON marshals a value to JSON.
-func writeJSON(w http.ResponseWriter, status int, data any) error {
+func encodeJSON(w http.ResponseWriter, status int, data any) error {
 	w.Header().Set("Content-Type", "application/json")
 
 	w.WriteHeader(status)
@@ -24,7 +23,6 @@ func decodeJSON(r io.Reader, v any) error {
 		return errors.New("failed to read request body")
 	}
 
-	// dec := json.NewDecoder(r)
 	// Create a new decoder from the body we just read
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 

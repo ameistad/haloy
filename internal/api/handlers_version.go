@@ -9,12 +9,11 @@ import (
 
 func (s *APIServer) handleVersion() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		response := apitypes.VersionResponse{
 			Version:        constants.Version,
 			HAProxyVersion: constants.HAProxyVersion,
 		}
 
-		writeJSON(w, http.StatusOK, response)
+		encodeJSON(w, http.StatusOK, response)
 	}
 }
