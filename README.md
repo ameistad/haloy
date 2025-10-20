@@ -39,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### 2. Install and Initialize the Haloyd Daemon (haloyd) on Your Server
+### 2. Install and Initialize `haloyd` (Haloy Daemon) on Your Server
 The next step is to install `haloyd` on your server. If you need multiple servers just repeat these steps.
 
 1. Install `haloyadm` (with root access):
@@ -76,13 +76,14 @@ haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
 In your application's project directory, create a `haloy.yaml` file:
 
 ```yaml
-server: haloy.yourserver.com
 name: "my-app"
+server: haloy.yourserver.com
 
 # Docker image
 image:
-  repository: "ghcr.io/your-username/my-app"
-  tag: "latest"
+  repository: "my-app"
+  builder:
+    upload_to_server: true
 
 # Domain configuration
 domains:
@@ -94,7 +95,7 @@ domains:
 acme_email: "you@email.com"
 ```
 
-For all available options, see the full [Configuration Options](#configuration-options) table below.
+This will look for a Dockerfile in the same directory as your config file, build it and upload it to the server. This is the Haloy configuration in its simplest form. For all available options, see the full [Configuration Options](#configuration-options) table below.
 
 > [!TIP]
 > See [Architecture](#architecture) for detailed information on how the differents components work together.
@@ -274,7 +275,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `name` | string | **Yes** | Unique application name |
-| `image` | object | **Yes** | Docker image configuration |
+| `image` | object | **Yes** | Docker image configuration ( see [Image Configuration](#image-configuration)) |
 | `server` | string | No | Haloy server API URL |
 | `api_token` | object | No | API token configuration (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
 | `domains` | array | No | Domain configuration |
@@ -301,6 +302,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `registry` | object | No | Private registry authentication ( see [Registry Docker Authentication](#docker-registry-authentication) |
 | `source` | string | No | Where the source for the image is. If set to local it will only look for images already on the server. (default: registry) |
 | `history` | object | No | Image history and rollback strategy (see [Image History](#image-history)) |
+| `builder` | object | No | Build configuration for local image building (see [Image Builder](#image-builder)) |
 
 #### Docker Registry Authentication
 
@@ -383,6 +385,164 @@ The `server` field is optional. If not provided, Haloy will automatically detect
 - Use registry tokens instead of passwords when possible
 - For GitHub Container Registry, use a GitHub Personal Access Token
 - For Docker Hub, use an access token instead of your account password
+
+#### Image Builder
+
+Haloy can build Docker images locally as part of the deployment process, eliminating the need for a CI/CD pipeline or separate build infrastructure. The builder feature supports two distribution methods:
+
+1. **Upload to Server**: Build locally and upload the image directly to your Haloy server
+2. **Push to Registry**: Build locally and push to a Docker registry, then deploy from the registry
+
+**Builder Configuration:**
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `context` | string | No | Build context directory (default: ".") |
+| `dockerfile` | string | No | Path to Dockerfile (default: "Dockerfile" in context) |
+| `platform` | string | No | Target platform (default: "linux/amd64") |
+| `args` | array | No | Build arguments to pass to Docker build |
+| `upload_to_server` | boolean | No | Upload image directly to server instead of using registry (default: false) |
+
+**Upload to Server Example:**
+
+This approach builds the image locally and uploads it directly to your Haloy server, bypassing the need for a Docker registry entirely.
+
+```yaml
+name: "my-app"
+server: "haloy.yourserver.com"
+image:
+  repository: "my-app"
+  tag: "latest"
+  builder:
+    context: "."  # Build context directory
+    dockerfile: "Dockerfile"
+    platform: "linux/amd64"
+    upload_to_server: true
+    args:
+      - name: "NODE_ENV"
+        value: "production"
+      - name: "BUILD_VERSION"
+        from:
+          env: "VERSION"
+domains:
+  - domain: "my-app.com"
+acme_email: "you@email.com"
+```
+
+**Push to Registry Example:**
+
+This approach builds the image locally and pushes it to a Docker registry. The Haloy server then pulls from the registry during deployment.
+
+```yaml
+name: "my-app"
+server: "haloy.yourserver.com"
+image:
+  repository: "ghcr.io/your-org/my-app"
+  tag: "latest"
+  registry:
+    username:
+      from:
+        env: "GITHUB_USERNAME"
+    password:
+      from:
+        env: "GITHUB_TOKEN"
+  builder:
+    context: "."
+    dockerfile: "Dockerfile"
+    platform: "linux/amd64"
+    args:
+      - name: "VERSION"
+        value: "1.2.3"
+domains:
+  - domain: "my-app.com"
+acme_email: "you@email.com"
+```
+
+**Multi-Target with Shared Build:**
+
+When deploying to multiple targets, the image is built once and then distributed to all targets, optimizing the deployment process.
+
+```yaml
+name: "my-app"
+image:
+  repository: "ghcr.io/your-org/my-app"
+  tag: "latest"
+  builder:
+    context: "."
+    dockerfile: "Dockerfile"
+    platform: "linux/amd64"
+
+targets:
+  production:
+    server: "prod.haloy.com"
+    image:
+      upload_to_server: true  # Upload to production server
+    domains:
+      - domain: "my-app.com"
+
+  staging:
+    server: "staging.haloy.com"
+    image:
+      registry:
+        username:
+          from:
+            env: "GITHUB_USERNAME"
+        password:
+          from:
+            env: "GITHUB_TOKEN"
+    domains:
+      - domain: "staging.my-app.com"
+```
+
+**Build Arguments:**
+
+Build arguments can use direct values, environment variables, or secret providers:
+
+```yaml
+image:
+  repository: "my-app"
+  tag: "latest"
+  builder:
+    args:
+      # Direct value
+      - name: "NODE_ENV"
+        value: "production"
+
+      # From environment variable
+      - name: "BUILD_VERSION"
+        from:
+          env: "VERSION"
+
+      # From secret provider
+      - name: "API_KEY"
+        from:
+          secret: "onepassword:build-secrets.api-key"
+
+      # Pass through from environment (Docker will read from your shell environment)
+      - name: "GITHUB_TOKEN"
+```
+
+**When to Use Each Method:**
+
+- **Upload to Server (`upload_to_server: true`)**:
+  - No Docker registry required
+  - Faster for small deployments
+  - Simpler setup for single-server deployments
+  - Ideal for personal projects and development
+
+- **Push to Registry (`registry` configured)**:
+  - Better for multi-server deployments
+  - Images cached in registry for faster subsequent deploys
+  - Supports external image inspection and scanning
+  - Recommended for production environments
+
+**Important Notes:**
+
+- The builder runs **before** deployment, building images locally on your development machine
+- When using `upload_to_server: true`, registry authentication is not needed or used
+- Build platform should match your server's architecture (typically `linux/amd64`)
+- Build context is relative to your configuration file location
+- All build arguments support value sources (direct values, environment variables, or secrets)
 
 #### Target Configuration
 
@@ -783,36 +943,35 @@ Shell completion provides:
 
 
 ## Build Locally With Deployment Hooks
-To get up and running quickly with your app you can build the images locally on your own system and upload with scp to your server. Make sure to set the right platform flag for the server you are using and upload the finished image to the server. 
 
-Here's a simple configuration illustrating how we can build and deploy without needing a Docker registry.
+> [!NOTE]
+> For most use cases, we recommend using the [Image Builder](#image-builder) feature which provides a simpler, built-in solution for building and deploying images locally. This section covers advanced scenarios where you need custom build processes or deployment workflows.
 
-Note that we need to add source: local to the image configuration to indicate that we don't need to pull from a registry.
+If you have complex build requirements or need custom deployment workflows that go beyond what the Image Builder provides, you can use deployment hooks to implement your own build and upload process.
+
+**When to use deployment hooks instead of Image Builder:**
+- Custom build processes with multiple steps
+- Integration with external build tools or CI systems
+- Complex image transformations or multi-stage processes
+- Custom authentication or upload mechanisms
 
 **Single Target Example:**
-```json
-{
-  "server": "haloy.yourserver.com",
-  "name": "my-app",
-  "image": {
-    "repository": "my-app",
-    "source": "local",
-    "tag": "latest"
-  },
-  "domains": [
-    {
-      "domain": "my-app.com"
-    }
-  ],
-  "acmeEmail": "acme@my-app.com",
-  "preDeploy": [
-    "docker build --platform linux/amd64 -t my-app .",
-    "docker save -o my-app.tar my-app",
-    "scp my-app.tar $(whoami)@server-ip:/tmp/my-app.tar",
-    "ssh $(whoami)@server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\"",
-    "rm my-app.tar"
-  ]
-}
+```yaml
+name: "my-app"
+server: "haloy.yourserver.com"
+image:
+  repository: "my-app"
+  source: "local"  # Tell Haloy not to pull from registry
+  tag: "latest"
+domains:
+  - domain: "my-app.com"
+acme_email: "acme@my-app.com"
+pre_deploy:
+  - "docker build --platform linux/amd64 -t my-app ."
+  - "docker save -o my-app.tar my-app"
+  - "scp my-app.tar $(whoami)@server-ip:/tmp/my-app.tar"
+  - "ssh $(whoami)@server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\""
+  - "rm my-app.tar"
 ```
 
 **Multi-Target Example with Global Hooks:**
@@ -848,6 +1007,9 @@ targets:
       - "scp my-app.tar $(whoami)@staging-server-ip:/tmp/my-app.tar"
       - "ssh $(whoami)@staging-server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\""
 ```
+
+> [!TIP]
+> For simpler scenarios, consider using the [Image Builder](#image-builder) with `upload_to_server: true` which handles the build and upload process automatically without requiring custom scripts.
 
 ## Horizontal Scaling
 
