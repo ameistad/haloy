@@ -1,6 +1,10 @@
 package haloy
 
 import (
+	"errors"
+	"os"
+	"slices"
+
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -12,12 +16,23 @@ type appCmdFlags struct {
 	all        bool
 }
 
-// func (f *appCmdFlags) validateTargetFlags() error {
-// 	if len(f.targets) > 0 && f.all {
-// 		return fmt.Errorf("cannot specify both --targets and --all flags; use one or the other")
-// 	}
-// 	return nil
-// }
+// Commands that support target flags and need validation
+var targetFlagCommands = []string{
+	"deploy",
+	"status",
+	"stop",
+	"logs",
+	"rollback",
+	"rollback-targets",
+	"validate-config",
+}
+
+func (f *appCmdFlags) validateTargetFlags() error {
+	if len(f.targets) > 0 && f.all {
+		return errors.New("cannot specify both --targets and --all flags; use one or the other")
+	}
+	return nil
+}
 
 func NewRootCmd() *cobra.Command {
 	appFlags := &appCmdFlags{}
@@ -27,6 +42,13 @@ func NewRootCmd() *cobra.Command {
 		Use:   "haloy",
 		Short: "haloy builds and runs Docker containers based on a YAML config",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if slices.Contains(targetFlagCommands, cmd.Name()) {
+				if err := appFlags.validateTargetFlags(); err != nil {
+					cmd.PrintErrln("Error:", err.Error())
+					cmd.Usage()
+					os.Exit(1)
+				}
+			}
 			config.LoadEnvFiles(appFlags.targets) // load environment variables in .env for all commands.
 
 			if cmd.Name() == "completion" || cmd.Parent().Name() == "server" {

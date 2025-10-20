@@ -50,13 +50,23 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 	local, err := cli.ImageInspect(ctx, imageRef)
 	localExists := (err == nil)
 
-	// If Builder.UploadToServer is set to true, we'll assume the local image should be used.
+	// If Builder.UploadToServer is true the server should have a local copy that was uploaded.
 	if imageConfig.Builder != nil && imageConfig.Builder.UploadToServer {
 		if !localExists {
 			return fmt.Errorf("uploaded image '%s' not found", imageRef)
 		}
 		logger.Debug("Using local image", "image", imageRef)
 		return nil
+	}
+
+	// Check if this is a local-only image (no registry configured)
+	if imageConfig.RegistryAuth == nil {
+		if localExists {
+			logger.Debug("Using existing local image (no registry configured)", "image", imageRef)
+			return nil
+		} else {
+			return fmt.Errorf("image '%s' not found locally and no registry configured", imageRef)
+		}
 	}
 
 	registryAuth, err := getRegistryAuthString(&imageConfig)
