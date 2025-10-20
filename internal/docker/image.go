@@ -22,14 +22,14 @@ func getRegistryAuthString(imageConfig *config.Image) (string, error) {
 	if auth == nil {
 		return "", nil
 	}
-	server := "index.docker.io" // Default to Docker Hub if no server specified
-	if auth.Server != "" {
-		server = auth.Server
-	} else {
-		// If no server is set, parse it from the Repository field
+	server := auth.Server
+	if server == "" {
+		// Parse server from repository if not explicitly set
 		parts := strings.SplitN(imageConfig.Repository, "/", 2)
-		if len(parts) > 1 && strings.Contains(parts[0], ".") {
+		if len(parts) > 1 && (strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")) {
 			server = parts[0]
+		} else {
+			server = "index.docker.io" // Default to Docker Hub
 		}
 	}
 	authConfig := registry.AuthConfig{
@@ -39,7 +39,7 @@ func getRegistryAuthString(imageConfig *config.Image) (string, error) {
 	}
 	authStr, err := registry.EncodeAuthConfig(authConfig)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to encode auth config for %s: %w", server, err)
 	}
 	return authStr, nil
 }
@@ -255,12 +255,37 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 		if jsonResponse.Stream != "" && strings.HasPrefix(jsonResponse.Stream, "Loaded image:") {
 			loadedImage := strings.TrimSpace(strings.TrimPrefix(jsonResponse.Stream, "Loaded image:"))
 			loadedImages = append(loadedImages, loadedImage)
-			fmt.Printf("Found loaded image: %s\n", loadedImage)
 		}
 	}
 
 	if len(loadedImages) == 0 {
 		return fmt.Errorf("no images were loaded from tar file")
+	}
+
+	return nil
+}
+
+func PushImage(ctx context.Context, cli *client.Client, imageRef string, imageConfig *config.Image) error {
+	if imageConfig.RegistryAuth == nil {
+		return fmt.Errorf("no registry authentication configured for image %s", imageRef)
+	}
+
+	authStr, err := getRegistryAuthString(imageConfig)
+	if err != nil {
+		return fmt.Errorf("failed to get registry auth for %s: %w", imageRef, err)
+	}
+
+	pushResponse, err := cli.ImagePush(ctx, imageRef, image.PushOptions{
+		RegistryAuth: authStr,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to push image %s: %w", imageRef, err)
+	}
+	defer pushResponse.Close()
+
+	// Optional: Parse and display push progress
+	if _, err := io.Copy(io.Discard, pushResponse); err != nil {
+		return fmt.Errorf("error reading push response: %w", err)
 	}
 
 	return nil

@@ -13,6 +13,7 @@ import (
 	"github.com/ameistad/haloy/internal/appconfigloader"
 	"github.com/ameistad/haloy/internal/cmdexec"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
 	"github.com/charmbracelet/lipgloss"
@@ -59,7 +60,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			builds, uploads := ResolveImageBuilds(resolvedTargets)
+			builds, pushes, uploads := ResolveImageBuilds(resolvedTargets)
 			for imageRef, image := range builds {
 				if err := BuildImage(ctx, imageRef, image, *configPath); err != nil {
 					ui.Error("%v", err)
@@ -71,6 +72,22 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 					if err := UploadImage(ctx, imageRef, *appConfig); err != nil {
 						ui.Error("%v", err)
 						return
+					}
+				}
+			}
+
+			if len(pushes) > 0 {
+				cli, err := docker.NewClient(ctx)
+				if err != nil {
+					ui.Error("Unable to create docker client for push image: %v", err)
+					return
+				}
+				for imageRef, images := range pushes {
+					for _, image := range images {
+						if err := docker.PushImage(ctx, cli, imageRef, image); err != nil {
+							ui.Error("%v", err)
+							return
+						}
 					}
 				}
 			}

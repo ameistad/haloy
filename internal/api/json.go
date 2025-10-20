@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -40,7 +41,7 @@ func decodeJSON(r io.Reader, v any) error {
 			return errors.New("request body contains badly-formed JSON")
 
 		case errors.As(err, &unmarshalTypeError):
-			return errors.New("request body contains an invalid value for the " + unmarshalTypeError.Field + " field")
+			return fmt.Errorf("request body contains an invalid value for the '%s' field", unmarshalTypeError.Field)
 
 		case errors.Is(err, io.EOF):
 			return errors.New("request body must not be empty")
