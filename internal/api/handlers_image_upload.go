@@ -17,7 +17,6 @@ func (s *APIServer) handleImageUpload() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse multipart form (32MB max memory)
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
-			fmt.Printf("Failed to parse multipart form: %v\n", err)
 			http.Error(w, "Failed to parse multipart form", http.StatusBadRequest)
 			return
 		}
@@ -49,16 +48,8 @@ func (s *APIServer) handleImageUpload() http.HandlerFunc {
 		// Copy uploaded data to temp file
 		_, err = io.Copy(tempFile, file)
 		if err != nil {
-			fmt.Printf("Failed to copy file data: %v\n", err)
 			http.Error(w, "Failed to save uploaded file", http.StatusInternalServerError)
 			return
-		}
-
-		// Verify temp file exists and has content
-		if stat, err := tempFile.Stat(); err != nil {
-			fmt.Printf("Failed to stat temp file: %v\n", err)
-		} else {
-			fmt.Printf("Temp file size: %d bytes\n", stat.Size())
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), defaultContextTimeout)
@@ -72,7 +63,6 @@ func (s *APIServer) handleImageUpload() http.HandlerFunc {
 		defer cli.Close()
 
 		if err := docker.LoadImageFromTar(ctx, cli, tempFile.Name()); err != nil {
-			fmt.Printf("Failed to load image: %v\n", err)
 			http.Error(w, fmt.Sprintf("Failed to load image: %v", err), http.StatusInternalServerError)
 			return
 		}

@@ -141,10 +141,10 @@ The data directory can be customized by setting the %s environment variable.`,
 			}
 
 			successMsg := "Haloy initialized successfully!\n\n"
-			successMsg += fmt.Sprintf("📁 Data directory: %s\n", dataDir)
-			successMsg += fmt.Sprintf("⚙️ Config directory: %s\n", configDir)
+			successMsg += fmt.Sprintf("Data directory: %s\n", dataDir)
+			successMsg += fmt.Sprintf("Config directory: %s\n", configDir)
 			if apiDomain != "" {
-				successMsg += fmt.Sprintf("🌐 haloyd domain: %s\n", apiDomain)
+				successMsg += fmt.Sprintf("API domain: %s\n", apiDomain)
 			}
 			ui.Success("%s", successMsg)
 
