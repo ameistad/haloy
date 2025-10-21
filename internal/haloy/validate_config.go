@@ -44,26 +44,31 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			rawAppConfig.Format = format
-
-			resolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, rawAppConfig)
-			if err != nil {
-				ui.Error("Unable to resolve secrets: %v", err)
-				return
-			}
-
 			if showResolvedConfigFlag {
-				ui.Info("Resolved config:")
-				if err := displayResolvedConfig(resolvedAppConfig); err != nil {
-					ui.Error("Failed to display resolved config: %v", err)
+				rawAppConfig.Format = format
+
+				resolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, rawAppConfig)
+				if err != nil {
+					ui.Error("Unable to resolve secrets: %v", err)
 					return
 				}
+				resolvedTargets, err := appconfigloader.ResolveTargets(resolvedAppConfig)
+				if err != nil {
+					ui.Error("Unable to resolve targets for config: %v", err)
+					return
+				}
+				for _, resolvedTarget := range resolvedTargets {
+					if err := displayResolvedConfig(resolvedTarget); err != nil {
+						ui.Error("Failed to display resolved config: %v", err)
+					}
+				}
+
 			}
 
 			ui.Success("Config file '%s' is valid!", filepath.Base(configFileName))
 		},
 	}
-	cmd.Flags().BoolVar(&showResolvedConfigFlag, "show-resolved-config", false, "Print the resolved configuration with all secrets resolved and visible in plain text (WARNING: sensitive data will be displayed)")
+	cmd.Flags().BoolVar(&showResolvedConfigFlag, "show-resolved-config", false, "Print the resolved configuration with all fields and secrets resolved and visible in plain text (WARNING: sensitive data will be displayed)")
 	return cmd
 }
 
@@ -93,6 +98,11 @@ func displayResolvedConfig(appConfig config.AppConfig) error {
 		return fmt.Errorf("unsupported format: %s", appConfig.Format)
 	}
 
-	ui.Section("Resolved Configuration", []string{output})
+	targetName := appConfig.TargetName
+	if targetName == "" {
+		targetName = appConfig.Name
+	}
+
+	ui.Section(fmt.Sprintf("Resolved Configuration for %s", targetName), []string{output})
 	return nil
 }

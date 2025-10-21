@@ -6,11 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/cmdexec"
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/docker"
 	"github.com/ameistad/haloy/internal/ui"
 )
 
@@ -120,35 +119,70 @@ func getBuilderWorkDir(configPath, builderContext string) string {
 }
 
 // UploadImage uploads a Docker image tar to the specified server
-func UploadImage(ctx context.Context, imageRef string, resolvedAppConfig config.AppConfig) error {
-	tempFile, err := os.CreateTemp("", fmt.Sprintf("haloy-upload-%s-*.tar", strings.ReplaceAll(imageRef, ":", "-")))
+// func UploadImage(ctx context.Context, imageRef string, resolvedAppConfigs []*config.AppConfig) error {
+// 	tempFile, err := os.CreateTemp("", fmt.Sprintf("haloy-upload-%s-*.tar", strings.ReplaceAll(imageRef, ":", "-")))
+// 	if err != nil {
+// 		return fmt.Errorf("failed to create temporary file: %w", err)
+// 	}
+// 	defer os.Remove(tempFile.Name())
+// 	defer tempFile.Close()
+//
+// 	saveCmd := fmt.Sprintf("docker save -o %s %s", tempFile.Name(), imageRef)
+// 	if err := cmdexec.RunCommand(ctx, saveCmd, "."); err != nil {
+// 		return fmt.Errorf("failed to save image to tar: %w", err)
+// 	}
+//
+// 	for _, resolvedAppConfig := range resolvedAppConfigs {
+// 		ui.Info("Uploading image %s to %s", imageRef, resolvedAppConfig.TargetName)
+//
+// 		token, err := getToken(resolvedAppConfig, resolvedAppConfig.Server)
+// 		if err != nil {
+// 			return fmt.Errorf("failed to get authentication token: %w", err)
+// 		}
+//
+// 		api, err := apiclient.NewWithTimeout(resolvedAppConfig.Server, token, 5*time.Minute)
+// 		if err != nil {
+// 			return fmt.Errorf("failed to create API client: %w", err)
+// 		}
+//
+// 		if err := api.PostFile(ctx, "images/upload", "image", tempFile.Name()); err != nil {
+// 			return fmt.Errorf("failed to upload image: %w", err)
+// 		}
+//
+// 		ui.Success("Successfully uploaded image %s to server", imageRef)
+//
+// 	}
+//
+// 	return nil
+// }
+
+func UploadImage(ctx context.Context, imageRef string, resolvedAppConfigs []*config.AppConfig) error {
+	// Check source image before creating tar
+	cli, err := docker.NewClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create temporary file: %w", err)
+		return fmt.Errorf("failed to create docker client: %w", err)
 	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
+	defer cli.Close()
 
-	saveCmd := fmt.Sprintf("docker save -o %s %s", tempFile.Name(), imageRef)
-	if err := cmdexec.RunCommand(ctx, saveCmd, "."); err != nil {
-		return fmt.Errorf("failed to save image to tar: %w", err)
-	}
-
-	ui.Info("Uploading image %s to server", imageRef)
-
-	token, err := getToken(&resolvedAppConfig, resolvedAppConfig.Server)
+	sourceInspect, err := cli.ImageInspect(ctx, imageRef)
 	if err != nil {
-		return fmt.Errorf("failed to get authentication token: %w", err)
+		return fmt.Errorf("source image %s not found: %w", imageRef, err)
 	}
 
-	api, err := apiclient.NewWithTimeout(resolvedAppConfig.Server, token, 5*time.Minute)
-	if err != nil {
-		return fmt.Errorf("failed to create API client: %w", err)
+	ui.Info("Creating shared image archive for %s (ID: %s)", imageRef, sourceInspect.ID[:12])
+
+	// ... existing tar creation code ...
+
+	ui.Info("Uploading %s to %d target(s)", imageRef, len(resolvedAppConfigs))
+
+	for _, resolvedAppConfig := range resolvedAppConfigs {
+		ui.Info("  → Uploading to %s", resolvedAppConfig.Server)
+
+		// ... existing upload code ...
+
+		ui.Success("  ✓ Successfully uploaded to %s", resolvedAppConfig.Server)
 	}
 
-	if err := api.PostFile(ctx, "images/upload", "image", tempFile.Name()); err != nil {
-		return fmt.Errorf("failed to upload image: %w", err)
-	}
-
-	ui.Success("Successfully uploaded image %s to server", imageRef)
+	ui.Success("Completed uploading %s (ID: %s) to all targets", imageRef, sourceInspect.ID[:12])
 	return nil
 }

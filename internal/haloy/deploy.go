@@ -68,11 +68,9 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 			}
 			for imageRef, appConfigs := range uploads {
-				for _, appConfig := range appConfigs {
-					if err := UploadImage(ctx, imageRef, *appConfig); err != nil {
-						ui.Error("%v", err)
-						return
-					}
+				if err := UploadImage(ctx, imageRef, appConfigs); err != nil {
+					ui.Error("%v", err)
+					return
 				}
 			}
 

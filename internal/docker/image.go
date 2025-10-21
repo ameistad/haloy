@@ -224,6 +224,10 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	}
 	defer file.Close()
 
+	// Get file info for debugging
+	fileInfo, _ := file.Stat()
+	fmt.Printf("Loading tar file: %s (size: %d bytes)\n", tarPath, fileInfo.Size())
+
 	response, err := cli.ImageLoad(ctx, file)
 	if err != nil {
 		fmt.Printf("ImageLoad failed: %v\n", err)
@@ -243,6 +247,7 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 	// Parse JSON lines to find loaded images
 	lines := strings.Split(responseText, "\n")
 	loadedImages := []string{}
+	allMessages := []string{}
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -257,24 +262,105 @@ func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) e
 		}
 
 		if err := json.Unmarshal([]byte(line), &jsonResponse); err != nil {
-			// Skip non-JSON lines
+			// Skip non-JSON lines but log them
+			allMessages = append(allMessages, line)
 			continue
+		}
+
+		// Collect all messages for debugging
+		if jsonResponse.Stream != "" {
+			allMessages = append(allMessages, jsonResponse.Stream)
+		}
+		if jsonResponse.Status != "" {
+			allMessages = append(allMessages, jsonResponse.Status)
 		}
 
 		// Look for "Loaded image:" in the stream field
 		if jsonResponse.Stream != "" && strings.HasPrefix(jsonResponse.Stream, "Loaded image:") {
 			loadedImage := strings.TrimSpace(strings.TrimPrefix(jsonResponse.Stream, "Loaded image:"))
 			loadedImages = append(loadedImages, loadedImage)
+			fmt.Printf("Detected loaded image: %s\n", loadedImage)
 		}
 	}
 
+	fmt.Printf("All Docker load messages: %v\n", allMessages)
+	fmt.Printf("Loaded images detected: %v\n", loadedImages)
+
 	if len(loadedImages) == 0 {
-		return fmt.Errorf("no images were loaded from tar file")
+		return fmt.Errorf("no images were loaded from tar file. All messages: %v", allMessages)
+	}
+
+	// Verify the loaded images actually exist
+	for _, imgRef := range loadedImages {
+		inspect, err := cli.ImageInspect(ctx, imgRef)
+		if err != nil {
+			fmt.Printf("WARNING: Loaded image %s not found after load: %v\n", imgRef, err)
+		} else {
+			fmt.Printf("Verified loaded image %s exists (ID: %s)\n", imgRef, inspect.ID[:12])
+		}
 	}
 
 	return nil
 }
 
+//	func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) error {
+//		file, err := os.Open(tarPath)
+//		if err != nil {
+//			fmt.Printf("Failed to open tar file: %v\n", err)
+//			return fmt.Errorf("failed to open tar file: %w", err)
+//		}
+//		defer file.Close()
+//
+//		response, err := cli.ImageLoad(ctx, file)
+//		if err != nil {
+//			fmt.Printf("ImageLoad failed: %v\n", err)
+//			return fmt.Errorf("failed to load image: %w", err)
+//		}
+//		defer response.Body.Close()
+//
+//		// Read and parse the JSON response
+//		body, err := io.ReadAll(response.Body)
+//		if err != nil {
+//			return fmt.Errorf("failed to read load response: %w", err)
+//		}
+//
+//		responseText := string(body)
+//		fmt.Printf("Docker load response: %s\n", responseText)
+//
+//		// Parse JSON lines to find loaded images
+//		lines := strings.Split(responseText, "\n")
+//		loadedImages := []string{}
+//
+//		for _, line := range lines {
+//			line = strings.TrimSpace(line)
+//			if line == "" {
+//				continue
+//			}
+//
+//			// Parse each JSON line
+//			var jsonResponse struct {
+//				Stream string `json:"stream"`
+//				Status string `json:"status"`
+//			}
+//
+//			if err := json.Unmarshal([]byte(line), &jsonResponse); err != nil {
+//				// Skip non-JSON lines
+//				continue
+//			}
+//
+//			// Look for "Loaded image:" in the stream field
+//			if jsonResponse.Stream != "" && strings.HasPrefix(jsonResponse.Stream, "Loaded image:") {
+//				loadedImage := strings.TrimSpace(strings.TrimPrefix(jsonResponse.Stream, "Loaded image:"))
+//				loadedImages = append(loadedImages, loadedImage)
+//			}
+//		}
+//
+//		if len(loadedImages) == 0 {
+//			return fmt.Errorf("no images were loaded from tar file")
+//		}
+//
+//		return nil
+//	}
 func PushImage(ctx context.Context, cli *client.Client, imageRef string, imageConfig *config.Image) error {
 	if imageConfig.RegistryAuth == nil {
 		return fmt.Errorf("no registry authentication configured for image %s", imageRef)
