@@ -138,7 +138,7 @@ func Run(debug bool) {
 	}
 
 	logger.Info("haloyd successfully initialized",
-		logging.AttrHaloydInitComplete, true, // signal that the initialization is complete, used for logs.
+		logging.AttrHaloydInitComplete, true, // signal that the initialization is complete (haloyadm init), used for logs.
 	)
 
 	// Docker event listener

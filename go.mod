@@ -3,7 +3,6 @@ module github.com/ameistad/haloy
 go 1.24
 
 require (
-	filippo.io/age v1.2.1
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/go-acme/lego/v4 v4.22.2

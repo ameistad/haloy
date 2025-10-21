@@ -10,7 +10,6 @@ import (
 	"strings"
 	"text/template"
 
-	"filippo.io/age"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
@@ -111,15 +110,8 @@ The data directory can be customized by setting the %s environment variable.`,
 				return
 			}
 
-			// Generate age identity
-			identity, err := age.GenerateX25519Identity()
-			if err != nil {
-				ui.Error("Failed to generate age identity: %v\n", err)
-				return
-			}
-
 			// Use createdDirs for cleanup if later steps fail
-			if err := createConfigFiles(apiToken, identity.String(), apiDomain, acmeEmail, configDir); err != nil {
+			if err := createConfigFiles(apiToken, apiDomain, acmeEmail, configDir); err != nil {
 				ui.Error("Failed to create config files: %v\n", err)
 				return
 			}
@@ -296,20 +288,17 @@ func renderTemplate(templateFilePath string, templateData any) (bytes.Buffer, er
 }
 
 // createConfigFiles creates a .env file with the API token in the data directory
-func createConfigFiles(apiToken, encryptionKey, domain, acmeEmail, configDir string) error {
+func createConfigFiles(apiToken, domain, acmeEmail, configDir string) error {
 	if apiToken == "" {
 		return fmt.Errorf("apiToken cannot be empty")
 	}
-	if encryptionKey == "" {
-		return fmt.Errorf("encryptionKey cannot be empty")
-	}
+
 	if configDir == "" {
 		return fmt.Errorf("configDir cannot be empty")
 	}
 	envPath := filepath.Join(configDir, constants.ConfigEnvFileName)
 	env := map[string]string{
-		constants.EnvVarAPIToken:    apiToken,
-		constants.EnvVarAgeIdentity: encryptionKey,
+		constants.EnvVarAPIToken: apiToken,
 	}
 	if err := godotenv.Write(env, envPath); err != nil {
 		return fmt.Errorf("failed to write %s content: %w", constants.ConfigEnvFileName, err)

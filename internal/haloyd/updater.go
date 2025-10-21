@@ -164,7 +164,9 @@ func (u *Updater) Update(ctx context.Context, logger *slog.Logger, reason Trigge
 			return fmt.Errorf("failed to refresh certificates for app %s: %w", app.appName, err)
 		}
 	} else if reason == TriggerReasonInitial { // Refresh syncronously on initial update so we can log api domain setup.
-		u.certManager.RefreshSync(logger, certDomains)
+		if err := u.certManager.RefreshSync(logger, certDomains); err != nil {
+			return err
+		}
 	} else {
 		u.certManager.Refresh(logger, certDomains)
 	}

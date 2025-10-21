@@ -18,7 +18,6 @@ const (
 	DefaultAPIServerURL          = "http://localhost:9999" // Default URL for the haloy API server
 
 	// Environment variables
-	EnvVarAgeIdentity   = "HALOY_ENCRYPTION_KEY"
 	EnvVarAPIToken      = "HALOY_API_TOKEN"
 	EnvVarReplicaID     = "HALOY_REPLICA_ID" // available in all containers.
 	EnvVarDataDir       = "HALOY_DATA_DIR"   // used to override default data directory.
