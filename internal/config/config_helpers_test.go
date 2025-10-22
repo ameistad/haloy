@@ -13,7 +13,7 @@ func TestCheckUnknownFields(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid simple", []string{"name"}, false},
-		{"valid nested", []string{"env", "env.value", "image.registry", "image.source", "image.tag"}, false},
+		{"valid nested", []string{"env", "env.value", "image.registry", "image.tag"}, false},
 		{"invalid simple", []string{"notHere"}, true},
 		{"invalid nested", []string{"env", "env.unknown", "env.unknown.childunknown"}, true},
 	}

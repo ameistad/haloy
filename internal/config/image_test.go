@@ -112,15 +112,6 @@ func TestImage_Validate(t *testing.T) {
 			errMsg:  "contains whitespace",
 		},
 		{
-			name: "invalid source",
-			image: Image{
-				Repository: "nginx",
-				Tag:        "1.21",
-			},
-			wantErr: true,
-			errMsg:  "must be 'registry' or 'local'",
-		},
-		{
 			name: "tag with whitespace",
 			image: Image{
 				Repository: "nginx",
