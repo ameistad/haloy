@@ -106,7 +106,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				resolvedTarget := resolvedTargets[i]
 
 				wg.Add(1)
-				go func(rawTarget config.AppConfig) {
+				go func(rawTarget, resolvedTarget config.AppConfig) {
 					defer wg.Done()
 
 					deployTarget(
@@ -118,7 +118,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 						noLogsFlag,
 						len(rawTargets) > 1,
 					)
-				}(rawTarget)
+				}(rawTarget, resolvedTarget)
 			}
 
 			wg.Wait()
