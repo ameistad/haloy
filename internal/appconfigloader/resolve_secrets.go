@@ -71,9 +71,9 @@ func gatherImageValueSources(img *config.Image) []*config.ValueSource {
 		sources = append(sources, &img.RegistryAuth.Password)
 	}
 
-	if img.Builder != nil {
-		for i := range img.Builder.Args {
-			sources = append(sources, &img.Builder.Args[i].ValueSource)
+	if img.BuildConfig != nil {
+		for i := range img.BuildConfig.Args {
+			sources = append(sources, &img.BuildConfig.Args[i].ValueSource)
 		}
 	}
 

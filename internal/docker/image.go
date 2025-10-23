@@ -50,8 +50,8 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 	local, err := cli.ImageInspect(ctx, imageRef)
 	localExists := (err == nil)
 
-	// If Builder.UploadToServer is true the server should have a local copy that was uploaded.
-	if imageConfig.Builder != nil && imageConfig.Builder.UploadToServer {
+	// If BuildConfig. is true the server should have a local copy that was uploaded.
+	if imageConfig.BuildConfig != nil && imageConfig.BuildConfig.Push == config.BuildPushOptionServer {
 		if !localExists {
 			return fmt.Errorf("uploaded image '%s' not found", imageRef)
 		}

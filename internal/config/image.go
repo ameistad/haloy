@@ -12,7 +12,8 @@ type Image struct {
 	Tag          string        `json:"tag,omitempty" yaml:"tag,omitempty" toml:"tag,omitempty"`
 	History      *ImageHistory `json:"history,omitempty" yaml:"history,omitempty" toml:"history,omitempty"`
 	RegistryAuth *RegistryAuth `json:"registry,omitempty" yaml:"registry,omitempty" toml:"registry,omitempty"`
-	Builder      *Builder      `json:"builder,omitempty" yaml:"builder,omitempty" toml:"builder,omitempty"`
+	Build        *bool         `json:"build,omitempty" yaml:"build,omitempty" toml:"build,omitempty"`
+	BuildConfig  *BuildConfig  `json:"buildConfig,omitempty" yaml:"build_config,omitempty" toml:"build_config,omitempty"`
 }
 
 type RegistryAuth struct {
@@ -22,9 +23,24 @@ type RegistryAuth struct {
 	Password ValueSource `json:"password" yaml:"password" toml:"password"`
 }
 
-func (is *Image) ImageRef() string {
-	repo := strings.TrimSpace(is.Repository)
-	tag := strings.TrimSpace(is.Tag)
+func (i *Image) ShouldBuild() bool {
+	// Build is explicitly set to false
+	if i.Build != nil && !*i.Build {
+		return false
+	}
+
+	// Build is set true, build regardless if Builder is present
+	if i.Build != nil && *i.Build {
+		return true
+	}
+
+	// Build isn't set, but BuildConfig is present
+	return i.BuildConfig != nil
+}
+
+func (i *Image) ImageRef() string {
+	repo := strings.TrimSpace(i.Repository)
+	tag := strings.TrimSpace(i.Tag)
 	if tag == "" {
 		tag = "latest"
 	}
@@ -41,10 +57,6 @@ func (i *Image) Validate(format string) error {
 
 	if strings.ContainsAny(i.Tag, " \t\n\r") {
 		return fmt.Errorf("image.tag '%s' contains whitespace", i.Tag)
-	}
-
-	if i.RegistryAuth != nil && i.Builder != nil && i.Builder.UploadToServer {
-		return fmt.Errorf("image.registry cannot be set when image.%s is true - uploaded images don't use registry authentication", GetFieldNameForFormat(Builder{}, "UploadToServer", format))
 	}
 
 	if i.History != nil {
@@ -80,8 +92,23 @@ func (i *Image) Validate(format string) error {
 		}
 	}
 
-	if i.Builder != nil {
-		if err := i.Builder.Validate(format); err != nil {
+	if i.ShouldBuild() {
+		pushStrategy := BuildPushOptionRegistry // default
+		if i.BuildConfig != nil && i.BuildConfig.Push != "" {
+			pushStrategy = i.BuildConfig.Push
+		}
+
+		if pushStrategy == BuildPushOptionRegistry && i.RegistryAuth == nil {
+			return fmt.Errorf("image.registry authentication required when building with registry push strategy")
+		}
+
+		if pushStrategy == BuildPushOptionServer && i.RegistryAuth != nil {
+			return fmt.Errorf("image.registry cannot be set when build_config.push is 'server' - uploaded images don't use registry authentication")
+		}
+	}
+
+	if i.BuildConfig != nil {
+		if err := i.BuildConfig.Validate(format); err != nil {
 			return err
 		}
 	}
@@ -129,7 +156,7 @@ func (h *ImageHistory) Validate() error {
 	return nil
 }
 
-func (b *Builder) Validate(format string) error {
+func (b *BuildConfig) Validate(format string) error {
 	if b == nil {
 		return nil
 	}
@@ -152,15 +179,27 @@ func (b *Builder) Validate(format string) error {
 		}
 	}
 
+	validPushOptions := []BuildPushOption{BuildPushOptionServer, BuildPushOptionRegistry}
+	if !slices.Contains(validPushOptions, b.Push) {
+		return fmt.Errorf("builder.push must be 'server' or 'registry', got '%s'", b.Push)
+	}
+
 	return nil
 }
 
-type Builder struct {
-	Context        string     `json:"context,omitempty" yaml:"context,omitempty" toml:"context,omitempty"`
-	Dockerfile     string     `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty" toml:"dockerfile,omitempty"`
-	Platform       string     `json:"platform,omitempty" yaml:"platform,omitempty" toml:"platform,omitempty"`
-	Args           []BuildArg `json:"args,omitempty" yaml:"args,omitempty" toml:"args,omitempty"`
-	UploadToServer bool       `json:"uploadToServer,omitempty" yaml:"upload_to_server,omitempty" toml:"upload_to_server,omitempty"`
+type BuildPushOption string
+
+const (
+	BuildPushOptionServer   BuildPushOption = "server"
+	BuildPushOptionRegistry BuildPushOption = "registry"
+)
+
+type BuildConfig struct {
+	Context    string          `json:"context,omitempty" yaml:"context,omitempty" toml:"context,omitempty"`
+	Dockerfile string          `json:"dockerfile,omitempty" yaml:"dockerfile,omitempty" toml:"dockerfile,omitempty"`
+	Platform   string          `json:"platform,omitempty" yaml:"platform,omitempty" toml:"platform,omitempty"`
+	Args       []BuildArg      `json:"args,omitempty" yaml:"args,omitempty" toml:"args,omitempty"`
+	Push       BuildPushOption `json:"push,omitempty" yaml:"push,omitempty" toml:"push,omitempty"`
 }
 
 type BuildArg struct {

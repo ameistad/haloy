@@ -67,8 +67,11 @@ func (tc *TargetConfig) ResolveImage(images map[string]*Image, baseImage *Image)
 			if tc.Image.RegistryAuth != nil {
 				merged.RegistryAuth = tc.Image.RegistryAuth
 			}
-			if tc.Image.Builder != nil {
-				merged.Builder = tc.Image.Builder
+			if tc.Image.Build != nil {
+				merged.Build = tc.Image.Build
+			}
+			if tc.Image.BuildConfig != nil {
+				merged.BuildConfig = tc.Image.BuildConfig
 			}
 			return &merged, nil
 		}

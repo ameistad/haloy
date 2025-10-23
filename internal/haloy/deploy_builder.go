@@ -15,13 +15,13 @@ import (
 )
 
 func ResolveImageBuilds(targets []config.AppConfig) (map[string]*config.Image, map[string][]*config.Image, map[string][]*config.AppConfig) {
-	builds := make(map[string]*config.Image) // key is imageRef
+	builds := make(map[string]*config.Image) // imageRef is key
 	uploads := make(map[string][]*config.AppConfig)
 	pushes := make(map[string][]*config.Image)
 
 	for _, target := range targets {
 		image := target.Image
-		if image == nil || image.Builder == nil {
+		if image == nil || !image.ShouldBuild() {
 			continue
 		}
 
@@ -31,9 +31,15 @@ func ResolveImageBuilds(targets []config.AppConfig) (map[string]*config.Image, m
 			builds[imageRef] = image
 		}
 
-		if image.Builder.UploadToServer {
+		// Get push strategy with safe access
+		pushStrategy := config.BuildPushOptionRegistry // default
+		if image.BuildConfig != nil && image.BuildConfig.Push != "" {
+			pushStrategy = image.BuildConfig.Push
+		}
+
+		if pushStrategy == config.BuildPushOptionServer {
 			uploads[imageRef] = append(uploads[imageRef], &target)
-		} else if image.RegistryAuth != nil {
+		} else if pushStrategy == config.BuildPushOptionRegistry && image.RegistryAuth != nil {
 			pushes[imageRef] = append(pushes[imageRef], target.Image)
 		}
 	}
@@ -43,32 +49,28 @@ func ResolveImageBuilds(targets []config.AppConfig) (map[string]*config.Image, m
 
 // BuildImage builds a Docker image using the provided image configuration
 func BuildImage(ctx context.Context, imageRef string, image *config.Image, configPath string) error {
-	if image.Builder == nil {
-		return fmt.Errorf("no builder configuration found for image %s", imageRef)
-	}
-
-	builder := image.Builder
-	workDir := getBuilderWorkDir(configPath, builder.Context)
+	buildConfig := image.BuildConfig
+	workDir := getBuilderWorkDir(configPath, buildConfig.Context)
 
 	ui.Info("Building image %s", imageRef)
 
 	args := []string{"build"}
 
 	buildContext := "."
-	if builder.Context != "" {
-		buildContext = builder.Context
+	if buildConfig.Context != "" {
+		buildContext = buildConfig.Context
 	}
 
-	if builder.Dockerfile != "" {
-		args = append(args, "-f", builder.Dockerfile)
+	if buildConfig.Dockerfile != "" {
+		args = append(args, "-f", buildConfig.Dockerfile)
 	}
 
-	if builder.Platform == "" {
-		builder.Platform = "linux/amd64" // most widely used platform and a common pitfall
+	if buildConfig.Platform == "" {
+		buildConfig.Platform = "linux/amd64" // most widely used platform and a common pitfall
 	}
-	args = append(args, "--platform", builder.Platform)
+	args = append(args, "--platform", buildConfig.Platform)
 
-	for _, buildArg := range builder.Args {
+	for _, buildArg := range buildConfig.Args {
 		if buildArg.Value != "" {
 			args = append(args, "--build-arg", fmt.Sprintf("%s=%s", buildArg.Name, buildArg.Value))
 		} else {
