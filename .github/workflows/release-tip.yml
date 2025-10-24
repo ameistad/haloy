@@ -96,7 +96,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}-haloyd:tip
-            ghcr.io/${{ github.repository }}-haloyd:${{ env.VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
