@@ -98,7 +98,7 @@ acme_email: "you@email.com"
 This will look for a Dockerfile in the same directory as your config file, build it and upload it to the server. This is the Haloy configuration in its simplest form. For all available options, see the full [Configuration Options](#configuration-options) table below.
 
 > [!TIP]
-> See [Architecture](#architecture) for detailed information on how the differents components work together.
+> See [Architecture](#architecture) for detailed information on how the different components work together.
 
 ## Multi-Server Deployments
 
@@ -201,28 +201,6 @@ acme_email: "you@email.com"
 replicas: 3
 ```
 
-Deploy using specific configuration files:
-```bash
-haloy deploy --config production.haloy.yaml
-haloy deploy --config staging.haloy.yaml
-```
-
-### Environment-Specific Configuration Files
-You can still use separate configuration files for different environments:
-
-**production.haloy.yaml:**
-```yaml
-server: production.haloy.com
-name: "my-app"
-image:
-  repository: "ghcr.io/your-username/my-app"
-  tag: "v1.2.3"
-domains:
-  - domain: "my-app.com"
-acme_email: "you@email.com"
-replicas: 3
-```
-
 **staging.haloy.yaml:**
 ```yaml
 server: staging.haloy.com
@@ -275,7 +253,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
 | `name` | string | **Yes** | Unique application name |
-| `image` | object | **Yes** | Docker image configuration ( see [Image Configuration](#image-configuration)) |
+| `image` | object | **Yes** | Docker image configuration (see [Image Configuration](#image-configuration)) |
 | `server` | string | No | Haloy server API URL |
 | `api_token` | object | No | API token configuration (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
 | `domains` | array | No | Domain configuration |
@@ -289,7 +267,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `post_deploy` | array | No | Commands to run after deploy |
 | `global_pre_deploy` | array | No | Commands to run once before all deployments (multi-target only) |
 | `global_post_deploy` | array | No | Commands to run once after all deployments (multi-target only) |
-| `targets` | object | No | Multiple deployment targets with overrides (see [Multi-Target Deployments](#multi-target-deployments-new)) |
+| `targets` | object | No | Multiple deployment targets with overrides (see [Multi-Server Deployments](#multi-server-deployments)) |
 | `secret_providers` | object | No | Secret provider configuration for external secret management (see [Secret Providers](#secret-providers)) |
 | `network_mode` | string | No | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`) |
 
@@ -299,7 +277,7 @@ Haloy supports YAML, JSON, and TOML formats:
 |-----|------|----------|-------------|
 | `repository` | string | **Yes** | Docker image name |
 | `tag` | string | No | Image tag (default: "latest") |
-| `registry` | object | No | Private registry authentication ( see [Registry Docker Authentication](#docker-registry-authentication) |
+| `registry` | object | No | Private registry authentication (see [Docker Registry Authentication](#docker-registry-authentication)) |
 | `source` | string | No | Where the source for the image is. If set to local it will only look for images already on the server. (default: registry) |
 | `history` | object | No | Image history and rollback strategy (see [Image History](#image-history)) |
 | `builder` | object | No | Build configuration for local image building (see [Image Builder](#image-builder)) |
@@ -314,8 +292,10 @@ image:
   repository: "ghcr.io/your-org/private-app"
   tag: "latest"
   registry:
-    username: "your-username"
-    password: "your-password"
+    username:
+      value: "your-username"
+    password:
+      value: "your-password"
 ```
 
 **Registry Authentication with Environment Variables:**
@@ -353,8 +333,10 @@ image:
   tag: "latest"
   registry:
     server: "myregistry.example.com"
-    username: "your-username"
-    password: "your-password"
+    username:
+      value: "your-username"
+    password:
+      value: "your-password"
 ```
 
 **Docker Hub Authentication:**
@@ -363,8 +345,10 @@ image:
   repository: "your-dockerhub-username/private-app"
   tag: "latest"
   registry:
-    username: "your-dockerhub-username"
-    password: "your-dockerhub-token"
+    username:
+      value: "your-dockerhub-username"
+    password:
+      value: "your-dockerhub-token"
 ```
 
 **Registry Authentication Configuration:**
@@ -1014,7 +998,7 @@ targets:
 ```
 
 > [!TIP]
-> For simpler scenarios, consider using the [Image Builder](#image-builder) with `upload_to_server: true` which handles the build and upload process automatically without requiring custom scripts.
+> For simpler scenarios, consider using the [Image Builder](#image-builder) with `push: "server"` which handles the build and upload process automatically without requiring custom scripts.
 
 ## Horizontal Scaling
 
