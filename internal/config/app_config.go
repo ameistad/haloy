@@ -21,7 +21,7 @@ type TargetConfig struct {
 	Image           *Image      `json:"image,omitempty" yaml:"image,omitempty" toml:"image,omitempty"`
 	ImageKey        string      `json:"imageKey,omitempty" yaml:"image_key,omitempty" toml:"image_key,omitempty"`
 	Server          string      `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
-	APIToken        ValueSource `json:"apiToken" yaml:"api_token" toml:"api_token"`
+	APIToken        ValueSource `json:"apiToken,omitempty" yaml:"api_token,omitempty" toml:"api_token,omitempty"`
 	Domains         []Domain    `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
 	ACMEEmail       string      `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
 	Env             []EnvVar    `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
