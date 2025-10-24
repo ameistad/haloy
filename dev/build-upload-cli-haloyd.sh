@@ -50,7 +50,7 @@ if [ -f "$CLI_ADM_BINARY_NAME" ]; then
     rm "$CLI_ADM_BINARY_NAME"
 fi
 
-docker build --platform linux/amd64 -t haloyd -t haloyd:latest -t ghcr.io/ameistad/haloyd:latest -f ../build/haloyd/Dockerfile ../
+docker build --platform linux/amd64 -t haloyd -t haloyd:dev -f ../build/haloyd/Dockerfile ../
 
 docker save -o haloyd.tar haloyd
 

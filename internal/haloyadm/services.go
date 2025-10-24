@@ -24,9 +24,11 @@ import (
 
 // startHaloyd runs the docker command to start haloyd.
 func startHaloyd(ctx context.Context, dataDir, configDir string, devMode bool, debug bool) error {
-	image := "ghcr.io/ameistad/haloyd:latest"
+	var image string
 	if devMode {
-		image = "haloyd:latest" // Use local image in dev mode
+		image = "haloyd:dev"
+	} else {
+		image = fmt.Sprintf("ghcr.io/ameistad/haloy-haloyd:%s", constants.Version)
 	}
 
 	uid := os.Getuid()
