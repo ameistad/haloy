@@ -49,17 +49,20 @@ func ResolveImageBuilds(targets []config.AppConfig) (map[string]*config.Image, m
 
 // BuildImage builds a Docker image using the provided image configuration
 func BuildImage(ctx context.Context, imageRef string, image *config.Image, configPath string) error {
-	buildConfig := image.BuildConfig
-	workDir := getBuilderWorkDir(configPath, buildConfig.Context)
-
 	ui.Info("Building image %s", imageRef)
 
-	args := []string{"build"}
+	buildConfig := image.BuildConfig
+	if buildConfig == nil {
+		buildConfig = &config.BuildConfig{}
+	}
+	workDir := getBuilderWorkDir(configPath, buildConfig.Context)
 
 	buildContext := "."
 	if buildConfig.Context != "" {
 		buildContext = buildConfig.Context
 	}
+
+	args := []string{"build"}
 
 	if buildConfig.Dockerfile != "" {
 		args = append(args, "-f", buildConfig.Dockerfile)
