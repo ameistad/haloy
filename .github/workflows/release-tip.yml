@@ -85,52 +85,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build and push tip haloyd image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./dev/haloyd/Dockerfile.dev
+          file: ./build/haloyd/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}-haloyd:tip
+          tags: ghcr.io/${{ github.repository }}-haloyd:tip
+          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Clean up old tip images
-        run: |
-          # Get list of tip image tags (excluding the 'tip' tag itself)
-          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_NAME="${REPO_LOWER}-haloyd"
-
-          echo "Fetching existing tip image tags for ${IMAGE_NAME}..."
-
-          # Use GitHub API to get package versions
-          VERSIONS=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/orgs/${{ github.repository_owner }}/packages/container/${IMAGE_NAME}/versions" \
-            | jq -r '.[] | select(.metadata.container.tags[]? | test("^tip-[0-9]{8}-[0-9]{6}-[a-f0-9]{7}$")) | .id' \
-            | head -n -3)  # Keep latest 3 tip versions, delete the rest
-
-          # Delete old tip versions
-          if [ -z "$VERSIONS" ]; then
-            echo "No old tip versions to clean up"
-          else
-            echo "Found tip versions to clean up:"
-            for version_id in $VERSIONS; do
-              if [ ! -z "$version_id" ]; then
-                echo "Deleting old tip image version: $version_id"
-                curl -s -X DELETE \
-                  -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                  "https://api.github.com/orgs/${{ github.repository_owner }}/packages/container/${IMAGE_NAME}/versions/${version_id}" \
-                  || echo "Failed to delete version $version_id (may not exist)"
-              fi
-            done
-          fi
-
-          echo "Cleanup completed"
-        continue-on-error: true  # Don't fail the workflow if cleanup fails
 
       - name: Build CLI tools (optimized for tip)
         run: |
@@ -169,10 +133,10 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: tip
-          name: "🚀 Tip Release"
+          name: "Tip Release"
           prerelease: true
           body: |
-            # 🚀 Tip Release - Latest Development Build
+            # Tip Release - Latest Development Build
 
             **⚠️ Warning**: This is an automated pre-release build from the latest main branch. Use at your own risk.
 

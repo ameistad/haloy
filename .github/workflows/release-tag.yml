@@ -1,8 +1,11 @@
 name: Release (Tag)
 
 on:
+  # Automatic trigger for new version tags (e.g., v0.1.0, v0.2.0-alpha.1)
   push:
     tags: [ 'v*' ]
+
+  # Manual trigger from the GitHub Actions UI
   workflow_dispatch:
     inputs:
       version:
@@ -80,8 +83,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./dev/haloyd/Dockerfile.dev
+          file: ./build/haloyd/Dockerfile
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -92,7 +96,7 @@ jobs:
           mkdir -p dist
 
           # haloy CLI - cross-platform (developers use various OSes)
-          HALOY_PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+          HALOY_PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64" "windows/arm64")
 
           for platform in "${HALOY_PLATFORMS[@]}"; do
             IFS="/" read -r -a parts <<< "$platform"
@@ -138,6 +142,13 @@ jobs:
     needs: build-and-publish
     runs-on: ubuntu-latest
     steps:
+      - name: Determine Version  # Add this step
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "VERSION=${{ inputs.version }}" >> $GITHUB_ENV
+          fi
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -154,6 +165,7 @@ jobs:
             dist/haloy-darwin-amd64
             dist/haloy-darwin-arm64
             dist/haloy-windows-amd64.exe
+            dist/haloy-windows-arm64.exe
             dist/haloyadm-linux-amd64
             dist/haloyadm-linux-arm64
             dist/checksums.txt
