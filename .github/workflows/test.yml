@@ -23,8 +23,12 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
-      - name: Run linting (optional)
+      - name: Run linting
         run: |
           go vet ./...
-          go fmt -d .
-
+          # Check if code is properly formatted
+          if [ "$(gofmt -l .)" != "" ]; then
+            echo "The following files are not properly formatted:"
+            gofmt -l .
+            exit 1
+          fi
