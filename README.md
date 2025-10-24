@@ -83,7 +83,7 @@ server: haloy.yourserver.com
 image:
   repository: "my-app"
   builder:
-    upload_to_server: true
+    push: "server"
 
 # Domain configuration
 domains:
@@ -390,8 +390,8 @@ The `server` field is optional. If not provided, Haloy will automatically detect
 
 Haloy can build Docker images locally as part of the deployment process, eliminating the need for a CI/CD pipeline or separate build infrastructure. The builder feature supports two distribution methods:
 
-1. **Upload to Server**: Build locally and upload the image directly to your Haloy server
-2. **Push to Registry**: Build locally and push to a Docker registry, then deploy from the registry
+1. **Push to Registry** (default): Build locally and push to a Docker registry, then deploy from the registry
+2. **Push to Server**: Build locally and upload the image directly to your Haloy server
 
 **Builder Configuration:**
 
@@ -401,9 +401,9 @@ Haloy can build Docker images locally as part of the deployment process, elimina
 | `dockerfile` | string | No | Path to Dockerfile (default: "Dockerfile" in context) |
 | `platform` | string | No | Target platform (default: "linux/amd64") |
 | `args` | array | No | Build arguments to pass to Docker build |
-| `upload_to_server` | boolean | No | Upload image directly to server instead of using registry (default: false) |
+| `push` | string | No | Where to push the built image: "registry" or "server" (default: "registry") |
 
-**Upload to Server Example:**
+**Push to Server Example:**
 
 This approach builds the image locally and uploads it directly to your Haloy server, bypassing the need for a Docker registry entirely.
 
@@ -417,7 +417,7 @@ image:
     context: "."  # Build context directory
     dockerfile: "Dockerfile"
     platform: "linux/amd64"
-    upload_to_server: true
+    push: "server"  # Push directly to server
     args:
       - name: "NODE_ENV"
         value: "production"
@@ -431,7 +431,7 @@ acme_email: "you@email.com"
 
 **Push to Registry Example:**
 
-This approach builds the image locally and pushes it to a Docker registry. The Haloy server then pulls from the registry during deployment.
+This approach builds the image locally and pushes it to a Docker registry. The Haloy server then pulls from the registry during deployment. This is the default behavior.
 
 ```yaml
 name: "my-app"
@@ -450,6 +450,7 @@ image:
     context: "."
     dockerfile: "Dockerfile"
     platform: "linux/amd64"
+    push: "registry"  # Push to registry (this is the default)
     args:
       - name: "VERSION"
         value: "1.2.3"
@@ -476,7 +477,8 @@ targets:
   production:
     server: "prod.haloy.com"
     image:
-      upload_to_server: true  # Upload to production server
+      builder:
+        push: "server"  # Push directly to production server
     domains:
       - domain: "my-app.com"
 
@@ -490,6 +492,8 @@ targets:
         password:
           from:
             env: "GITHUB_TOKEN"
+      builder:
+        push: "registry"  # Push to registry for staging
     domains:
       - domain: "staging.my-app.com"
 ```
@@ -524,13 +528,13 @@ image:
 
 **When to Use Each Method:**
 
-- **Upload to Server (`upload_to_server: true`)**:
+- **Push to Server (`push: "server"`)**:
   - No Docker registry required
   - Faster for small deployments
   - Simpler setup for single-server deployments
   - Ideal for personal projects and development
 
-- **Push to Registry (`registry` configured)**:
+- **Push to Registry (`push: "registry"`)** (default):
   - Better for multi-server deployments
   - Images cached in registry for faster subsequent deploys
   - Supports external image inspection and scanning
@@ -539,7 +543,8 @@ image:
 **Important Notes:**
 
 - The builder runs **before** deployment, building images locally on your development machine
-- When using `upload_to_server: true`, registry authentication is not needed or used
+- When using `push: "server"`, registry authentication is not needed or used
+- When using `push: "registry"` (or omitting the push field), you must configure registry credentials
 - Build platform should match your server's architecture (typically `linux/amd64`)
 - Build context is relative to your configuration file location
 - All build arguments support value sources (direct values, environment variables, or secrets)

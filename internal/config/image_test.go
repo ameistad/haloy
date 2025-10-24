@@ -328,3 +328,230 @@ func TestImageHistory_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		build   BuildConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid build config with push to server",
+			build: BuildConfig{
+				Context:    ".",
+				Dockerfile: "Dockerfile",
+				Platform:   "linux/amd64",
+				Push:       BuildPushOptionServer,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid build config with push to registry",
+			build: BuildConfig{
+				Context:    ".",
+				Dockerfile: "Dockerfile",
+				Platform:   "linux/amd64",
+				Push:       BuildPushOptionRegistry,
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid build config with empty push (defaults to registry)",
+			build: BuildConfig{
+				Context:    ".",
+				Dockerfile: "Dockerfile",
+				Platform:   "linux/amd64",
+				Push:       "",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid build config with minimal fields",
+			build: BuildConfig{
+				Push: BuildPushOptionServer,
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid push option",
+			build: BuildConfig{
+				Context:    ".",
+				Dockerfile: "Dockerfile",
+				Push:       "invalid-option",
+			},
+			wantErr: true,
+			errMsg:  "builder.push must be 'server' or 'registry'",
+		},
+		{
+			name: "context with whitespace",
+			build: BuildConfig{
+				Context: "./my context",
+				Push:    BuildPushOptionServer,
+			},
+			wantErr: true,
+			errMsg:  "contains whitespace",
+		},
+		{
+			name: "dockerfile with whitespace",
+			build: BuildConfig{
+				Dockerfile: "my dockerfile",
+				Push:       BuildPushOptionServer,
+			},
+			wantErr: true,
+			errMsg:  "contains whitespace",
+		},
+	{
+		name: "platform with whitespace",
+		build: BuildConfig{
+			Platform: "linux amd64",
+			Push:     BuildPushOptionServer,
+		},
+		wantErr: true,
+		errMsg:  "contains whitespace",
+	},
+		{
+			name: "valid build config with args",
+			build: BuildConfig{
+				Push: BuildPushOptionRegistry,
+				Args: []BuildArg{
+					{
+						Name:        "NODE_ENV",
+						ValueSource: ValueSource{Value: "production"},
+					},
+					{
+						Name:        "VERSION",
+						ValueSource: ValueSource{From: &SourceReference{Env: "BUILD_VERSION"}},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "build arg with empty name",
+			build: BuildConfig{
+				Push: BuildPushOptionServer,
+				Args: []BuildArg{
+					{
+						Name:        "",
+						ValueSource: ValueSource{Value: "test"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "name' cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.build.Validate("yaml")
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error but got none")
+				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Validate() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestImage_Validate_WithBuildConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		image   Image
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "build with push to server - registry auth not required",
+			image: Image{
+				Repository: "myapp",
+				Tag:        "latest",
+				BuildConfig: &BuildConfig{
+					Push: BuildPushOptionServer,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "build with push to registry - registry auth required",
+			image: Image{
+				Repository: "ghcr.io/myorg/myapp",
+				Tag:        "latest",
+				BuildConfig: &BuildConfig{
+					Push: BuildPushOptionRegistry,
+				},
+				RegistryAuth: nil,
+			},
+			wantErr: true,
+			errMsg:  "image.registry authentication required when building with registry push strategy",
+		},
+		{
+			name: "build with push to registry - registry auth provided",
+			image: Image{
+				Repository: "ghcr.io/myorg/myapp",
+				Tag:        "latest",
+				BuildConfig: &BuildConfig{
+					Push: BuildPushOptionRegistry,
+				},
+				RegistryAuth: &RegistryAuth{
+					Username: ValueSource{Value: "user"},
+					Password: ValueSource{Value: "pass"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "build with empty push (defaults to registry) - registry auth required",
+			image: Image{
+				Repository: "ghcr.io/myorg/myapp",
+				Tag:        "latest",
+				BuildConfig: &BuildConfig{
+					Push: "", // Empty means default to registry
+				},
+				RegistryAuth: nil,
+			},
+			wantErr: true,
+			errMsg:  "image.registry authentication required when building with registry push strategy",
+		},
+		{
+			name: "build with push to server - registry auth not allowed",
+			image: Image{
+				Repository: "myapp",
+				Tag:        "latest",
+				BuildConfig: &BuildConfig{
+					Push: BuildPushOptionServer,
+				},
+				RegistryAuth: &RegistryAuth{
+					Username: ValueSource{Value: "user"},
+					Password: ValueSource{Value: "pass"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "image.registry cannot be set when build_config.push is 'server'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.image.Validate("yaml")
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Validate() expected error but got none")
+				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Validate() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}

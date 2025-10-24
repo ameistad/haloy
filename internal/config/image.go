@@ -173,15 +173,23 @@ func (b *BuildConfig) Validate(format string) error {
 		}
 	}
 
+	if b.Platform != "" {
+		if strings.ContainsAny(b.Platform, " \t\n\r") {
+			return fmt.Errorf("platform '%s' contains whitespace", b.Platform)
+		}
+	}
+
 	for i, arg := range b.Args {
 		if err := arg.Validate(format); err != nil {
 			return fmt.Errorf("args[%d]: %w", i, err)
 		}
 	}
 
-	validPushOptions := []BuildPushOption{BuildPushOptionServer, BuildPushOptionRegistry}
-	if !slices.Contains(validPushOptions, b.Push) {
-		return fmt.Errorf("builder.push must be 'server' or 'registry', got '%s'", b.Push)
+	if b.Push != "" {
+		validPushOptions := []BuildPushOption{BuildPushOptionServer, BuildPushOptionRegistry}
+		if !slices.Contains(validPushOptions, b.Push) {
+			return fmt.Errorf("builder.push must be 'server' or 'registry', got '%s'", b.Push)
+		}
 	}
 
 	return nil
