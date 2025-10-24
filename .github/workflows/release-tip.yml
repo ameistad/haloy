@@ -1,0 +1,191 @@
+name: Release (Tip)
+
+on:
+  workflow_run:
+    workflows: ["Test"]  # References your existing test workflow
+    types: [completed]
+    branches: [main]
+
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Check if the test workflow succeeded
+  check-test-success:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    outputs:
+      should-build: ${{ steps.changes.outputs.should-build }}
+    steps:
+      - name: Check test workflow status
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success'
+        run: |
+          echo "Test workflow failed or was cancelled. Conclusion: ${{ github.event.workflow_run.conclusion }}"
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Check for significant changes
+        id: changes
+        run: |
+          # Always build for manual dispatch
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should-build=true" >> $GITHUB_OUTPUT
+            echo "Building due to manual dispatch"
+            exit 0
+          fi
+
+          # For workflow_run events, check if meaningful files changed
+          if git diff --name-only HEAD~1 HEAD | grep -E '\.(go|mod|sum)$|Dockerfile|dev/|scripts/'; then
+            echo "should-build=true" >> $GITHUB_OUTPUT
+            echo "Code changes detected, building tip release"
+          else
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            echo "Only documentation or non-code files changed, skipping build"
+          fi
+
+  tip-release:
+    name: Create Tip Release
+    needs: check-test-success
+    if: needs.check-test-success.outputs.should-build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+
+
+      - name: Generate tip version
+        run: |
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          VERSION="tip-${TIMESTAMP}-${COMMIT_SHORT}"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "COMMIT_SHORT=$COMMIT_SHORT" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date -u)" >> $GITHUB_ENV
+
+      - name: Delete existing tip release
+        run: |
+          gh release delete tip --yes || true
+          git push origin :refs/tags/tip || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push tip haloyd image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./dev/haloyd/Dockerfile.dev
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-haloyd:tip
+            ghcr.io/${{ github.repository }}-haloyd:${{ env.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build CLI tools (optimized for tip)
+        run: |
+          mkdir -p dist
+
+          # haloy CLI - most common platforms for tip testing
+          HALOY_PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
+
+          for platform in "${HALOY_PLATFORMS[@]}"; do
+            IFS="/" read -r -a parts <<< "$platform"
+            GOOS="${parts[0]}"
+            GOARCH="${parts[1]}"
+
+            OUTPUT_NAME="haloy-${GOOS}-${GOARCH}"
+            if [ "$GOOS" == "windows" ]; then
+              OUTPUT_NAME+=".exe"
+            fi
+
+            echo "Building haloy for $GOOS/$GOARCH..."
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/constants.Version=${{ env.VERSION }}'" -o "dist/$OUTPUT_NAME" ./cmd/haloy
+          done
+
+          # haloyadm - Linux only for tip
+          echo "Building haloyadm for linux/amd64..."
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/constants.Version=${{ env.VERSION }}'" -o "dist/haloyadm-linux-amd64" ./cmd/haloyadm
+
+          echo "Building haloyadm for linux/arm64..."
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/constants.Version=${{ env.VERSION }}'" -o "dist/haloyadm-linux-arm64" ./cmd/haloyadm
+
+          # Create checksums
+          cd dist
+          sha256sum * > checksums.txt
+          cd ..
+
+      - name: Create tip release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: tip
+          name: "🚀 Tip Release"
+          prerelease: true
+          body: |
+            # 🚀 Tip Release - Latest Development Build
+
+            **⚠️ Warning**: This is an automated pre-release build from the latest main branch. Use at your own risk.
+
+            ## What's in this release
+            - Latest features and bug fixes from main branch
+            - Experimental changes being tested
+            - May contain breaking changes or unstable features
+
+            ## Installation
+
+            ### Haloy CLI
+            ```bash
+            # Install tip version of haloy CLI
+            curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloy.sh | bash -s -- tip
+            ```
+
+            ### Haloy Admin (Linux only)
+            ```bash
+            # Install tip version of haloyadm
+            curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | sudo bash -s -- tip
+            ```
+
+            ## Details
+            - **Commit**: ${{ github.sha }}
+            - **Short commit**: ${{ env.COMMIT_SHORT }}
+            - **Built**: ${{ env.BUILD_TIME }}
+            - **Version**: `${{ env.VERSION }}`
+
+            ## Available Platforms
+            - **haloy**: Linux (amd64, arm64), macOS (amd64, arm64), Windows (amd64)
+            - **haloyadm**: Linux (amd64, arm64) only
+
+            ---
+            *This tip release is automatically built and generated on every significant commit to main that passes tests.*
+          files: |
+            dist/haloy-linux-amd64
+            dist/haloy-linux-arm64
+            dist/haloy-darwin-amd64
+            dist/haloy-darwin-arm64
+            dist/haloy-windows-amd64.exe
+            dist/haloyadm-linux-amd64
+            dist/haloyadm-linux-arm64
+            dist/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

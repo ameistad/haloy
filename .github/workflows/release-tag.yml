@@ -1,11 +1,8 @@
-name: Build and Release
+name: Release (Tag)
 
 on:
-  # Automatic trigger for new version tags (e.g., v0.1.0, v0.2.0-alpha.1)
   push:
     tags: [ 'v*' ]
-
-  # Manual trigger from the GitHub Actions UI
   workflow_dispatch:
     inputs:
       version:
@@ -83,8 +80,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./dev/haloyd/Dockerfile.dev # Note: The original workflow pointed to a non-existent file. I've corrected it to a likely candidate. Please verify.
-          push: true # Always push on release workflows
+          file: ./dev/haloyd/Dockerfile.dev
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -93,23 +90,36 @@ jobs:
       - name: Build CLI tools for multiple platforms
         run: |
           mkdir -p dist
-          PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
-          BINARIES=("haloy" "haloyadm")
 
-          for binary in "${BINARIES[@]}"; do
-            for platform in "${PLATFORMS[@]}"; do
-              IFS="/" read -r -a parts <<< "$platform"
-              GOOS="${parts[0]}"
-              GOARCH="${parts[1]}"
+          # haloy CLI - cross-platform (developers use various OSes)
+          HALOY_PLATFORMS=("linux/amd64" "linux/arm64" "darwin/amd64" "darwin/arm64" "windows/amd64")
 
-              OUTPUT_NAME="$binary-${GOOS}-${GOARCH}"
-              if [ "$GOOS" == "windows" ]; then
-                OUTPUT_NAME+=".exe"
-              fi
+          for platform in "${HALOY_PLATFORMS[@]}"; do
+            IFS="/" read -r -a parts <<< "$platform"
+            GOOS="${parts[0]}"
+            GOARCH="${parts[1]}"
 
-              echo "Building $binary for $GOOS/$GOARCH..."
-              GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/constants.Version=${{ env.VERSION }}'" -o "dist/$OUTPUT_NAME" ./cmd/$binary
-            done
+            OUTPUT_NAME="haloy-${GOOS}-${GOARCH}"
+            if [ "$GOOS" == "windows" ]; then
+              OUTPUT_NAME+=".exe"
+            fi
+
+            echo "Building haloy for $GOOS/$GOARCH..."
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/constants.Version=${{ env.VERSION }}'" -o "dist/$OUTPUT_NAME" ./cmd/haloy
+          done
+
+          # haloyadm - Linux only (server administration tool)
+          HALOYADM_PLATFORMS=("linux/amd64" "linux/arm64")
+
+          for platform in "${HALOYADM_PLATFORMS[@]}"; do
+            IFS="/" read -r -a parts <<< "$platform"
+            GOOS="${parts[0]}"
+            GOARCH="${parts[1]}"
+
+            OUTPUT_NAME="haloyadm-${GOOS}-${GOARCH}"
+
+            echo "Building haloyadm for $GOOS/$GOARCH..."
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w -X 'github.com/ameistad/haloy/internal/constants.Version=${{ env.VERSION }}'" -o "dist/$OUTPUT_NAME" ./cmd/haloyadm
           done
 
           # Create checksums for all built artifacts
@@ -146,11 +156,9 @@ jobs:
             dist/haloy-windows-amd64.exe
             dist/haloyadm-linux-amd64
             dist/haloyadm-linux-arm64
-            dist/haloyadm-darwin-amd64
-            dist/haloyadm-darwin-arm64
-            dist/haloyadm-windows-amd64.exe
             dist/checksums.txt
           draft: false
           prerelease: ${{ contains(env.VERSION, 'alpha') || contains(env.VERSION, 'beta') || contains(env.VERSION, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
