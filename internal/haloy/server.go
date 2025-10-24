@@ -27,8 +27,8 @@ func ServerCmd() *cobra.Command {
 
 	return cmd
 }
-func ServerAddCmd() *cobra.Command {
 
+func ServerAddCmd() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "add <url> <token>",

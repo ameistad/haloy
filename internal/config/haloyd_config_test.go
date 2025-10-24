@@ -218,7 +218,7 @@ certificates:
 			var path string
 			if tt.content != "" {
 				path = filepath.Join(tempDir, "haloyd"+tt.extension)
-				err := os.WriteFile(path, []byte(tt.content), 0644)
+				err := os.WriteFile(path, []byte(tt.content), 0o644)
 				if err != nil {
 					t.Fatalf("Failed to create test file: %v", err)
 				}
