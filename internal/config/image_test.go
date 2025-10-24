@@ -401,15 +401,15 @@ func TestBuildConfig_Validate(t *testing.T) {
 			wantErr: true,
 			errMsg:  "contains whitespace",
 		},
-	{
-		name: "platform with whitespace",
-		build: BuildConfig{
-			Platform: "linux amd64",
-			Push:     BuildPushOptionServer,
+		{
+			name: "platform with whitespace",
+			build: BuildConfig{
+				Platform: "linux amd64",
+				Push:     BuildPushOptionServer,
+			},
+			wantErr: true,
+			errMsg:  "contains whitespace",
 		},
-		wantErr: true,
-		errMsg:  "contains whitespace",
-	},
 		{
 			name: "valid build config with args",
 			build: BuildConfig{
