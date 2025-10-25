@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
@@ -66,8 +67,15 @@ func ResolveTargets(appConfig config.AppConfig) ([]config.AppConfig, error) {
 	var resolvedConfigs []config.AppConfig
 
 	if len(appConfig.Targets) > 0 {
-		// Multi-target deployment
-		for targetName, target := range appConfig.Targets {
+		// Multi-target deployment - sort target names for deterministic order
+		targetNames := make([]string, 0, len(appConfig.Targets))
+		for targetName := range appConfig.Targets {
+			targetNames = append(targetNames, targetName)
+		}
+		sort.Strings(targetNames) // Alphabetical order for consistency
+
+		for _, targetName := range targetNames {
+			target := appConfig.Targets[targetName]
 			mergedConfig, err := appConfig.ResolveTarget(targetName, target)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve target '%s': %w", targetName, err)
