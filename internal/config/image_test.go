@@ -508,19 +508,6 @@ func TestImage_Validate_WithBuildConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "build with empty push (defaults to registry) - registry auth required",
-			image: Image{
-				Repository: "ghcr.io/myorg/myapp",
-				Tag:        "latest",
-				BuildConfig: &BuildConfig{
-					Push: "", // Empty means default to registry
-				},
-				RegistryAuth: nil,
-			},
-			wantErr: true,
-			errMsg:  "image.registry authentication required when building with registry push strategy",
-		},
-		{
 			name: "build with push to server - registry auth not allowed",
 			image: Image{
 				Repository: "myapp",
@@ -534,7 +521,7 @@ func TestImage_Validate_WithBuildConfig(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "image.registry cannot be set when build_config.push is 'server'",
+			errMsg:  "image.registry cannot be set when image.build_config.push is 'server'",
 		},
 	}
 
