@@ -20,7 +20,7 @@ func (ac *AppConfig) isEmpty() bool {
 }
 
 func (ac *AppConfig) Validate(format string) error {
-	// We'll assume yaml if no format is supplied
+	// We'll assume yaml if no format is supplied.
 	if format == "" {
 		format = "yaml"
 	}
@@ -32,9 +32,6 @@ func (ac *AppConfig) Validate(format string) error {
 	isMultiTarget := len(ac.Targets) > 0
 
 	if isMultiTarget {
-		if ac.Server != "" {
-			return fmt.Errorf("configuration cannot contain both 'server' and 'targets'; please use one method")
-		}
 		for targetName, overrides := range ac.Targets {
 			mergedConfig, err := ac.ResolveTarget(targetName, overrides)
 			if err != nil {
@@ -58,7 +55,11 @@ func (ac *AppConfig) Validate(format string) error {
 
 func (tc *TargetConfig) Validate(format string) error {
 	if tc.Name == "" {
-		return fmt.Errorf("app 'name' is required")
+		return errors.New("app 'name' is required")
+	}
+
+	if tc.Server == "" {
+		return errors.New("server is required")
 	}
 
 	if !isValidAppName(tc.Name) {

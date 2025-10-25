@@ -19,7 +19,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				Repository: "nginx",
 				Tag:        "1.20",
 			},
-			Server:          "default.server.com",
+			Server:          "default.haloy.dev",
 			ACMEEmail:       "admin@default.com",
 			HealthCheckPath: "/health",
 			Port:            "8080",
@@ -45,17 +45,17 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 			base:            baseConfig,
 			override:        nil,
 			expectedName:    "myapp",
-			expectedServer:  "default.server.com",
+			expectedServer:  "default.haloy.dev",
 			expectNilTarget: true,
 		},
 		{
 			name: "override server only",
 			base: baseConfig,
 			override: &TargetConfig{
-				Server: "override.server.com",
+				Server: "override.haloy.dev",
 			},
 			expectedName:   "myapp",
-			expectedServer: "override.server.com",
+			expectedServer: "override.haloy.dev",
 			expectedImage:  *baseConfig.Image, // Should remain unchanged
 		},
 		{
@@ -68,7 +68,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				},
 			},
 			expectedName:   "myapp",
-			expectedServer: "default.server.com",
+			expectedServer: "default.haloy.dev",
 			expectedImage: Image{
 				Repository: "custom-nginx",
 				Tag:        "1.21",
@@ -82,7 +82,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 					Repository: "apache",
 					Tag:        "2.4",
 				},
-				Server:          "prod.server.com",
+				Server:          "prod.haloy.dev",
 				ACMEEmail:       "admin@prod.com",
 				HealthCheckPath: "/status",
 				Port:            "9090",
@@ -93,7 +93,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				PostDeploy:      []string{"echo 'prod post'"},
 			},
 			expectedName:   "myapp",
-			expectedServer: "prod.server.com",
+			expectedServer: "prod.haloy.dev",
 			expectedImage: Image{
 				Repository: "apache",
 				Tag:        "2.4",
@@ -112,7 +112,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				},
 			},
 			expectedName:   "myapp",
-			expectedServer: "default.server.com",
+			expectedServer: "default.haloy.dev",
 			expectedImage: Image{
 				Repository: "nginx", // Base repository
 				Tag:        "1.20",  // Base tag
@@ -136,7 +136,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				},
 			},
 			expectedName:   "myapp",
-			expectedServer: "default.server.com",
+			expectedServer: "default.haloy.dev",
 			expectedImage: Image{
 				Repository: "nginx", // Base repository
 				Tag:        "1.20",  // Base tag
@@ -156,7 +156,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				},
 			},
 			expectedName:   "myapp",
-			expectedServer: "default.server.com",
+			expectedServer: "default.haloy.dev",
 		},
 		{
 			name: "override with env vars",
@@ -167,7 +167,7 @@ func TestAppConfig_MergeWithTarget(t *testing.T) {
 				},
 			},
 			expectedName:   "myapp",
-			expectedServer: "default.server.com",
+			expectedServer: "default.haloy.dev",
 		},
 	}
 
@@ -341,7 +341,7 @@ func baseAppConfig(name string) AppConfig {
 				Repository: "example.com/repo",
 				Tag:        "latest",
 			},
-			Server: "test.server.com",
+			Server: "test.haloy.dev",
 			// ... initialize other fields from TargetConfig here
 		},
 	}
@@ -430,7 +430,7 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 							Repository: "nginx",
 							Tag:        "latest",
 						},
-						Server: "prod.server.com",
+						Server: "prod.haloy.dev",
 					},
 				},
 			},
@@ -448,7 +448,7 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 						Image: &Image{
 							Tag: "latest", // Missing repository
 						},
-						Server: "prod.server.com",
+						Server: "prod.haloy.dev",
 					},
 				},
 			},
@@ -465,7 +465,7 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 						Repository: "nginx",
 						Tag:        "1.21",
 					},
-					Server:          "server.com",
+					Server:          "haloy.dev",
 					ACMEEmail:       "admin@example.com",
 					HealthCheckPath: "/health",
 					Port:            "8080",
@@ -519,7 +519,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "valid minimal target config",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
@@ -531,12 +532,12 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "valid target config with all fields",
 			target: TargetConfig{
-				Name: "test-app",
+				Name: "haloy-test-app",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "1.21",
 				},
-				Server:          "server.com",
+				Server:          "haloy.dev",
 				ACMEEmail:       "admin@example.com",
 				HealthCheckPath: "/health",
 				Port:            "8080",
@@ -559,9 +560,23 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "invalid - missing server",
+			target: TargetConfig{
+				Name: "haloy-test-app",
+				Image: &Image{
+					Repository: "nginx",
+					Tag:        "1.21",
+				},
+			},
+			format:      "yaml",
+			expectError: true,
+			errMsg:      "server is required",
+		},
+		{
 			name: "invalid image - missing repository",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Tag: "latest",
 				},
@@ -573,7 +588,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid ACME email",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
@@ -587,7 +603,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid domain",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
@@ -603,7 +620,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid env var",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
@@ -622,7 +640,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid volume mapping",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
@@ -636,7 +655,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid health check path",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
@@ -650,7 +670,8 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 		{
 			name: "invalid replicas",
 			target: TargetConfig{
-				Name: "test-app",
+				Name:   "haloy-test-app",
+				Server: "haloy.dev",
 				Image: &Image{
 					Repository: "nginx",
 					Tag:        "latest",
