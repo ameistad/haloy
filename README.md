@@ -12,7 +12,7 @@ Haloy is a developer-friendly deployment platform that makes deploying Docker co
 
 ```bash
 # Deploy in 3 commands:
-haloy server add haloyapi.my-app.com <token> # Connect to your server (e.g., haloy.example.com)
+haloy server add haloy.example.com <token>   # Connect to your server (e.g., haloy.example.com)
 haloy deploy                                 # Deploy your app
 haloy status                                 # Check deployment status
 ```
@@ -938,7 +938,7 @@ Shell completion provides:
 
 If you have complex build requirements or need custom deployment workflows that go beyond what the Image Builder provides, you can use deployment hooks to implement your own build and upload process.
 
-**When to use deployment hooks instead of the haloys build-in build feature:**
+**When to use deployment hooks instead of Haloy's built-in build feature:**
 - Custom build processes with multiple steps
 - Integration with external build tools or CI systems
 - Complex image transformations or multi-stage processes
@@ -1084,9 +1084,9 @@ When you run `haloy server add`, Haloy creates two files:
 ```yaml
 servers:
   "production.haloy.com":
-    token_env: "HALOY_API_TOKEN_PRODUCTION_HALOY_COM"  # Legacy format - still supported
+    token_env: "HALOY_API_TOKEN_PRODUCTION_HALOY_COM"  
   "staging.haloy.com":
-    token_env: "HALOY_API_TOKEN_STAGING_HALOY_COM"     # Legacy format - still supported
+    token_env: "HALOY_API_TOKEN_STAGING_HALOY_COM"
 ```
 
 **`~/.config/haloy/.env`** - Actual tokens:
