@@ -134,7 +134,7 @@ func UploadImage(ctx context.Context, imageRef string, resolvedAppConfigs []*con
 	}
 
 	for _, resolvedAppConfig := range resolvedAppConfigs {
-		ui.Info("Uploading image %s to %s", imageRef, resolvedAppConfig.TargetName)
+		ui.Info("Uploading image %s to %s", imageRef, resolvedAppConfig.Server)
 
 		token, err := getToken(resolvedAppConfig, resolvedAppConfig.Server)
 		if err != nil {
@@ -149,8 +149,6 @@ func UploadImage(ctx context.Context, imageRef string, resolvedAppConfigs []*con
 		if err := api.PostFile(ctx, "images/upload", "image", tempFile.Name()); err != nil {
 			return fmt.Errorf("failed to upload image: %w", err)
 		}
-
-		ui.Success("Successfully uploaded image %s to server", imageRef)
 	}
 
 	return nil
