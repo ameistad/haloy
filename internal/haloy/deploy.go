@@ -108,8 +108,12 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			}
 
 			var wg sync.WaitGroup
-			for i, rawTarget := range rawTargets {
-				resolvedTarget := resolvedTargets[i]
+			for _, rawTarget := range rawTargets {
+				resolvedTarget, exists := resolvedTargets[rawTarget.TargetName]
+				if !exists {
+					ui.Error("Could not find resolved target for %s", rawTarget.TargetName)
+					return
+				}
 
 				wg.Add(1)
 				go func(rawTarget, resolvedTarget config.AppConfig) {

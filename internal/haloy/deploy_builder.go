@@ -14,7 +14,7 @@ import (
 	"github.com/ameistad/haloy/internal/ui"
 )
 
-func ResolveImageBuilds(targets []config.AppConfig) (map[string]*config.Image, map[string][]*config.Image, map[string][]*config.AppConfig) {
+func ResolveImageBuilds(targets map[string]config.AppConfig) (map[string]*config.Image, map[string][]*config.Image, map[string][]*config.AppConfig) {
 	builds := make(map[string]*config.Image) // imageRef is key
 	uploads := make(map[string][]*config.AppConfig)
 	pushes := make(map[string][]*config.Image)
