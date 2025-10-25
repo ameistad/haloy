@@ -72,11 +72,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-        images: ghcr.io/${{ github.repository }}-haloyd
-        tags: |
-          type=semver,pattern={{version}},value=${{ env.VERSION }}
-          type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }}
-          type=raw,value=latest,enable=${{ !contains(env.VERSION, 'alpha') && !contains(env.VERSION, 'beta') && !contains(env.VERSION, 'rc') }}
+          images: ghcr.io/${{ github.repository }}-haloyd
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }}
+            type=raw,value=latest,enable=${{ !contains(env.VERSION, 'alpha') && !contains(env.VERSION, 'beta') && !contains(env.VERSION, 'rc') }}
 
       - name: Build and push haloyd image
         uses: docker/build-push-action@v5
