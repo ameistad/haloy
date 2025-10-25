@@ -31,12 +31,7 @@ func ResolveImageBuilds(targets map[string]config.AppConfig) (map[string]*config
 			builds[imageRef] = image
 		}
 
-		// Get push strategy with safe access
-		pushStrategy := config.BuildPushOptionRegistry // default
-		if image.BuildConfig != nil && image.BuildConfig.Push != "" {
-			pushStrategy = image.BuildConfig.Push
-		}
-
+		pushStrategy := image.GetEffectivePushStrategy()
 		if pushStrategy == config.BuildPushOptionServer {
 			uploads[imageRef] = append(uploads[imageRef], &target)
 		} else if pushStrategy == config.BuildPushOptionRegistry && image.RegistryAuth != nil {

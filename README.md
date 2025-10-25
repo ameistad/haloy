@@ -280,7 +280,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `registry` | object | No | Private registry authentication (see [Docker Registry Authentication](#docker-registry-authentication)) |
 | `source` | string | No | Where the source for the image is. If set to local it will only look for images already on the server. (default: registry) |
 | `history` | object | No | Image history and rollback strategy (see [Image History](#image-history)) |
-| `builder` | object | No | Build configuration for local image building (see [Image Builder](#image-builder)) |
+| `build_config` | object | No | Build configuration for local image building (see [Image Build Config](#image-build-config)) |
 
 #### Docker Registry Authentication
 
@@ -370,14 +370,14 @@ The `server` field is optional. If not provided, Haloy will automatically detect
 - For GitHub Container Registry, use a GitHub Personal Access Token
 - For Docker Hub, use an access token instead of your account password
 
-#### Image Builder
+#### Image Build Config
 
 Haloy can build Docker images locally as part of the deployment process, eliminating the need for a CI/CD pipeline or separate build infrastructure. The builder feature supports two distribution methods:
 
-1. **Push to Registry** (default): Build locally and push to a Docker registry, then deploy from the registry
-2. **Push to Server**: Build locally and upload the image directly to your Haloy server
+1. **Push to Server**: Build locally and upload the image directly to your Haloy server (default when no registry auth is configured)
+2. **Push to Registry**: Build locally and push to a Docker registry, then deploy from the registry (default when registry auth is configured)
 
-**Builder Configuration:**
+**Build Configuration:**
 
 | Key | Type | Required | Description |
 |-----|------|----------|-------------|
@@ -385,7 +385,7 @@ Haloy can build Docker images locally as part of the deployment process, elimina
 | `dockerfile` | string | No | Path to Dockerfile (default: "Dockerfile" in context) |
 | `platform` | string | No | Target platform (default: "linux/amd64") |
 | `args` | array | No | Build arguments to pass to Docker build |
-| `push` | string | No | Where to push the built image: "registry" or "server" (default: "registry") |
+| `push` | string | No | Where to push the built image: "registry" or "server" (auto-detected by default) |
 
 **Push to Server Example:**
 
@@ -401,7 +401,7 @@ image:
     context: "."  # Build context directory
     dockerfile: "Dockerfile"
     platform: "linux/amd64"
-    push: "server"  # Push directly to server
+    # push: "server" is automatically detected since no registry auth is configured
     args:
       - name: "NODE_ENV"
         value: "production"
@@ -415,7 +415,7 @@ acme_email: "you@email.com"
 
 **Push to Registry Example:**
 
-This approach builds the image locally and pushes it to a Docker registry. The Haloy server then pulls from the registry during deployment. This is the default behavior.
+This approach builds the image locally and pushes it to a Docker registry. The Haloy server then pulls from the registry during deployment. Registry push is automatically selected when registry authentication is configured.
 
 ```yaml
 name: "my-app"
@@ -434,7 +434,7 @@ image:
     context: "."
     dockerfile: "Dockerfile"
     platform: "linux/amd64"
-    push: "registry"  # Push to registry (this is the default)
+    # push: "registry" is automatically detected due to registry auth
     args:
       - name: "VERSION"
         value: "1.2.3"
@@ -934,11 +934,11 @@ Shell completion provides:
 ## Build Locally With Deployment Hooks
 
 > [!NOTE]
-> For most use cases, we recommend using the [Image Builder](#image-builder) feature which provides a simpler, built-in solution for building and deploying images locally. This section covers advanced scenarios where you need custom build processes or deployment workflows.
+> For most use cases, we recommend using the [Image Build Config](#image-build-config) feature which provides a simpler, built-in solution for building and deploying images locally. This section covers advanced scenarios where you need custom build processes or deployment workflows.
 
 If you have complex build requirements or need custom deployment workflows that go beyond what the Image Builder provides, you can use deployment hooks to implement your own build and upload process.
 
-**When to use deployment hooks instead of Image Builder:**
+**When to use deployment hooks instead of the haloys build-in build feature:**
 - Custom build processes with multiple steps
 - Integration with external build tools or CI systems
 - Complex image transformations or multi-stage processes
@@ -996,9 +996,6 @@ targets:
       - "scp my-app.tar $(whoami)@staging-server-ip:/tmp/my-app.tar"
       - "ssh $(whoami)@staging-server-ip \"docker load -i /tmp/my-app.tar && rm /tmp/my-app.tar\""
 ```
-
-> [!TIP]
-> For simpler scenarios, consider using the [Image Builder](#image-builder) with `push: "server"` which handles the build and upload process automatically without requiring custom scripts.
 
 ## Horizontal Scaling
 

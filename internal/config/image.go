@@ -38,6 +38,19 @@ func (i *Image) ShouldBuild() bool {
 	return i.BuildConfig != nil
 }
 
+func (i *Image) GetEffectivePushStrategy() BuildPushOption {
+	if i.BuildConfig != nil && i.BuildConfig.Push != "" {
+		return i.BuildConfig.Push
+	}
+
+	// Auto-detect based on registry auth presence
+	if i.RegistryAuth != nil {
+		return BuildPushOptionRegistry
+	}
+
+	return BuildPushOptionServer
+}
+
 func (i *Image) ImageRef() string {
 	repo := strings.TrimSpace(i.Repository)
 	tag := strings.TrimSpace(i.Tag)
@@ -93,17 +106,14 @@ func (i *Image) Validate(format string) error {
 	}
 
 	if i.ShouldBuild() {
-		pushStrategy := BuildPushOptionRegistry // default
-		if i.BuildConfig != nil && i.BuildConfig.Push != "" {
-			pushStrategy = i.BuildConfig.Push
-		}
+		pushStrategy := i.GetEffectivePushStrategy()
 
 		if pushStrategy == BuildPushOptionRegistry && i.RegistryAuth == nil {
 			return fmt.Errorf("image.registry authentication required when building with registry push strategy")
 		}
 
 		if pushStrategy == BuildPushOptionServer && i.RegistryAuth != nil {
-			return fmt.Errorf("image.registry cannot be set when build_config.push is 'server' - uploaded images don't use registry authentication")
+			return fmt.Errorf("image.registry cannot be set when image.%s.push is 'server' - uploaded images don't use registry authentication", GetFieldNameForFormat(Image{}, "BuildConfig", format))
 		}
 	}
 
