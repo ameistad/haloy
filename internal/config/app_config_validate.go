@@ -110,6 +110,15 @@ func (tc *TargetConfig) Validate(format string) error {
 			return fmt.Errorf("volume host path cannot be empty in '%s'", volume)
 		}
 
+		// Check if this is a filesystem bind mount (not a named volume)
+		// Named volumes don't contain path separators and don't start with '.'
+		if strings.Contains(hostPath, "/") || strings.HasPrefix(hostPath, ".") {
+			// This appears to be a filesystem path, require it to be absolute
+			if !filepath.IsAbs(hostPath) {
+				return fmt.Errorf("volume host path '%s' in '%s' must be absolute when using filesystem bind mounts. Relative paths don't work when the daemon runs in a container", hostPath, volume)
+			}
+		}
+
 		// Container path must be absolute
 		containerPath := strings.TrimSpace(parts[1])
 		if !filepath.IsAbs(containerPath) {

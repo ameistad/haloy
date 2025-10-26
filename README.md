@@ -216,7 +216,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `port` | string/integer | No | Container port to expose (default: "8080"). This is the port your application listens on inside the container. The proxy will route traffic from ports 80/443 to this container port. |
 | `health_check_path` | string | No | Health check endpoint (default: "/") |
 | `env` | array | No | Environment variables (see [Environment Variables](#environment-variables)) |
-| `volumes` | array | No | Volume mounts |
+| `volumes` | array | No | Volume mounts (see [Volume Configuration](#volume-configuration)) |
 | `pre_deploy` | array | No | Commands to run before deploy |
 | `post_deploy` | array | No | Commands to run after deploy |
 | `global_pre_deploy` | array | No | Commands to run once before all deployments (multi-target only) |
@@ -561,6 +561,66 @@ DATABASE_URL=postgres://localhost:5432/myapp
 API_KEY=your-secret-api-key
 DEBUG=true
 ```
+
+#### Volume Configuration
+
+Haloy supports both Docker named volumes and filesystem bind mounts for persistent data storage.
+
+**Named Volumes (Recommended):**
+```yaml
+volumes:
+  - "app-data:/app/data"
+  - "app-logs:/var/log/app"
+  - "postgres-data:/var/lib/postgresql/data"
+```
+
+**Filesystem Bind Mounts:**
+```yaml
+volumes:
+  - "/var/app/data:/app/data"
+  - "/home/user/logs:/app/logs:ro"
+  - "/etc/ssl/certs:/app/certs:ro"
+```
+
+**Volume Mount Format:**
+- `volume-name:/container/path` - Named volume mount
+- `/absolute/host/path:/container/path[:options]` - Filesystem bind mount
+- Options can include: `ro` (read-only), `rw` (read-write), `z` (SELinux), etc.
+
+**Important Notes:**
+- ✅ **Absolute paths required**: Filesystem bind mounts must use absolute paths (starting with `/`)
+- ✅ **Named volumes recommended**: Named volumes are managed by Docker and work consistently across environments
+- ❌ **No relative paths**: Relative paths like `./data` or `../logs` are not supported 
+
+**Examples:**
+
+```yaml
+name: "my-app"
+image:
+  repository: "my-app"
+  tag: "latest"
+volumes:
+  # Named volumes (recommended for most use cases)
+  - "app-data:/app/data"
+  - "app-cache:/app/cache"
+  
+  # Filesystem bind mounts (use absolute paths)
+  - "/var/log/myapp:/app/logs"
+  - "/etc/ssl/private:/app/ssl:ro"
+  
+  # ❌ These will be rejected during validation:
+  # - "./data:/app/data"        # Relative path
+  # - "../config:/app/config"   # Relative path
+```
+
+**Why No Relative Paths?**
+
+`haloyd` (the Haloy daemon) runs inside a Docker container, relative paths in volume mounts are resolved relative to the daemon container's filesystem, not your local machine. This leads to unexpected behavior where:
+- `./data` creates a directory inside the daemon container
+- Your actual local `./data` directory is never mounted
+- Data appears to be lost or inaccessible
+
+Using absolute paths or named volumes ensures predictable, consistent behavior across all deployment scenarios.
 
 #### Secret Providers
 
