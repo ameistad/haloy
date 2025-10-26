@@ -99,18 +99,21 @@ func (tc *TargetConfig) Validate(format string) error {
 	}
 
 	for _, volume := range tc.Volumes {
-		// Expected format: /host/path:/container/path[:options]
+		// Expected format: /host/path:/container/path[:options] or volume-name:/container/path[:options]
 		parts := strings.Split(volume, ":")
 		if len(parts) < 2 || len(parts) > 3 {
-			return fmt.Errorf("invalid volume mapping '%s'; expected '/host/path:/container/path[:options]'", volume)
+			return fmt.Errorf("invalid volume mapping '%s'; expected 'host-path:/container/path[:options]'", volume)
 		}
-		// Validate host path.
-		if !filepath.IsAbs(parts[0]) {
-			return fmt.Errorf("volume host path '%s' in '%s' is not an absolute path", parts[0], volume)
+
+		hostPath := strings.TrimSpace(parts[0])
+		if hostPath == "" {
+			return fmt.Errorf("volume host path cannot be empty in '%s'", volume)
 		}
-		// Validate container path.
-		if !filepath.IsAbs(parts[1]) {
-			return fmt.Errorf("volume container path '%s' in '%s' is not an absolute path", parts[1], volume)
+
+		// Container path must be absolute
+		containerPath := strings.TrimSpace(parts[1])
+		if !filepath.IsAbs(containerPath) {
+			return fmt.Errorf("volume container path '%s' in '%s' is not an absolute path", containerPath, volume)
 		}
 	}
 
