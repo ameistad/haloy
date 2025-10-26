@@ -70,7 +70,7 @@ func BuildImage(ctx context.Context, imageRef string, image *config.Image, confi
 
 	for _, buildArg := range buildConfig.Args {
 		if buildArg.Value != "" {
-			args = append(args, "--build-arg", fmt.Sprintf("%s=%s", buildArg.Name, buildArg.Value))
+			args = append(args, "--build-arg", fmt.Sprintf("%s=%q", buildArg.Name, buildArg.Value))
 		} else {
 			// If no value specified, pass the build arg name only (Docker will use env var)
 			args = append(args, "--build-arg", buildArg.Name)

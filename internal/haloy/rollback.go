@@ -14,6 +14,7 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 	"github.com/ameistad/haloy/internal/logging"
 	"github.com/ameistad/haloy/internal/ui"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
@@ -155,25 +156,30 @@ func RollbackTargetsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 				go func(target config.AppConfig) {
 					defer wg.Done()
+					prefix := ""
+					if len(targets) > 1 {
+						prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", target.TargetName))
+					}
+					pui := &ui.PrefixedUI{Prefix: prefix}
 
 					token, err := getToken(&target, target.Server)
 					if err != nil {
-						ui.Error("%v", err)
+						pui.Error("%v", err)
 						return
 					}
 
 					api, err := apiclient.New(target.Server, token)
 					if err != nil {
-						ui.Error("Failed to create API client: %v", err)
+						pui.Error("Failed to create API client: %v", err)
 						return
 					}
 					rollbackTargets, err := getRollbackTargets(ctx, api, target.Name)
 					if err != nil {
-						ui.Error("Failed to get rollback targets: %v", err)
+						pui.Error("Failed to get rollback targets: %v", err)
 						return
 					}
 					if len(rollbackTargets.Targets) == 0 {
-						ui.Info("No rollback targets available for app '%s'", target.Name)
+						pui.Info("No rollback targets available for app '%s'", target.Name)
 						return
 					}
 
