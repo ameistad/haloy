@@ -30,9 +30,9 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ### 2. Install and Initialize `haloyd` (Haloy Daemon) on Your Server
-The next step is to install `haloyd` on your server. If you need multiple servers just repeat these steps.
+The next step is to install `haloyd` on your server. 
 
-1. Install `haloyadm` (with root access):
+1. Install `haloyadm` (requires sudo access):
     ```bash
     curl -fsSL https://raw.githubusercontent.com/ameistad/haloy/main/scripts/install-haloyadm.sh | sudo bash
     ```
@@ -42,7 +42,7 @@ The next step is to install `haloyd` on your server. If you need multiple server
     sudo haloyadm init
     ```
 
-    💡 **Optional**: Secure the Haloy API with a domain during initialization:
+    💡 **Recommended but optional**: Secure the Haloy API with a domain during initialization:
     ```bash
     sudo haloyadm init --api-domain haloy.yourserver.com --acme-email you@email.com
 
@@ -53,7 +53,7 @@ The next step is to install `haloyd` on your server. If you need multiple server
 > [!NOTE]
 > For development or non-root installations, you can install in [user mode](#non-root-install).
 
-3. Add server:
+3. Add the server on your local machine:
 ```bash
 haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
 ``` 
@@ -63,7 +63,7 @@ haloy server add <server-domain> <api-token>  # e.g., haloy.yourserver.com
 
 
 ### 3. Create `haloy.yaml`
-In your application's project directory, create a `haloy.yaml` file:
+Create a `haloy.yaml` file:
 
 ```yaml
 name: "my-app"
@@ -72,8 +72,7 @@ server: haloy.yourserver.com
 # Docker image
 image:
   repository: "my-app"
-  builder:
-    push: "server"
+  build: true
 
 # Domain configuration
 domains:
@@ -173,41 +172,6 @@ haloy rollback --target production <deployment-id>
 
 # Stop all targets
 haloy stop --all
-```
-
-### Separate Configuration Files
-You can also use separate configuration files for different environments:
-
-**production.haloy.yaml:**
-```yaml
-server: production.haloy.com
-name: "my-app"
-image:
-  repository: "ghcr.io/your-username/my-app"
-  tag: "v1.2.3"
-domains:
-  - domain: "my-app.com"
-acme_email: "you@email.com"
-replicas: 3
-```
-
-**staging.haloy.yaml:**
-```yaml
-server: staging.haloy.com
-name: "my-app-staging"
-image:
-  repository: "ghcr.io/your-username/my-app"
-  tag: "main"
-domains:
-  - domain: "staging.my-app.com"
-acme_email: "you@email.com"
-replicas: 1
-```
-
-Deploy to different environments:
-```bash
-haloy deploy --config production.haloy.yaml
-haloy deploy --config staging.haloy.yaml
 ```
 
 ### 4. Deploy
