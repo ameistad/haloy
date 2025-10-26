@@ -9,7 +9,7 @@
 <p align="center">Deploy containerized apps with zero downtime, automatic SSL, and effortless scaling.</p>
 
 
-## 🚀 Quick Start (5 minutes)
+## 🚀 Quick Start
 
 ### Prerequisites
 - **Server**: Any Linux server with Docker installed
