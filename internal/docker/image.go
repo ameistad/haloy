@@ -3,7 +3,6 @@ package docker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -18,23 +17,21 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func GetRegistryServer(imageConfig *config.Image) (string, error) {
+func GetRegistryServer(imageConfig *config.Image) string {
 	auth := imageConfig.RegistryAuth
-	if auth == nil {
-		return "", errors.New("registry auth is required")
-	}
-	server := auth.Server
-	if server == "" {
-		// Parse server from repository if not explicitly set
-		parts := strings.SplitN(imageConfig.Repository, "/", 2)
-		if len(parts) > 1 && (strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")) {
-			server = parts[0]
-		} else {
-			server = "index.docker.io" // Default to Docker Hub
-		}
+
+	if auth != nil && auth.Server != "" {
+		return auth.Server
 	}
 
-	return server, nil
+	server := "index.docker.io" // set default to Docker Hub
+	// Try to parse server from repository
+	parts := strings.SplitN(imageConfig.Repository, "/", 2)
+	if len(parts) > 1 && (strings.Contains(parts[0], ".") || strings.Contains(parts[0], ":")) {
+		server = parts[0]
+	}
+
+	return server
 }
 
 func getRegistryAuthString(imageConfig *config.Image) (string, error) {
@@ -42,7 +39,7 @@ func getRegistryAuthString(imageConfig *config.Image) (string, error) {
 	if auth == nil {
 		return "", nil
 	}
-	server, _ := GetRegistryServer(imageConfig)
+	server := GetRegistryServer(imageConfig)
 	authConfig := registry.AuthConfig{
 		Username:      auth.Username.Value,
 		Password:      auth.Password.Value,
@@ -70,16 +67,6 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 		return nil
 	}
 
-	// Check if this is a local-only image (no registry configured)
-	if imageConfig.RegistryAuth == nil {
-		if localExists {
-			logger.Debug("Using existing local image (no registry configured)", "image", imageRef)
-			return nil
-		} else {
-			return fmt.Errorf("image '%s' not found locally and no registry configured", imageRef)
-		}
-	}
-
 	registryAuth, err := getRegistryAuthString(&imageConfig)
 	if err != nil {
 		return fmt.Errorf("failed to resolve registry auth for image %s: %w", imageRef, err)
@@ -88,8 +75,8 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 	if localExists {
 		remote, err := cli.DistributionInspect(ctx, imageRef, registryAuth)
 		if err != nil {
-			// Registry check failed - this is an error for registry images
-			return fmt.Errorf("failed to check remote registry for image %s: %w", imageRef, err)
+			logger.Debug("Failed to check remote registry, using local image", "image", imageRef, "error", err)
+			return nil
 		}
 
 		remoteDigest := remote.Descriptor.Digest.String()
@@ -106,6 +93,7 @@ func EnsureImageUpToDate(ctx context.Context, cli *client.Client, logger *slog.L
 
 	// If we reach here, either the image doesn't exist locally or the remote digest doesn't match
 	logger.Debug(fmt.Sprintf("Pulling image %s...", imageRef), "image", imageRef)
+
 	r, err := cli.ImagePull(ctx, imageRef, image.PullOptions{
 		RegistryAuth: registryAuth,
 	})

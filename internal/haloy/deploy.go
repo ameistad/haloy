@@ -82,11 +82,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 				for imageRef, images := range pushes {
 					for _, image := range images {
-						registryServer, err := docker.GetRegistryServer(image)
-						if err != nil {
-							ui.Error("Unable to get server for '%s': %v", image.ImageRef(), err)
-							return
-						}
+						registryServer := docker.GetRegistryServer(image)
 						ui.Info("Pushing image '%s' to %s", imageRef, registryServer)
 						if err := docker.PushImage(ctx, cli, imageRef, image); err != nil {
 							ui.Error("%v", err)

@@ -54,6 +54,12 @@ func (i *Image) GetEffectivePushStrategy() BuildPushOption {
 func (i *Image) ImageRef() string {
 	repo := strings.TrimSpace(i.Repository)
 	tag := strings.TrimSpace(i.Tag)
+
+	// If repository already contains a tag, don't add another one
+	if strings.Contains(repo, ":") && tag == "" {
+		return repo
+	}
+
 	if tag == "" {
 		tag = "latest"
 	}
