@@ -38,7 +38,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				return
 			}
 
-			targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+			targets, err := appconfigloader.ExtractTargets(rawAppConfig)
 			if err != nil {
 				ui.Error("Unable to create deploy targets: %v", err)
 				return
@@ -50,7 +50,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target config.AppConfig) {
+				go func(target config.TargetConfig) {
 					defer wg.Done()
 
 					token, err := getToken(&target, target.Server)
@@ -80,15 +80,22 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 						ui.Error("Deployment ID %s not available not found available rollback targets", targetDeploymentID)
 					}
 
-					newResolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, *availableTarget.RawAppConfig)
+					tempAppConfig := config.AppConfig{}
+					tempAppConfig.TargetConfig = *availableTarget.RawTargetConfig
+					newResolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, *&tempAppConfig)
 					if err != nil {
 						ui.Error("Unable to resolve secrets for the app config. This usually occurs when secrets names have been changed or deleted between deployments: %v", err)
 						return
 					}
+					newResolvedTargetConfig, err := appconfigloader.MergeToTarget(newResolvedAppConfig, config.TargetConfig{}, newResolvedAppConfig.Name)
+					if err != nil {
+						ui.Error("Failed to merge to target")
+						return
+					}
 					request := apitypes.RollbackRequest{
-						TargetDeploymentID:   targetDeploymentID,
-						NewDeploymentID:      newDeploymentID,
-						NewResolvedAppConfig: newResolvedAppConfig,
+						TargetDeploymentID:      targetDeploymentID,
+						NewDeploymentID:         newDeploymentID,
+						NewResolvedTargetConfig: newResolvedTargetConfig,
 					}
 					if err := api.Post(ctx, "rollback", request, nil); err != nil {
 						ui.Error("Rollback failed: %v", err)
@@ -143,7 +150,7 @@ func RollbackTargetsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+			targets, err := appconfigloader.ExtractTargets(rawAppConfig)
 			if err != nil {
 				ui.Error("Unable to create deploy targets: %v", err)
 				return
@@ -154,7 +161,7 @@ func RollbackTargetsCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			for _, target := range targets {
 				wg.Add(1)
 
-				go func(target config.AppConfig) {
+				go func(target config.TargetConfig) {
 					defer wg.Done()
 					prefix := ""
 					if len(targets) > 1 {

@@ -7,331 +7,6 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
-func TestAppConfig_MergeWithTarget(t *testing.T) {
-	defaultReplicas := 2
-	overrideReplicas := 5
-	defaultCount := 10
-
-	baseConfig := AppConfig{
-		TargetConfig: TargetConfig{
-			Name: "myapp",
-			Image: &Image{
-				Repository: "nginx",
-				Tag:        "1.20",
-			},
-			Server:          "default.haloy.dev",
-			ACMEEmail:       "admin@default.com",
-			HealthCheckPath: "/health",
-			Port:            "8080",
-			Replicas:        &defaultReplicas,
-			NetworkMode:     "bridge",
-			Volumes:         []string{"/host:/container"},
-			PreDeploy:       []string{"echo 'pre'"},
-			PostDeploy:      []string{"echo 'post'"},
-		},
-	}
-
-	tests := []struct {
-		name            string
-		base            AppConfig
-		override        *TargetConfig
-		expectedName    string
-		expectedServer  string
-		expectedImage   Image
-		expectNilTarget bool
-	}{
-		{
-			name:            "nil override returns base config without targets",
-			base:            baseConfig,
-			override:        nil,
-			expectedName:    "myapp",
-			expectedServer:  "default.haloy.dev",
-			expectNilTarget: true,
-		},
-		{
-			name: "override server only",
-			base: baseConfig,
-			override: &TargetConfig{
-				Server: "override.haloy.dev",
-			},
-			expectedName:   "myapp",
-			expectedServer: "override.haloy.dev",
-			expectedImage:  *baseConfig.Image, // Should remain unchanged
-		},
-		{
-			name: "override image repository and tag",
-			base: baseConfig,
-			override: &TargetConfig{
-				Image: &Image{
-					Repository: "custom-nginx",
-					Tag:        "1.21",
-				},
-			},
-			expectedName:   "myapp",
-			expectedServer: "default.haloy.dev",
-			expectedImage: Image{
-				Repository: "custom-nginx",
-				Tag:        "1.21",
-			},
-		},
-		{
-			name: "override all fields",
-			base: baseConfig,
-			override: &TargetConfig{
-				Image: &Image{
-					Repository: "apache",
-					Tag:        "2.4",
-				},
-				Server:          "prod.haloy.dev",
-				ACMEEmail:       "admin@prod.com",
-				HealthCheckPath: "/status",
-				Port:            "9090",
-				Replicas:        &overrideReplicas,
-				NetworkMode:     "host",
-				Volumes:         []string{"/prod/host:/prod/container"},
-				PreDeploy:       []string{"echo 'prod pre'"},
-				PostDeploy:      []string{"echo 'prod post'"},
-			},
-			expectedName:   "myapp",
-			expectedServer: "prod.haloy.dev",
-			expectedImage: Image{
-				Repository: "apache",
-				Tag:        "2.4",
-			},
-		},
-		{
-			name: "override with image history",
-			base: baseConfig,
-			override: &TargetConfig{
-				Image: &Image{
-					History: &ImageHistory{
-						Strategy: HistoryStrategyRegistry,
-						Count:    &defaultCount,
-						Pattern:  "v*",
-					},
-				},
-			},
-			expectedName:   "myapp",
-			expectedServer: "default.haloy.dev",
-			expectedImage: Image{
-				Repository: "nginx", // Base repository
-				Tag:        "1.20",  // Base tag
-				History: &ImageHistory{
-					Strategy: HistoryStrategyRegistry,
-					Count:    &defaultCount,
-					Pattern:  "v*",
-				},
-			},
-		},
-		{
-			name: "override with registry auth",
-			base: baseConfig,
-			override: &TargetConfig{
-				Image: &Image{
-					RegistryAuth: &RegistryAuth{
-						Server:   "private.registry.com",
-						Username: ValueSource{Value: "user"},
-						Password: ValueSource{Value: "pass"},
-					},
-				},
-			},
-			expectedName:   "myapp",
-			expectedServer: "default.haloy.dev",
-			expectedImage: Image{
-				Repository: "nginx", // Base repository
-				Tag:        "1.20",  // Base tag
-				RegistryAuth: &RegistryAuth{
-					Server:   "private.registry.com",
-					Username: ValueSource{Value: "user"},
-					Password: ValueSource{Value: "pass"},
-				},
-			},
-		},
-		{
-			name: "override with domains",
-			base: baseConfig,
-			override: &TargetConfig{
-				Domains: []Domain{
-					{Canonical: "prod.example.com", Aliases: []string{"www.prod.example.com"}},
-				},
-			},
-			expectedName:   "myapp",
-			expectedServer: "default.haloy.dev",
-		},
-		{
-			name: "override with env vars",
-			base: baseConfig,
-			override: &TargetConfig{
-				Env: []EnvVar{
-					{Name: "ENV", ValueSource: ValueSource{Value: "production"}},
-				},
-			},
-			expectedName:   "myapp",
-			expectedServer: "default.haloy.dev",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, _ := tt.base.ResolveTarget("test-target", tt.override)
-
-			if result.Name != tt.expectedName {
-				t.Errorf("MergeWithTarget() Name = %s, expected %s", result.Name, tt.expectedName)
-			}
-
-			if result.Server != tt.expectedServer {
-				t.Errorf("MergeWithTarget() Server = %s, expected %s", result.Server, tt.expectedServer)
-			}
-
-			if tt.expectNilTarget && result.Targets != nil {
-				t.Errorf("MergeWithTarget() Targets should be nil when override is nil")
-			}
-
-			if tt.expectedImage.Repository != "" {
-				if result.Image.Repository != tt.expectedImage.Repository {
-					t.Errorf("MergeWithTarget() Image.Repository = %s, expected %s",
-						result.Image.Repository, tt.expectedImage.Repository)
-				}
-				if result.Image.Tag != tt.expectedImage.Tag {
-					t.Errorf("MergeWithTarget() Image.Tag = %s, expected %s",
-						result.Image.Tag, tt.expectedImage.Tag)
-				}
-				if tt.expectedImage.History != nil {
-					if result.Image.History == nil {
-						t.Errorf("MergeWithTarget() Image.History should not be nil")
-					} else {
-						if result.Image.History.Strategy != tt.expectedImage.History.Strategy {
-							t.Errorf("MergeWithTarget() Image.History.Strategy = %s, expected %s",
-								result.Image.History.Strategy, tt.expectedImage.History.Strategy)
-						}
-					}
-				}
-				if tt.expectedImage.RegistryAuth != nil {
-					if result.Image.RegistryAuth == nil {
-						t.Errorf("MergeWithTarget() Image.RegistryAuth should not be nil")
-					} else {
-						if result.Image.RegistryAuth.Server != tt.expectedImage.RegistryAuth.Server {
-							t.Errorf("MergeWithTarget() Image.RegistryAuth.Server = %s, expected %s",
-								result.Image.RegistryAuth.Server, tt.expectedImage.RegistryAuth.Server)
-						}
-					}
-				}
-			}
-		})
-	}
-}
-
-func TestAppConfig_Normalize(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   AppConfig
-		expected AppConfig
-	}{
-		{
-			name: "empty config gets defaults",
-			config: AppConfig{
-				TargetConfig: TargetConfig{
-					Name: "myapp",
-				},
-			},
-			expected: AppConfig{
-				TargetConfig: TargetConfig{
-					Name:            "myapp",
-					HealthCheckPath: "/",       // Default from constants
-					Port:            "8080",    // Default from constants
-					Replicas:        intPtr(1), // Default from constants
-				},
-			},
-		},
-		{
-			name: "config with existing values keeps them",
-			config: AppConfig{
-				TargetConfig: TargetConfig{
-					Name:            "myapp",
-					HealthCheckPath: "/custom-health",
-					Port:            "9090",
-					Replicas:        intPtr(3),
-				},
-			},
-			expected: AppConfig{
-				TargetConfig: TargetConfig{
-					Name:            "myapp",
-					HealthCheckPath: "/custom-health",
-					Port:            "9090",
-					Replicas:        intPtr(3),
-				},
-			},
-		},
-		{
-			name: "config with image history keeps it",
-			config: AppConfig{
-				TargetConfig: TargetConfig{
-					Name: "myapp",
-					Image: &Image{
-						History: &ImageHistory{
-							Strategy: HistoryStrategyLocal,
-							Count:    intPtr(5),
-						},
-					},
-				},
-			},
-			expected: AppConfig{
-				TargetConfig: TargetConfig{
-					Name:            "myapp",
-					HealthCheckPath: "/",
-					Port:            "8080",
-					Replicas:        intPtr(1),
-					Image: &Image{
-						History: &ImageHistory{
-							Strategy: HistoryStrategyLocal,
-							Count:    intPtr(5),
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.config.Normalize()
-
-			if tt.config.TargetConfig.HealthCheckPath != tt.expected.TargetConfig.HealthCheckPath {
-				t.Errorf("Normalize() HealthCheckPath = %s, expected %s",
-					tt.config.TargetConfig.HealthCheckPath, tt.expected.TargetConfig.HealthCheckPath)
-			}
-
-			if tt.config.TargetConfig.Port != tt.expected.TargetConfig.Port {
-				t.Errorf("Normalize() Port = %s, expected %s",
-					tt.config.TargetConfig.Port, tt.expected.TargetConfig.Port)
-			}
-
-			if tt.config.TargetConfig.Replicas == nil || *tt.config.TargetConfig.Replicas != *tt.expected.TargetConfig.Replicas {
-				replicas := 0
-				if tt.config.TargetConfig.Replicas != nil {
-					replicas = *tt.config.TargetConfig.Replicas
-				}
-				expectedReplicas := 0
-				if tt.expected.TargetConfig.Replicas != nil {
-					expectedReplicas = *tt.expected.TargetConfig.Replicas
-				}
-				t.Errorf("Normalize() Replicas = %d, expected %d", replicas, expectedReplicas)
-			}
-
-			if tt.expected.TargetConfig.Image != nil && tt.expected.TargetConfig.Image.History != nil {
-				if tt.config.TargetConfig.Image == nil || tt.config.TargetConfig.Image.History == nil {
-					t.Errorf("Normalize() Image.History should not be nil")
-				} else {
-					if tt.config.TargetConfig.Image.History.Strategy != tt.expected.TargetConfig.Image.History.Strategy {
-						t.Errorf("Normalize() Image.History.Strategy = %s, expected %s",
-							tt.config.TargetConfig.Image.History.Strategy, tt.expected.TargetConfig.Image.History.Strategy)
-					}
-				}
-			}
-		})
-	}
-}
-
 // baseAppConfig can be used by multiple test functions
 func baseAppConfig(name string) AppConfig {
 	return AppConfig{
@@ -469,7 +144,7 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 					ACMEEmail:       "admin@example.com",
 					HealthCheckPath: "/health",
 					Port:            "8080",
-					Replicas:        intPtr(2),
+					Replicas:        helpers.IntPtr(2),
 					NetworkMode:     "bridge",
 					Volumes:         []string{"/host:/container"},
 					PreDeploy:       []string{"echo pre"},
@@ -496,7 +171,7 @@ func TestAppConfig_Validate_Comprehensive(t *testing.T) {
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {
@@ -541,7 +216,7 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 				ACMEEmail:       "admin@example.com",
 				HealthCheckPath: "/health",
 				Port:            "8080",
-				Replicas:        intPtr(2),
+				Replicas:        helpers.IntPtr(2),
 				NetworkMode:     "bridge",
 				Volumes:         []string{"/host:/container"},
 				PreDeploy:       []string{"echo pre"},
@@ -676,7 +351,7 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 					Repository: "nginx",
 					Tag:        "latest",
 				},
-				Replicas: intPtr(0),
+				Replicas: helpers.IntPtr(0),
 			},
 			format:      "yaml",
 			expectError: true,
@@ -690,7 +365,7 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {
@@ -700,23 +375,6 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 			}
 		})
 	}
-}
-
-func intPtr(i int) *int {
-	return &i
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsSubstring(s, substr)))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 func TestDomain_Validate(t *testing.T) {
@@ -894,7 +552,7 @@ func TestEnvVar_Validate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {
@@ -1030,7 +688,7 @@ func TestValueSource_Validate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {

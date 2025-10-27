@@ -14,20 +14,20 @@ import (
 	"github.com/docker/docker/client"
 )
 
-func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, resolvedAppConfig, rawAppConfig config.AppConfig, logger *slog.Logger) error {
-	imageRef := resolvedAppConfig.Image.ImageRef()
+func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, resolvedTargetConfig, rawTargetConfig config.TargetConfig, logger *slog.Logger) error {
+	imageRef := resolvedTargetConfig.Image.ImageRef()
 
-	err := docker.EnsureImageUpToDate(ctx, cli, logger, *resolvedAppConfig.Image)
+	err := docker.EnsureImageUpToDate(ctx, cli, logger, *resolvedTargetConfig.Image)
 	if err != nil {
 		return err
 	}
 
-	newImageRef, err := tagImage(ctx, cli, imageRef, resolvedAppConfig.Name, deploymentID)
+	newImageRef, err := tagImage(ctx, cli, imageRef, resolvedTargetConfig.Name, deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to tag image: %w", err)
 	}
 
-	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageRef, resolvedAppConfig)
+	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageRef, resolvedTargetConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return fmt.Errorf("container startup timed out: %w", err)
@@ -48,13 +48,13 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, res
 		logger.Info(fmt.Sprintf("Containers started successfully (%d replicas)", len(runResult)), "count", len(runResult), "deploymentID", deploymentID)
 	}
 	// We'll make sure to save the raw app config (without resolved secrets to history)
-	handleImageHistory(ctx, cli, rawAppConfig, deploymentID, newImageRef, logger)
+	handleImageHistory(ctx, cli, rawTargetConfig, deploymentID, newImageRef, logger)
 
 	return nil
 }
 
-func handleImageHistory(ctx context.Context, cli *client.Client, rawAppConfig config.AppConfig, deploymentID, newImageRef string, logger *slog.Logger) {
-	image := rawAppConfig.Image
+func handleImageHistory(ctx context.Context, cli *client.Client, rawTargetConfig config.TargetConfig, deploymentID, newImageRef string, logger *slog.Logger) {
+	image := rawTargetConfig.Image
 
 	if image == nil {
 		logger.Debug("No image configuration found, skipping history management")
@@ -71,22 +71,22 @@ func handleImageHistory(ctx context.Context, cli *client.Client, rawAppConfig co
 		logger.Debug("History disabled, skipping cleanup and history storage")
 
 	case config.HistoryStrategyLocal:
-		if err := writeAppConfigHistory(rawAppConfig, deploymentID, newImageRef); err != nil {
+		if err := writeAppConfigHistory(rawTargetConfig, deploymentID, newImageRef); err != nil {
 			logger.Warn("Failed to write app config history", "error", err)
 		} else {
 			logger.Debug("App configuration saved to history")
 		}
 
 		// Keep N images locally for fast rollback
-		if err := docker.RemoveImages(ctx, cli, logger, rawAppConfig.Name, deploymentID, *rawAppConfig.Image.History.Count); err != nil {
+		if err := docker.RemoveImages(ctx, cli, logger, rawTargetConfig.Name, deploymentID, *rawTargetConfig.Image.History.Count); err != nil {
 			logger.Warn("Failed to clean up old images", "error", err)
 		} else {
-			logger.Debug(fmt.Sprintf("Old images cleaned up, keeping %d recent images locally", *rawAppConfig.Image.History.Count))
+			logger.Debug(fmt.Sprintf("Old images cleaned up, keeping %d recent images locally", *rawTargetConfig.Image.History.Count))
 		}
 
 	case config.HistoryStrategyRegistry:
 		// Save deployment history for rollback metadata
-		if err := writeAppConfigHistory(rawAppConfig, deploymentID, newImageRef); err != nil {
+		if err := writeAppConfigHistory(rawTargetConfig, deploymentID, newImageRef); err != nil {
 			logger.Warn("Failed to write app config history", "error", err)
 		} else {
 			logger.Debug("App configuration saved to history")
@@ -94,14 +94,14 @@ func handleImageHistory(ctx context.Context, cli *client.Client, rawAppConfig co
 
 		// Remove all old images - registry is source of truth
 		// Keep only the current deployment's image (count = 1)
-		if err := docker.RemoveImages(ctx, cli, logger, rawAppConfig.Name, deploymentID, 1); err != nil {
+		if err := docker.RemoveImages(ctx, cli, logger, rawTargetConfig.Name, deploymentID, 1); err != nil {
 			logger.Warn("Failed to clean up old images", "error", err)
 		} else {
 			logger.Debug("Old images cleaned up, registry strategy - keeping only current image locally")
 		}
 
 	default:
-		logger.Warn("Unknown history strategy, skipping history management", "strategy", rawAppConfig.Image.History.Strategy)
+		logger.Warn("Unknown history strategy, skipping history management", "strategy", rawTargetConfig.Image.History.Strategy)
 	}
 }
 
@@ -119,13 +119,13 @@ func tagImage(ctx context.Context, cli *client.Client, srcRef, appName, deployme
 }
 
 // writeAppConfigHistory writes the given appConfig to the db. It will save the newImageRef as a json repsentation of the Image struct to use for rollbacks
-func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, newImageRef string) error {
-	if appConfig.Image.History == nil {
+func writeAppConfigHistory(targetConfig config.TargetConfig, deploymentID, newImageRef string) error {
+	if targetConfig.Image.History == nil {
 		return fmt.Errorf("image.history must be set")
 	}
 
-	if appConfig.Image.History.Strategy != config.HistoryStrategyNone && appConfig.Image.History.Count == nil {
-		return fmt.Errorf("image.history.count is required for %s strategy", appConfig.Image.History.Strategy)
+	if targetConfig.Image.History.Strategy != config.HistoryStrategyNone && targetConfig.Image.History.Count == nil {
+		return fmt.Errorf("image.history.count is required for %s strategy", targetConfig.Image.History.Strategy)
 	}
 
 	db, err := storage.New()
@@ -133,11 +133,11 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, newImageRef
 		return err
 	}
 	defer db.Close()
-	appConfigJSON, err := json.Marshal(appConfig)
+	targetConfigJSON, err := json.Marshal(targetConfig)
 	if err != nil {
 		return fmt.Errorf("failed to convert app config to JSON: %w", err)
 	}
-	rollbackImage := appConfig.Image
+	rollbackImage := targetConfig.Image
 	if parts := strings.SplitN(newImageRef, ":", 2); len(parts) == 2 {
 		rollbackImage.Repository = parts[0]
 		rollbackImage.Tag = parts[1]
@@ -148,17 +148,17 @@ func writeAppConfigHistory(appConfig config.AppConfig, deploymentID, newImageRef
 		return fmt.Errorf("failed to convert deployed image to JSON: %w", err)
 	}
 	deployment := storage.Deployment{
-		ID:            deploymentID,
-		AppName:       appConfig.Name,
-		RawAppConfig:  appConfigJSON,
-		RollbackImage: rollbackImageJSON,
+		ID:              deploymentID,
+		AppName:         targetConfig.Name,
+		RawTargetConfig: targetConfigJSON,
+		RollbackImage:   rollbackImageJSON,
 	}
 
 	if err := db.SaveDeployment(deployment); err != nil {
 		return fmt.Errorf("failed to save deployment to database: %w", err)
 	}
 
-	if err := db.PruneOldDeployments(appConfig.Name, *appConfig.Image.History.Count); err != nil {
+	if err := db.PruneOldDeployments(targetConfig.Name, *targetConfig.Image.History.Count); err != nil {
 		return fmt.Errorf("failed to prune old deployments: %w", err)
 	}
 

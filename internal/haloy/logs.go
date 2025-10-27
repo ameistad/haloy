@@ -35,7 +35,7 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 					return
 				}
 
-				targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+				targets, err := appconfigloader.ExtractTargets(rawAppConfig)
 				if err != nil {
 					ui.Error("Unable to create deploy targets: %v", err)
 					return
@@ -44,9 +44,9 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 				var wg sync.WaitGroup
 				for _, target := range targets {
 					wg.Add(1)
-					go func(appConfig config.AppConfig) {
+					go func(targetConfig config.TargetConfig) {
 						defer wg.Done()
-						streamLogs(ctx, &appConfig, target.Server)
+						streamLogs(ctx, &targetConfig, target.Server)
 					}(target)
 				}
 
@@ -63,8 +63,8 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 	return cmd
 }
 
-func streamLogs(ctx context.Context, appConfig *config.AppConfig, targetServer string) error {
-	token, err := getToken(appConfig, targetServer)
+func streamLogs(ctx context.Context, targetConfig *config.TargetConfig, targetServer string) error {
+	token, err := getToken(targetConfig, targetServer)
 	if err != nil {
 		return err
 	}

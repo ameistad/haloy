@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
 func TestImage_ImageRef(t *testing.T) {
@@ -127,7 +129,7 @@ func TestImage_Validate(t *testing.T) {
 				Tag:        "latest",
 				History: &ImageHistory{
 					Strategy: HistoryStrategyRegistry,
-					Count:    intPtr(5),
+					Count:    helpers.IntPtr(5),
 					Pattern:  "v*",
 				},
 			},
@@ -141,7 +143,7 @@ func TestImage_Validate(t *testing.T) {
 				Tag:        "main",
 				History: &ImageHistory{
 					Strategy: HistoryStrategyRegistry,
-					Count:    intPtr(5),
+					Count:    helpers.IntPtr(5),
 					Pattern:  "v*",
 				},
 			},
@@ -155,7 +157,7 @@ func TestImage_Validate(t *testing.T) {
 				Tag:        "v1.2.3",
 				History: &ImageHistory{
 					Strategy: HistoryStrategyRegistry,
-					Count:    intPtr(5),
+					Count:    helpers.IntPtr(5),
 					Pattern:  "v*",
 				},
 			},
@@ -195,7 +197,7 @@ func TestImage_Validate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {
@@ -218,7 +220,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			name: "valid local strategy with count",
 			history: ImageHistory{
 				Strategy: HistoryStrategyLocal,
-				Count:    intPtr(5),
+				Count:    helpers.IntPtr(5),
 			},
 			wantErr: false,
 		},
@@ -226,7 +228,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			name: "valid registry strategy with count and pattern",
 			history: ImageHistory{
 				Strategy: HistoryStrategyRegistry,
-				Count:    intPtr(10),
+				Count:    helpers.IntPtr(10),
 				Pattern:  "v*",
 			},
 			wantErr: false,
@@ -275,7 +277,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			name: "local strategy with zero count",
 			history: ImageHistory{
 				Strategy: HistoryStrategyLocal,
-				Count:    intPtr(0),
+				Count:    helpers.IntPtr(0),
 			},
 			wantErr: true,
 			errMsg:  "must be at least 1",
@@ -284,7 +286,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			name: "registry strategy with negative count",
 			history: ImageHistory{
 				Strategy: HistoryStrategyRegistry,
-				Count:    intPtr(-1),
+				Count:    helpers.IntPtr(-1),
 			},
 			wantErr: true,
 			errMsg:  "must be at least 1",
@@ -293,7 +295,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			name: "registry strategy missing pattern",
 			history: ImageHistory{
 				Strategy: HistoryStrategyRegistry,
-				Count:    intPtr(5),
+				Count:    helpers.IntPtr(5),
 				Pattern:  "",
 			},
 			wantErr: true,
@@ -303,7 +305,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			name: "registry strategy with whitespace pattern",
 			history: ImageHistory{
 				Strategy: HistoryStrategyRegistry,
-				Count:    intPtr(5),
+				Count:    helpers.IntPtr(5),
 				Pattern:  "   ",
 			},
 			wantErr: true,
@@ -317,7 +319,7 @@ func TestImageHistory_Validate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {
@@ -449,7 +451,7 @@ func TestBuildConfig_Validate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {
@@ -531,7 +533,7 @@ func TestImage_Validate_WithBuildConfig(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {

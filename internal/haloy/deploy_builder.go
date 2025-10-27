@@ -14,9 +14,9 @@ import (
 	"github.com/ameistad/haloy/internal/ui"
 )
 
-func ResolveImageBuilds(targets map[string]config.AppConfig) (map[string]*config.Image, map[string][]*config.Image, map[string][]*config.AppConfig) {
+func ResolveImageBuilds(targets map[string]config.TargetConfig) (map[string]*config.Image, map[string][]*config.Image, map[string][]*config.TargetConfig) {
 	builds := make(map[string]*config.Image) // imageRef is key
-	uploads := make(map[string][]*config.AppConfig)
+	uploads := make(map[string][]*config.TargetConfig)
 	pushes := make(map[string][]*config.Image)
 
 	for _, target := range targets {
@@ -120,7 +120,7 @@ func getBuilderWorkDir(configPath, builderContext string) string {
 }
 
 // UploadImage uploads a Docker image tar to the specified server
-func UploadImage(ctx context.Context, imageRef string, resolvedAppConfigs []*config.AppConfig) error {
+func UploadImage(ctx context.Context, imageRef string, resolvedTargetConfigs []*config.TargetConfig) error {
 	tempFile, err := os.CreateTemp("", fmt.Sprintf("haloy-upload-%s-*.tar", strings.ReplaceAll(imageRef, ":", "-")))
 	if err != nil {
 		return fmt.Errorf("failed to create temporary file: %w", err)
@@ -133,7 +133,7 @@ func UploadImage(ctx context.Context, imageRef string, resolvedAppConfigs []*con
 		return fmt.Errorf("failed to save image to tar: %w", err)
 	}
 
-	for _, resolvedAppConfig := range resolvedAppConfigs {
+	for _, resolvedAppConfig := range resolvedTargetConfigs {
 		ui.Info("Uploading image %s to %s", imageRef, resolvedAppConfig.Server)
 
 		token, err := getToken(resolvedAppConfig, resolvedAppConfig.Server)

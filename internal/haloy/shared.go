@@ -20,9 +20,9 @@ func createDeploymentID() string {
 	return strings.ToLower(id)
 }
 
-func getToken(appConfig *config.AppConfig, url string) (string, error) {
-	if appConfig != nil && appConfig.APIToken.Value != "" {
-		return appConfig.APIToken.Value, nil
+func getToken(targetConfig *config.TargetConfig, url string) (string, error) {
+	if targetConfig != nil && targetConfig.APIToken.Value != "" {
+		return targetConfig.APIToken.Value, nil
 	}
 
 	configDir, err := config.ConfigDir()

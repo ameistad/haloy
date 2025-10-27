@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
 func TestHaloydConfig_Validate(t *testing.T) {
@@ -83,7 +85,7 @@ func TestHaloydConfig_Validate(t *testing.T) {
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {

@@ -32,7 +32,7 @@ func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 					return
 				}
 
-				targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+				targets, err := appconfigloader.ExtractTargets(rawAppConfig)
 				if err != nil {
 					ui.Error("Unable to create deploy targets: %v", err)
 					return
@@ -41,7 +41,7 @@ func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				var wg sync.WaitGroup
 				for _, target := range targets {
 					wg.Add(1)
-					go func(target config.AppConfig) {
+					go func(target config.TargetConfig) {
 						defer wg.Done()
 						getVersion(ctx, &target, target.Server)
 					}(target)
@@ -57,8 +57,8 @@ func VersionCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func getVersion(ctx context.Context, appConfig *config.AppConfig, targetServer string) {
-	token, err := getToken(appConfig, targetServer)
+func getVersion(ctx context.Context, targetConfig *config.TargetConfig, targetServer string) {
+	token, err := getToken(targetConfig, targetServer)
 	if err != nil {
 		ui.Error("%v", err)
 		return

@@ -30,7 +30,7 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			targets, err := appconfigloader.ResolveTargets(rawAppConfig)
+			targets, err := appconfigloader.ExtractTargets(rawAppConfig)
 			if err != nil {
 				ui.Error("Unable to create deploy targets: %v", err)
 				return
@@ -39,7 +39,7 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 			var wg sync.WaitGroup
 			for _, target := range targets {
 				wg.Add(1)
-				go func(target config.AppConfig) {
+				go func(target config.TargetConfig) {
 					defer wg.Done()
 					getAppStatus(ctx, &target, target.Server, target.Name)
 				}(target)
@@ -55,8 +55,8 @@ func StatusAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 	return cmd
 }
 
-func getAppStatus(ctx context.Context, appConfig *config.AppConfig, targetServer, appName string) {
-	token, err := getToken(appConfig, targetServer)
+func getAppStatus(ctx context.Context, targetConfig *config.TargetConfig, targetServer, appName string) {
+	token, err := getToken(targetConfig, targetServer)
 	if err != nil {
 		ui.Error("%v", err)
 		return

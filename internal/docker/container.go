@@ -22,48 +22,48 @@ type ContainerRunResult struct {
 	ReplicaID    int
 }
 
-func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRef string, appConfig config.AppConfig) ([]ContainerRunResult, error) {
-	result := make([]ContainerRunResult, 0, *appConfig.Replicas)
+func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRef string, targetConfig config.TargetConfig) ([]ContainerRunResult, error) {
+	result := make([]ContainerRunResult, 0, *targetConfig.Replicas)
 
 	if err := checkImagePlatformCompatibility(ctx, cli, imageRef); err != nil {
 		return result, err
 	}
 	cl := config.ContainerLabels{
-		AppName:         appConfig.Name,
+		AppName:         targetConfig.Name,
 		DeploymentID:    deploymentID,
-		ACMEEmail:       appConfig.ACMEEmail,
-		Port:            appConfig.Port,
-		HealthCheckPath: appConfig.HealthCheckPath,
-		Domains:         appConfig.Domains,
+		ACMEEmail:       targetConfig.ACMEEmail,
+		Port:            targetConfig.Port,
+		HealthCheckPath: targetConfig.HealthCheckPath,
+		Domains:         targetConfig.Domains,
 		Role:            config.AppLabelRole,
 	}
 	labels := cl.ToLabels()
 
 	var envVars []string
 
-	for _, envVar := range appConfig.Env {
+	for _, envVar := range targetConfig.Env {
 		envVars = append(envVars, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
 	}
 
 	networkMode := container.NetworkMode(constants.DockerNetwork)
-	if appConfig.NetworkMode != "" {
-		networkMode = container.NetworkMode(appConfig.NetworkMode)
+	if targetConfig.NetworkMode != "" {
+		networkMode = container.NetworkMode(targetConfig.NetworkMode)
 	}
 	hostConfig := &container.HostConfig{
 		NetworkMode:   networkMode,
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
-		Binds:         appConfig.Volumes,
+		Binds:         targetConfig.Volumes,
 	}
 
-	for i := range make([]struct{}, *appConfig.Replicas) {
+	for i := range make([]struct{}, *targetConfig.Replicas) {
 		envVars := append(envVars, fmt.Sprintf("%s=%d", constants.EnvVarReplicaID, i+1))
 		containerConfig := &container.Config{
 			Image:  imageRef,
 			Labels: labels,
 			Env:    envVars,
 		}
-		containerName := fmt.Sprintf("%s-haloy-%s", appConfig.Name, deploymentID)
-		if *appConfig.Replicas > 1 {
+		containerName := fmt.Sprintf("%s-haloy-%s", targetConfig.Name, deploymentID)
+		if *targetConfig.Replicas > 1 {
 			containerName += fmt.Sprintf("-replica-%d", i+1)
 		}
 

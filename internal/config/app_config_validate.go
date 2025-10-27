@@ -10,47 +10,13 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
-func (ac *AppConfig) isEmpty() bool {
-	return ac.Name == "" &&
-		(ac.Image == nil || ac.Image.Repository == "") &&
-		ac.Server == "" &&
-		len(ac.Domains) == 0 &&
-		len(ac.Env) == 0 &&
-		len(ac.Targets) == 0
-}
-
-func (ac *AppConfig) Validate(format string) error {
-	// We'll assume yaml if no format is supplied.
-	if format == "" {
-		format = "yaml"
-	}
-
-	if ac.isEmpty() {
-		return fmt.Errorf("app configuration is required")
-	}
-
-	isMultiTarget := len(ac.Targets) > 0
-
-	if isMultiTarget {
-		for targetName, overrides := range ac.Targets {
-			mergedConfig, err := ac.ResolveTarget(targetName, overrides)
-			if err != nil {
-				return fmt.Errorf("unable to resolve config for target '%s': %w", targetName, err)
-			}
-			if err := mergedConfig.TargetConfig.Validate(format); err != nil {
-				return fmt.Errorf("validation failed for target '%s': %w", targetName, err)
-			}
-		}
-	} else {
-		if ac.Image == nil {
-			return fmt.Errorf("image is required for single-target configuration")
-		}
-		if err := ac.TargetConfig.Validate(format); err != nil {
-			return err
-		}
-	}
-
-	return nil
+func (tc *AppConfig) isEmpty() bool {
+	return tc.Name == "" &&
+		(tc.Image == nil || tc.Image.Repository == "") &&
+		tc.Server == "" &&
+		len(tc.Domains) == 0 &&
+		len(tc.Env) == 0 &&
+		len(tc.Targets) == 0
 }
 
 func (tc *TargetConfig) Validate(format string) error {

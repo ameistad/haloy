@@ -37,10 +37,33 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 				return
 			}
 
-			rawAppConfig.Normalize()
+			errors := make([]error, 0)
+			if len(rawAppConfig.Targets) > 0 {
+				for targetName, target := range rawAppConfig.Targets {
+					mergedTargetConfig, err := appconfigloader.MergeToTarget(rawAppConfig, *target, targetName)
+					if err != nil {
+						errors = append(errors, fmt.Errorf("unable to extract target '%s': %w", targetName, err))
+						continue
+					}
 
-			if err := rawAppConfig.Validate(format); err != nil {
-				ui.Error("Not a valid config: %v", err)
+					if err := mergedTargetConfig.Validate(rawAppConfig.Format); err != nil {
+						errors = append(errors, fmt.Errorf("target '%s' validation failed: %w", targetName, err))
+					}
+				}
+			} else {
+				mergedSingleTargetConfig, err := appconfigloader.MergeToTarget(rawAppConfig, config.TargetConfig{}, rawAppConfig.Name)
+				if err != nil {
+					errors = append(errors, fmt.Errorf("unable to extract config: %w", err))
+				} else {
+					if err := mergedSingleTargetConfig.Validate(rawAppConfig.Format); err != nil {
+						errors = append(errors, fmt.Errorf("configuration validation failed: %w", err))
+					}
+				}
+			}
+			if len(errors) > 0 {
+				for _, error := range errors {
+					ui.Error("%v", error)
+				}
 				return
 			}
 
@@ -52,7 +75,7 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 					ui.Error("Unable to resolve secrets: %v", err)
 					return
 				}
-				resolvedTargets, err := appconfigloader.ResolveTargets(resolvedAppConfig)
+				resolvedTargets, err := appconfigloader.ExtractTargets(resolvedAppConfig)
 				if err != nil {
 					ui.Error("Unable to resolve targets for config: %v", err)
 					return
@@ -72,35 +95,35 @@ func ValidateAppConfigCmd(configPath *string) *cobra.Command {
 	return cmd
 }
 
-func displayResolvedConfig(appConfig config.AppConfig) error {
+func displayResolvedConfig(targetConfig config.TargetConfig) error {
 	var output string
 
-	switch appConfig.Format {
+	switch targetConfig.Format {
 	case "json":
-		data, err := json.MarshalIndent(appConfig, "", "  ")
+		data, err := json.MarshalIndent(targetConfig, "", "  ")
 		if err != nil {
 			return err
 		}
 		output = string(data)
 	case "yaml", "yml":
-		data, err := yaml.Marshal(appConfig)
+		data, err := yaml.Marshal(targetConfig)
 		if err != nil {
 			return err
 		}
 		output = string(data)
 	case "toml":
-		data, err := toml.Marshal(appConfig)
+		data, err := toml.Marshal(targetConfig)
 		if err != nil {
 			return err
 		}
 		output = string(data)
 	default:
-		return fmt.Errorf("unsupported format: %s", appConfig.Format)
+		return fmt.Errorf("unsupported format: %s", targetConfig.Format)
 	}
 
-	targetName := appConfig.TargetName
+	targetName := targetConfig.TargetName
 	if targetName == "" {
-		targetName = appConfig.Name
+		targetName = targetConfig.Name
 	}
 
 	ui.Section(fmt.Sprintf("Resolved Configuration for %s", targetName), []string{output})

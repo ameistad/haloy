@@ -19,7 +19,7 @@ func (s *APIServer) handleRollback() http.HandlerFunc {
 			return
 		}
 
-		appConfig := req.NewResolvedAppConfig
+		appConfig := req.NewResolvedTargetConfig
 
 		if req.TargetDeploymentID == "" {
 			http.Error(w, "Target deployment ID is required", http.StatusBadRequest)

@@ -11,7 +11,9 @@ import (
 	"strings"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
 	"github.com/go-viper/mapstructure/v2"
+	"github.com/jinzhu/copier"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -28,7 +30,6 @@ func Load(
 	}
 
 	rawAppConfig.Format = format
-	rawAppConfig.Normalize()
 
 	if len(rawAppConfig.Targets) > 0 { // is multi target
 
@@ -55,30 +56,180 @@ func Load(
 		}
 	}
 
-	if err := rawAppConfig.Validate(format); err != nil {
-		return config.AppConfig{}, err
-	}
-
 	return rawAppConfig, nil
 }
 
-func ResolveTargets(appConfig config.AppConfig) (map[string]config.AppConfig, error) {
-	resolvedConfigs := make(map[string]config.AppConfig)
+func MergeImage(targetConfig config.TargetConfig, images map[string]*config.Image, baseImage *config.Image) (*config.Image, error) {
+	// Priority: target.Image > target.ImageKey > base.Image
+	if targetConfig.Image != nil {
+		// If base image exists, merge the override with the base
+		if baseImage != nil {
+			merged := *baseImage // Copy base image
+			// Override with target's image fields if they are set
+			if targetConfig.Image.Repository != "" {
+				merged.Repository = targetConfig.Image.Repository
+			}
+			if targetConfig.Image.Tag != "" {
+				merged.Tag = targetConfig.Image.Tag
+			}
+			if targetConfig.Image.History != nil {
+				merged.History = targetConfig.Image.History
+			}
+			if targetConfig.Image.RegistryAuth != nil {
+				merged.RegistryAuth = targetConfig.Image.RegistryAuth
+			}
+			if targetConfig.Image.Build != nil {
+				merged.Build = targetConfig.Image.Build
+			}
+			if targetConfig.Image.BuildConfig != nil {
+				merged.BuildConfig = targetConfig.Image.BuildConfig
+			}
+			return &merged, nil
+		}
+		return targetConfig.Image, nil
+	}
+
+	if targetConfig.ImageKey != "" {
+		if images == nil {
+			return nil, fmt.Errorf("imageRef '%s' specified but no images map defined", targetConfig.ImageKey)
+		}
+		img, exists := images[targetConfig.ImageKey]
+		if !exists {
+			return nil, fmt.Errorf("imageRef '%s' not found in images map", targetConfig.ImageKey)
+		}
+		return img, nil
+	}
+
+	if baseImage != nil {
+		return baseImage, nil
+	}
+
+	return nil, fmt.Errorf("no image specified for target")
+}
+
+// WIP: should replace config.ResolveTarget and return TargetConfig instead
+func MergeToTarget(appConfig config.AppConfig, targetConfig config.TargetConfig, targetName string) (config.TargetConfig, error) {
+	var tc config.TargetConfig
+	if err := copier.Copy(&tc, &targetConfig); err != nil {
+		return config.TargetConfig{}, fmt.Errorf("failed to deep copy target config for merging: %w", err)
+	}
+
+	tc.TargetName = targetName
+
+	if tc.Name == "" {
+		tc.Name = appConfig.Name
+	}
+
+	mergedImage, err := MergeImage(targetConfig, appConfig.Images, appConfig.Image)
+	if err != nil {
+		return config.TargetConfig{}, fmt.Errorf("failed to resolve image for target '%s': %w", targetName, err)
+	}
+	tc.Image = mergedImage
+
+	if tc.Server == "" {
+		tc.Server = appConfig.Server
+	}
+
+	if tc.APIToken.Value == "" && tc.APIToken.From == nil {
+		tc.APIToken = appConfig.APIToken
+	}
+
+	if tc.Domains == nil {
+		tc.Domains = appConfig.Domains
+	}
+
+	if tc.ACMEEmail == "" {
+		tc.ACMEEmail = appConfig.ACMEEmail
+	}
+
+	if tc.Env == nil {
+		tc.Env = appConfig.Env
+	}
+
+	if tc.HealthCheckPath == "" {
+		tc.HealthCheckPath = appConfig.HealthCheckPath
+	}
+
+	if tc.Port == "" {
+		tc.Port = appConfig.Port
+	}
+
+	if tc.Replicas == nil {
+		tc.Replicas = appConfig.Replicas
+	}
+
+	if tc.NetworkMode == "" {
+		tc.NetworkMode = appConfig.NetworkMode
+	}
+
+	if tc.Volumes == nil {
+		tc.Volumes = appConfig.Volumes
+	}
+
+	if tc.PreDeploy == nil {
+		tc.PreDeploy = appConfig.PreDeploy
+	}
+
+	if tc.PostDeploy == nil {
+		tc.PostDeploy = appConfig.PostDeploy
+	}
+
+	normalizeTargetConfig(&tc)
+
+	return tc, nil
+}
+
+// normalizeTargetConfig applies default values to a target config
+func normalizeTargetConfig(tc *config.TargetConfig) {
+	if tc.Image != nil && tc.Image.History == nil {
+		defaultCount := constants.DefaultDeploymentsToKeep
+		tc.Image.History = &config.ImageHistory{
+			Strategy: config.HistoryStrategyLocal,
+			Count:    &defaultCount,
+		}
+	}
+
+	if tc.HealthCheckPath == "" {
+		tc.HealthCheckPath = constants.DefaultHealthCheckPath
+	}
+
+	if tc.Port == "" {
+		tc.Port = config.Port(constants.DefaultContainerPort)
+	}
+
+	if tc.Replicas == nil {
+		defaultReplicas := constants.DefaultReplicas
+		tc.Replicas = &defaultReplicas
+	}
+}
+
+func ExtractTargets(appConfig config.AppConfig) (map[string]config.TargetConfig, error) {
+	extractedTargetConfigs := make(map[string]config.TargetConfig)
 
 	if len(appConfig.Targets) > 0 {
 		for targetName, target := range appConfig.Targets {
-			mergedConfig, err := appConfig.ResolveTarget(targetName, target)
+			mergedTargetConfig, err := MergeToTarget(appConfig, *target, targetName)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve target '%s': %w", targetName, err)
 			}
-			resolvedConfigs[targetName] = *mergedConfig
+
+			if err := mergedTargetConfig.Validate(appConfig.Format); err != nil {
+				return nil, fmt.Errorf("config invalid: %w", err)
+			}
+			extractedTargetConfigs[targetName] = mergedTargetConfig
 		}
 	} else {
-		// Single-target deployment
-		resolvedConfigs[appConfig.Name] = appConfig
+		mergedSingleTargetConfig, err := MergeToTarget(appConfig, config.TargetConfig{}, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to merge config: %w", err)
+		}
+		if err := mergedSingleTargetConfig.Validate(appConfig.Format); err != nil {
+			return nil, fmt.Errorf("config invalid: %w", err)
+		}
+		extractedTargetConfigs[appConfig.Name] = mergedSingleTargetConfig
 	}
 
-	return resolvedConfigs, nil
+	return extractedTargetConfigs, nil
 }
 
 func LoadRawAppConfig(configPath string) (config.AppConfig, string, error) {
@@ -125,12 +276,6 @@ func LoadRawAppConfig(configPath string) (config.AppConfig, string, error) {
 
 	if err := k.UnmarshalWithConf("", &appConfig, unmarshalConf); err != nil {
 		return config.AppConfig{}, "", fmt.Errorf("failed to unmarshal config: %w", err)
-	}
-
-	appConfig.Normalize()
-
-	if err := appConfig.Validate(format); err != nil {
-		return config.AppConfig{}, format, err
 	}
 
 	return appConfig, format, nil

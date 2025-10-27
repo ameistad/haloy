@@ -43,13 +43,13 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				return
 			}
 
-			rawTargets, err := appconfigloader.ResolveTargets(rawAppConfig)
+			rawTargets, err := appconfigloader.ExtractTargets(rawAppConfig)
 			if err != nil {
 				ui.Error("%v", err)
 				return
 			}
 
-			resolvedTargets, err := appconfigloader.ResolveTargets(resolvedAppConfig)
+			resolvedTargets, err := appconfigloader.ExtractTargets(resolvedAppConfig)
 			if err != nil {
 				ui.Error("%v", err)
 				return
@@ -67,8 +67,8 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 					return
 				}
 			}
-			for imageRef, appConfigs := range uploads {
-				if err := UploadImage(ctx, imageRef, appConfigs); err != nil {
+			for imageRef, targetConfigs := range uploads {
+				if err := UploadImage(ctx, imageRef, targetConfigs); err != nil {
 					ui.Error("%v", err)
 					return
 				}
@@ -112,7 +112,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 
 				wg.Add(1)
-				go func(rawTarget, resolvedTarget config.AppConfig) {
+				go func(rawTarget, resolvedTarget config.TargetConfig) {
 					defer wg.Done()
 
 					deployTarget(
@@ -149,15 +149,15 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 func deployTarget(
 	ctx context.Context,
-	rawAppConfig, resolvedAppConfig config.AppConfig,
+	rawTargetConfig, resolvedTargetConfig config.TargetConfig,
 	configPath, deploymentID string,
 	noLogs, showTargetName bool,
 ) {
-	targetName := rawAppConfig.TargetName
-	format := rawAppConfig.Format
-	server := rawAppConfig.Server
-	preDeploy := rawAppConfig.PreDeploy
-	postDeploy := rawAppConfig.PostDeploy
+	targetName := rawTargetConfig.TargetName
+	format := rawTargetConfig.Format
+	server := rawTargetConfig.Server
+	preDeploy := rawTargetConfig.PreDeploy
+	postDeploy := rawTargetConfig.PostDeploy
 
 	prefix := ""
 	if showTargetName {
@@ -165,7 +165,7 @@ func deployTarget(
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", rawAppConfig.Name)
+	pui.Info("Deployment started for %s", rawTargetConfig.Name)
 
 	if len(preDeploy) > 0 {
 		for _, hookCmd := range preDeploy {
@@ -176,7 +176,7 @@ func deployTarget(
 		}
 	}
 
-	token, err := getToken(&resolvedAppConfig, server)
+	token, err := getToken(&resolvedTargetConfig, server)
 	if err != nil {
 		pui.Error("%v", err)
 		return
@@ -190,9 +190,9 @@ func deployTarget(
 	}
 
 	request := apitypes.DeployRequest{
-		RawAppConfig:      rawAppConfig,
-		ResolvedAppConfig: resolvedAppConfig,
-		DeploymentID:      deploymentID,
+		RawTargetConfig:      rawTargetConfig,
+		ResolvedTargetConfig: resolvedTargetConfig,
+		DeploymentID:         deploymentID,
 	}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {
