@@ -54,7 +54,19 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, res
 }
 
 func handleImageHistory(ctx context.Context, cli *client.Client, rawAppConfig config.AppConfig, deploymentID, newImageRef string, logger *slog.Logger) {
-	switch rawAppConfig.Image.History.Strategy {
+	image := rawAppConfig.Image
+
+	if image == nil {
+		logger.Debug("No image configuration found, skipping history management")
+		return
+	}
+
+	strategy := config.HistoryStrategyLocal
+	if image.History != nil {
+		strategy = image.History.Strategy
+	}
+
+	switch strategy {
 	case config.HistoryStrategyNone:
 		logger.Debug("History disabled, skipping cleanup and history storage")
 
