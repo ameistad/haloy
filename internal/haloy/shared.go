@@ -21,7 +21,7 @@ func createDeploymentID() string {
 }
 
 func getToken(targetConfig *config.TargetConfig, url string) (string, error) {
-	if targetConfig != nil && targetConfig.APIToken.Value != "" {
+	if targetConfig != nil && targetConfig.APIToken != nil && targetConfig.APIToken.Value != "" {
 		return targetConfig.APIToken.Value, nil
 	}
 
