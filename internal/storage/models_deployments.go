@@ -127,8 +127,8 @@ func (d *Deployment) GetImageRef() (string, error) {
 	return deployedImage.ImageRef(), nil
 }
 
-// GetRollbackImageConfig parses and returns the deployed image configuration
-func (d *Deployment) GetRollbackImageConfig() (config.Image, error) {
+// GetDeployedImage parses and returns the deployed image configuration
+func (d *Deployment) GetDeployedImage() (config.Image, error) {
 	var deployedImage config.Image
 	if err := json.Unmarshal(d.DeployedImage, &deployedImage); err != nil {
 		return deployedImage, fmt.Errorf("failed to parse deployed image: %w", err)

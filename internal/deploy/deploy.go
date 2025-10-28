@@ -139,13 +139,13 @@ func writeAppConfigHistory(rawAppConfig config.AppConfig, deploymentID, newImage
 		return fmt.Errorf("failed to convert target config to JSON: %w", err)
 	}
 
-	rollbackImage := rawAppConfig.Image
+	deployedImage := rawAppConfig.Image
 	if parts := strings.SplitN(newImageRef, ":", 2); len(parts) == 2 {
-		rollbackImage.Repository = parts[0]
-		rollbackImage.Tag = parts[1]
+		deployedImage.Repository = parts[0]
+		deployedImage.Tag = parts[1]
 	}
 
-	rollbackImageJSON, err := json.Marshal(rollbackImage)
+	deployedImageJSON, err := json.Marshal(deployedImage)
 	if err != nil {
 		return fmt.Errorf("failed to convert deployed image to JSON: %w", err)
 	}
@@ -154,7 +154,7 @@ func writeAppConfigHistory(rawAppConfig config.AppConfig, deploymentID, newImage
 		ID:            deploymentID,
 		AppName:       rawAppConfig.Name,
 		RawAppConfig:  rawAppConfigJSON,
-		RollbackImage: rollbackImageJSON,
+		DeployedImage: deployedImageJSON,
 	}
 
 	if err := db.SaveDeployment(deployment); err != nil {

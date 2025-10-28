@@ -65,7 +65,7 @@ func GetRollbackTargets(ctx context.Context, cli *client.Client, appName string)
 
 	for _, deployment := range deployments {
 		// Parse deployed image config
-		deployedImage, err := deployment.GetRollbackImageConfig()
+		deployedImage, err := deployment.GetDeployedImage()
 		if err != nil {
 			continue // Skip malformed image configs
 		}
