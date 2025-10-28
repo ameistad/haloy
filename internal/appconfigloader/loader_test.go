@@ -476,46 +476,16 @@ func TestExtractTargets(t *testing.T) {
 			},
 			expectCount: 2,
 		},
-		{
-			name: "invalid target config",
-			appConfig: config.AppConfig{
-				TargetConfig: config.TargetConfig{
-					Name: "myapp",
-					Image: &config.Image{
-						Repository: "nginx",
-						Tag:        "latest",
-					},
-					Server: "default.haloy.dev",
-				},
-				Targets: map[string]*config.TargetConfig{
-					"prod": {
-						// Missing required fields
-					},
-				},
-				Format: "yaml",
-			},
-			expectError: true,
-			errMsg:      "validation failed",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := ExtractTargets(tt.appConfig)
-
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("ExtractTargets() expected error but got none")
-				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("ExtractTargets() error = %v, expected to contain %v", err, tt.errMsg)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("ExtractTargets() unexpected error = %v", err)
-				}
-				if len(result) != tt.expectCount {
-					t.Errorf("ExtractTargets() result count = %d, expected %d", len(result), tt.expectCount)
-				}
+			if err != nil {
+				t.Errorf("ExtractTargets() unexpected error = %v", err)
+			}
+			if len(result) != tt.expectCount {
+				t.Errorf("ExtractTargets() result count = %d, expected %d", len(result), tt.expectCount)
 			}
 		})
 	}

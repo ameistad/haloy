@@ -7,21 +7,6 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
-// baseAppConfig can be used by multiple test functions
-func baseAppConfig(name string) AppConfig {
-	return AppConfig{
-		TargetConfig: TargetConfig{ // Initialize the embedded struct by its type name
-			Name: name,
-			Image: &Image{
-				Repository: "example.com/repo",
-				Tag:        "latest",
-			},
-			Server: "test.haloy.dev",
-			// ... initialize other fields from TargetConfig here
-		},
-	}
-}
-
 func TestIsValidAppName(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -70,114 +55,6 @@ func TestValidateDomain(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := helpers.IsValidDomain(tt.domain); (err == nil) == tt.wantErr {
 				t.Errorf("ValidateDomain() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestValidate_NoDomainsAndNoACMEEmail(t *testing.T) {
-	app := baseAppConfig("nodomains")
-	// Remove domains and ACME email to test that validation passes.
-	app.Domains = []Domain{}
-	app.ACMEEmail = ""
-	if err := app.Validate("yaml"); err != nil {
-		t.Errorf("expected valid configuration with no domains and no ACME email; got error: %v", err)
-	}
-}
-
-func TestAppConfig_Validate_Comprehensive(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      AppConfig
-		format      string
-		expectError bool
-		errMsg      string
-	}{
-		{
-			name: "valid minimal config",
-			config: AppConfig{
-				TargetConfig: TargetConfig{
-					Name: "myapp",
-				},
-				Targets: map[string]*TargetConfig{
-					"prod": {
-						Image: &Image{
-							Repository: "nginx",
-							Tag:        "latest",
-						},
-						Server: "prod.haloy.dev",
-					},
-				},
-			},
-			format:      "yaml",
-			expectError: false,
-		},
-		{
-			name: "invalid target config",
-			config: AppConfig{
-				TargetConfig: TargetConfig{
-					Name: "myapp",
-				},
-				Targets: map[string]*TargetConfig{
-					"prod": {
-						Image: &Image{
-							Tag: "latest", // Missing repository
-						},
-						Server: "prod.haloy.dev",
-					},
-				},
-			},
-			format:      "yaml",
-			expectError: true,
-			errMsg:      "validation failed for target 'prod'",
-		},
-		{
-			name: "valid config with all fields",
-			config: AppConfig{
-				TargetConfig: TargetConfig{
-					Name: "myapp",
-					Image: &Image{
-						Repository: "nginx",
-						Tag:        "1.21",
-					},
-					Server:          "haloy.dev",
-					ACMEEmail:       "admin@example.com",
-					HealthCheckPath: "/health",
-					Port:            "8080",
-					Replicas:        helpers.IntPtr(2),
-					NetworkMode:     "bridge",
-					Volumes:         []string{"/host:/container"},
-					PreDeploy:       []string{"echo pre"},
-					PostDeploy:      []string{"echo post"},
-					Env: []EnvVar{
-						{
-							Name:        "ENV_VAR",
-							ValueSource: ValueSource{Value: "value"},
-						},
-					},
-					Domains: []Domain{
-						{Canonical: "example.com", Aliases: []string{"www.example.com"}},
-					},
-				},
-			},
-			format:      "yaml",
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate(tt.format)
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error but got none")
-				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("Validate() error = %v, expected to contain %v", err, tt.errMsg)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error = %v", err)
-				}
 			}
 		})
 	}

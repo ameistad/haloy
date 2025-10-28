@@ -117,7 +117,11 @@ func MergeToTarget(appConfig config.AppConfig, targetConfig config.TargetConfig,
 	tc.TargetName = targetName
 
 	if tc.Name == "" {
-		tc.Name = appConfig.Name
+		if appConfig.Name != "" {
+			tc.Name = appConfig.Name
+		} else {
+			tc.Name = targetName
+		}
 	}
 
 	mergedImage, err := MergeImage(targetConfig, appConfig.Images, appConfig.Image)
@@ -214,7 +218,7 @@ func ExtractTargets(appConfig config.AppConfig) (map[string]config.TargetConfig,
 			}
 
 			if err := mergedTargetConfig.Validate(appConfig.Format); err != nil {
-				return nil, fmt.Errorf("config invalid: %w", err)
+				return nil, fmt.Errorf("validation failed for target '%s': %w", targetName, err)
 			}
 			extractedTargetConfigs[targetName] = mergedTargetConfig
 		}
