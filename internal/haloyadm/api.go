@@ -16,6 +16,9 @@ import (
 )
 
 func APIDomainCmd() *cobra.Command {
+	var devMode bool
+	var debug bool
+
 	cmd := &cobra.Command{
 		Use:   "domain <url> <email>",
 		Short: "Set the API domain",
@@ -118,7 +121,7 @@ func APIDomainCmd() *cobra.Command {
 				}
 			}
 
-			if err := startHaloyd(ctx, dataDir, configDir, false, false); err != nil {
+			if err := startHaloyd(ctx, dataDir, configDir, devMode, debug); err != nil {
 				ui.Error("%s", err)
 				return
 			}
@@ -137,6 +140,9 @@ func APIDomainCmd() *cobra.Command {
 			ui.Success("API domain and email set successfully")
 		},
 	}
+
+	cmd.Flags().BoolVar(&devMode, "dev", false, "Start in development mode using the local haloyd image")
+	cmd.Flags().BoolVar(&debug, "debug", false, "Enable debug mode")
 
 	return cmd
 }
