@@ -105,26 +105,32 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 			var wg sync.WaitGroup
 			for targetName, rawTarget := range rawTargets {
-				resolvedTarget, exists := resolvedTargets[targetName]
+				targetConfig, exists := resolvedTargets[targetName]
 				if !exists {
 					ui.Error("Could not find resolved target for %s", rawTarget.TargetName)
 					return
 				}
 
+				// Recreate the AppConfig with just the target for rollbacks
+				rollbackRawAppConfig := config.AppConfig{
+					TargetConfig:    rawTarget,
+					SecretProviders: rawAppConfig.SecretProviders,
+				}
+
 				wg.Add(1)
-				go func(rawTarget, resolvedTarget config.TargetConfig) {
+				go func(resolvedTarget config.TargetConfig, rawAppConfig config.AppConfig) {
 					defer wg.Done()
 
 					deployTarget(
 						ctx,
-						rawTarget,
 						resolvedTarget,
+						rawAppConfig,
 						*configPath,
 						deploymentID,
 						noLogsFlag,
 						len(rawTargets) > 1,
 					)
-				}(rawTarget, resolvedTarget)
+				}(targetConfig, rollbackRawAppConfig)
 			}
 
 			wg.Wait()
@@ -149,15 +155,16 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 func deployTarget(
 	ctx context.Context,
-	rawTargetConfig, resolvedTargetConfig config.TargetConfig,
+	targetConfig config.TargetConfig,
+	rawAppConfig config.AppConfig,
 	configPath, deploymentID string,
 	noLogs, showTargetName bool,
 ) {
-	targetName := rawTargetConfig.TargetName
-	format := rawTargetConfig.Format
-	server := rawTargetConfig.Server
-	preDeploy := rawTargetConfig.PreDeploy
-	postDeploy := rawTargetConfig.PostDeploy
+	targetName := targetConfig.TargetName
+	format := targetConfig.Format
+	server := targetConfig.Server
+	preDeploy := targetConfig.PreDeploy
+	postDeploy := targetConfig.PostDeploy
 
 	prefix := ""
 	if showTargetName {
@@ -165,7 +172,7 @@ func deployTarget(
 	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
-	pui.Info("Deployment started for %s", rawTargetConfig.Name)
+	pui.Info("Deployment started for %s", targetConfig.Name)
 
 	if len(preDeploy) > 0 {
 		for _, hookCmd := range preDeploy {
@@ -176,7 +183,7 @@ func deployTarget(
 		}
 	}
 
-	token, err := getToken(&resolvedTargetConfig, server)
+	token, err := getToken(&targetConfig, server)
 	if err != nil {
 		pui.Error("%v", err)
 		return
@@ -190,9 +197,9 @@ func deployTarget(
 	}
 
 	request := apitypes.DeployRequest{
-		RawTargetConfig:      rawTargetConfig,
-		ResolvedTargetConfig: resolvedTargetConfig,
-		DeploymentID:         deploymentID,
+		TargetConfig: targetConfig,
+		RawAppConfig: rawAppConfig,
+		DeploymentID: deploymentID,
 	}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {

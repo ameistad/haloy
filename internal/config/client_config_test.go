@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/ameistad/haloy/internal/helpers"
 )
 
 func TestClientConfig_AddServer(t *testing.T) {
@@ -50,7 +52,7 @@ func TestClientConfig_AddServer(t *testing.T) {
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("AddServer() expected error but got none")
-				} else if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !helpers.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("AddServer() error = %v, expected to contain %v", err, tt.errMsg)
 				}
 			} else {

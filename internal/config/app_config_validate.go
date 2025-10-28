@@ -10,15 +10,6 @@ import (
 	"github.com/ameistad/haloy/internal/helpers"
 )
 
-func (tc *AppConfig) isEmpty() bool {
-	return tc.Name == "" &&
-		(tc.Image == nil || tc.Image.Repository == "") &&
-		tc.Server == "" &&
-		len(tc.Domains) == 0 &&
-		len(tc.Env) == 0 &&
-		len(tc.Targets) == 0
-}
-
 func (tc *TargetConfig) Validate(format string) error {
 	if tc.Name == "" {
 		return errors.New("app 'name' is required")

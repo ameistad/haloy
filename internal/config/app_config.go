@@ -30,20 +30,20 @@ type TargetConfig struct {
 	Name string `json:"name,omitempty" yaml:"name,omitempty" toml:"name,omitempty"`
 
 	// Image can be defined inline OR reference a named image (ImageKey) from the Images map
-	Image           *Image      `json:"image,omitempty" yaml:"image,omitempty" toml:"image,omitempty"`
-	ImageKey        string      `json:"imageKey,omitempty" yaml:"image_key,omitempty" toml:"image_key,omitempty"`
-	Server          string      `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
-	APIToken        ValueSource `json:"apiToken,omitempty" yaml:"api_token,omitempty" toml:"api_token,omitempty"`
-	Domains         []Domain    `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
-	ACMEEmail       string      `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
-	Env             []EnvVar    `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
-	HealthCheckPath string      `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty"`
-	Port            Port        `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
-	Replicas        *int        `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
-	Volumes         []string    `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
-	NetworkMode     string      `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
-	PreDeploy       []string    `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
-	PostDeploy      []string    `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
+	Image           *Image       `json:"image,omitempty" yaml:"image,omitempty" toml:"image,omitempty"`
+	ImageKey        string       `json:"imageKey,omitempty" yaml:"image_key,omitempty" toml:"image_key,omitempty"`
+	Server          string       `json:"server,omitempty" yaml:"server,omitempty" toml:"server,omitempty"`
+	APIToken        *ValueSource `json:"apiToken,omitempty" yaml:"api_token,omitempty" toml:"api_token,omitempty"`
+	Domains         []Domain     `json:"domains,omitempty" yaml:"domains,omitempty" toml:"domains,omitempty"`
+	ACMEEmail       string       `json:"acmeEmail,omitempty" yaml:"acme_email,omitempty" toml:"acme_email,omitempty"`
+	Env             []EnvVar     `json:"env,omitempty" yaml:"env,omitempty" toml:"env,omitempty"`
+	HealthCheckPath string       `json:"healthCheckPath,omitempty" yaml:"health_check_path,omitempty" toml:"health_check_path,omitempty"`
+	Port            Port         `json:"port,omitempty" yaml:"port,omitempty" toml:"port,omitempty"`
+	Replicas        *int         `json:"replicas,omitempty" yaml:"replicas,omitempty" toml:"replicas,omitempty"`
+	Volumes         []string     `json:"volumes,omitempty" yaml:"volumes,omitempty" toml:"volumes,omitempty"`
+	NetworkMode     string       `json:"networkMode,omitempty" yaml:"network_mode,omitempty" toml:"network_mode,omitempty"`
+	PreDeploy       []string     `json:"preDeploy,omitempty" yaml:"pre_deploy,omitempty" toml:"pre_deploy,omitempty"`
+	PostDeploy      []string     `json:"postDeploy,omitempty" yaml:"post_deploy,omitempty" toml:"post_deploy,omitempty"`
 
 	// TODO: Is this needed in the AppConfig, we added it to TargetConfig?
 	// Non config fields. Not read from the config file and populated on load.

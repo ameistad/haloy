@@ -80,9 +80,11 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 						ui.Error("Deployment ID %s not available not found available rollback targets", targetDeploymentID)
 					}
 
-					tempAppConfig := config.AppConfig{}
-					tempAppConfig.TargetConfig = *availableTarget.RawTargetConfig
-					newResolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, *&tempAppConfig)
+					if availableTarget.RawAppConfig == nil {
+						ui.Error("Unable to find configuration for rollback")
+						return
+					}
+					newResolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, *availableTarget.RawAppConfig)
 					if err != nil {
 						ui.Error("Unable to resolve secrets for the app config. This usually occurs when secrets names have been changed or deleted between deployments: %v", err)
 						return
@@ -93,9 +95,9 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 						return
 					}
 					request := apitypes.RollbackRequest{
-						TargetDeploymentID:      targetDeploymentID,
-						NewDeploymentID:         newDeploymentID,
-						NewResolvedTargetConfig: newResolvedTargetConfig,
+						TargetDeploymentID: targetDeploymentID,
+						NewDeploymentID:    newDeploymentID,
+						NewTargetConfig:    newResolvedTargetConfig,
 					}
 					if err := api.Post(ctx, "rollback", request, nil); err != nil {
 						ui.Error("Rollback failed: %v", err)

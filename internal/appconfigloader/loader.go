@@ -130,7 +130,7 @@ func MergeToTarget(appConfig config.AppConfig, targetConfig config.TargetConfig,
 		tc.Server = appConfig.Server
 	}
 
-	if tc.APIToken.Value == "" && tc.APIToken.From == nil {
+	if tc.APIToken == nil {
 		tc.APIToken = appConfig.APIToken
 	}
 

@@ -12,17 +12,16 @@ type HealthResponse struct {
 }
 
 type DeployRequest struct {
-	DeploymentID         string              `json:"deploymentID"`
-	ResolvedTargetConfig config.TargetConfig `json:"resolvedTargetConfig"`
-	// Used for rollbacks
-	RawTargetConfig config.TargetConfig    `json:"rawTargetConfig"`
-	SecretProviders config.SecretProviders `json:"secretProviders"`
+	DeploymentID string              `json:"deploymentID"`
+	TargetConfig config.TargetConfig `json:"targetConfig"`
+	// AppConfig without resolved secrets and with target extracted. Saved on server for rollbacks
+	RawAppConfig config.AppConfig `json:"rawAppConfig"`
 }
 
 type RollbackRequest struct {
-	TargetDeploymentID      string              `json:"targetDeploymentID"`
-	NewDeploymentID         string              `json:"newDeploymentID"`
-	NewResolvedTargetConfig config.TargetConfig `json:"newResolvedTargetConfig"`
+	TargetDeploymentID string              `json:"targetDeploymentID"`
+	NewDeploymentID    string              `json:"newDeploymentID"`
+	NewTargetConfig    config.TargetConfig `json:"newTargetConfig"`
 }
 
 type RollbackTargetsResponse struct {
