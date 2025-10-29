@@ -103,34 +103,50 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 			}
 
+			targetsGroupedByServer := appconfigloader.GroupTargetNamesByServer(rawTargets)
+
 			var wg sync.WaitGroup
-			for targetName, rawTarget := range rawTargets {
-				targetConfig, exists := resolvedTargets[targetName]
-				if !exists {
-					ui.Error("Could not find resolved target for %s", rawTarget.TargetName)
-					return
-				}
-
-				// Recreate the AppConfig with just the target for rollbacks
-				rollbackRawAppConfig := config.AppConfig{
-					TargetConfig:    rawTarget,
-					SecretProviders: rawAppConfig.SecretProviders,
-				}
-
+			for server, targetNames := range targetsGroupedByServer {
 				wg.Add(1)
-				go func(resolvedTarget config.TargetConfig, rawAppConfig config.AppConfig) {
+				go func(server string, targetNames []string, rawTargets, resolvedTargets map[string]config.TargetConfig) {
 					defer wg.Done()
+					for _, targetName := range targetNames {
 
-					deployTarget(
-						ctx,
-						resolvedTarget,
-						rawAppConfig,
-						*configPath,
-						deploymentID,
-						noLogsFlag,
-						len(rawTargets) > 1,
-					)
-				}(targetConfig, rollbackRawAppConfig)
+						rawTargetConfig, rawTargetExists := rawTargets[targetName]
+						if !rawTargetExists {
+							ui.Error("Could not find resolved target for %s", targetName)
+							return
+
+						}
+						resolvedTargetConfig, resolvedTargetExists := resolvedTargets[targetName]
+						if !resolvedTargetExists {
+							ui.Error("Could not find resolved target for %s", targetName)
+							return
+						}
+
+						// Recreate the AppConfig with just the target for rollbacks
+						rollbackAppConfig := config.AppConfig{
+							TargetConfig:    rawTargetConfig,
+							SecretProviders: rawAppConfig.SecretProviders,
+						}
+
+						prefix := ""
+						if len(server) > 1 {
+							prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", server))
+						}
+
+						deployTarget(
+							ctx,
+							resolvedTargetConfig,
+							rollbackAppConfig,
+							*configPath,
+							deploymentID,
+							prefix,
+							noLogsFlag,
+						)
+
+					}
+				}(server, targetNames, rawTargets, resolvedTargets)
 			}
 
 			wg.Wait()
@@ -156,20 +172,15 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 func deployTarget(
 	ctx context.Context,
 	targetConfig config.TargetConfig,
-	rawAppConfig config.AppConfig,
-	configPath, deploymentID string,
-	noLogs, showTargetName bool,
+	rollbackAppConfig config.AppConfig,
+	configPath, deploymentID, prefix string,
+	noLogs bool,
 ) {
-	targetName := targetConfig.TargetName
 	format := targetConfig.Format
 	server := targetConfig.Server
 	preDeploy := targetConfig.PreDeploy
 	postDeploy := targetConfig.PostDeploy
 
-	prefix := ""
-	if showTargetName {
-		prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", targetName))
-	}
 	pui := &ui.PrefixedUI{Prefix: prefix}
 
 	pui.Info("Deployment started for %s", targetConfig.Name)
@@ -197,9 +208,9 @@ func deployTarget(
 	}
 
 	request := apitypes.DeployRequest{
-		TargetConfig: targetConfig,
-		RawAppConfig: rawAppConfig,
-		DeploymentID: deploymentID,
+		TargetConfig:      targetConfig,
+		RollbackAppConfig: rollbackAppConfig,
+		DeploymentID:      deploymentID,
 	}
 	err = api.Post(ctx, "deploy", request, nil)
 	if err != nil {

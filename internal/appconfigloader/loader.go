@@ -207,6 +207,14 @@ func normalizeTargetConfig(tc *config.TargetConfig) {
 	}
 }
 
+func GroupTargetNamesByServer(targets map[string]config.TargetConfig) map[string][]string {
+	servers := make(map[string][]string)
+	for targetName, target := range targets {
+		servers[target.Server] = append(servers[target.Server], targetName)
+	}
+	return servers
+}
+
 func ExtractTargets(appConfig config.AppConfig) (map[string]config.TargetConfig, error) {
 	extractedTargetConfigs := make(map[string]config.TargetConfig)
 

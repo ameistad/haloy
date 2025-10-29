@@ -15,7 +15,7 @@ type DeployRequest struct {
 	DeploymentID string              `json:"deploymentID"`
 	TargetConfig config.TargetConfig `json:"targetConfig"`
 	// AppConfig without resolved secrets and with target extracted. Saved on server for rollbacks
-	RawAppConfig config.AppConfig `json:"rawAppConfig"`
+	RollbackAppConfig config.AppConfig `json:"rollbackAppConfig"`
 }
 
 type RollbackRequest struct {
