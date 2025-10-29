@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -198,6 +199,14 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 		return err
 	}
 
+	ui.Info("Waiting for HAProxy to become ready...")
+	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer waitCancel()
+
+	if err := waitForHAProxyReady(waitCtx, 30*time.Second); err != nil {
+		return fmt.Errorf("HAProxy failed to become ready: %w", err)
+	}
+
 	return nil
 }
 
@@ -321,6 +330,45 @@ func waitForAPI(ctx context.Context, api *apiclient.APIClient) error {
 			}
 
 			// Continue polling if API is not ready yet
+		}
+	}
+}
+
+// waitForHAProxyReady polls HAProxy until it's accepting connections on port 80
+func waitForHAProxyReady(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for HAProxy to become ready after %v", timeout)
+			}
+
+			// Check if HAProxy container is running and healthy
+			cmd := exec.CommandContext(ctx, "docker", "ps",
+				"--filter", fmt.Sprintf("label=%s=%s", config.LabelRole, config.HAProxyLabelRole),
+				"--filter", "status=running",
+				"--format", "{{.ID}}")
+
+			var out bytes.Buffer
+			cmd.Stdout = &out
+			if err := cmd.Run(); err != nil || out.Len() == 0 {
+				continue // Container not running yet
+			}
+
+			// Check if port 80 is accepting connections
+			conn, err := net.DialTimeout("tcp", "127.0.0.1:80", 2*time.Second)
+			if err == nil {
+				conn.Close()
+				return nil // HAProxy is ready
+			}
+
+			// Continue polling if port not ready yet
 		}
 	}
 }

@@ -152,7 +152,6 @@ The data directory can be customized by setting the %s environment variable.`,
 
 				if !noLogs {
 					ui.Info("Waiting for haloyd API to become available...")
-					// Wait for API to become available and stream init logs
 					if err := streamHaloydInitLogs(ctx, apiToken); err != nil {
 						ui.Warn("Failed to stream haloyd initialization logs: %v", err)
 						ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
