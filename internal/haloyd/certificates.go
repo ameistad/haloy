@@ -315,21 +315,30 @@ func (cm *CertificatesManager) checkRenewals(logger *slog.Logger, domains []Cert
 		}
 
 		// Obtain certificate if needed
-		all := []string{domain.Canonical}
-		all = append(all, domain.Aliases...)
+		allDomains := []string{domain.Canonical}
+		allDomains = append(allDomains, domain.Aliases...)
 		if configChanged || needsRenewal {
+			requestMessage := "Requesting new certificate"
+			if len(allDomains) > 1 {
+				requestMessage = "Requesting new certificates"
+			}
+			logger.Info(requestMessage,
+				logging.AttrDomains, allDomains,
+				"domain", canonical,
+				"aliases", domain.Aliases)
 			obtainedDomain, err := cm.obtainCertificate(domain, logger)
 			if err != nil {
 				return renewedDomains, err
 			}
+
 			renewedDomains = append(renewedDomains, obtainedDomain)
 			logger.Info("Obtained new certificate",
-				logging.AttrDomains, all,
+				logging.AttrDomains, allDomains,
 				"domain", canonical,
 				"aliases", domain.Aliases)
 		} else {
 			logger.Info("Certificate is valid",
-				logging.AttrDomains, all,
+				logging.AttrDomains, allDomains,
 				"domain", canonical,
 				"aliases", domain.Aliases)
 		}
@@ -462,7 +471,6 @@ func (m *CertificatesManager) obtainCertificate(managedDomain CertificatesDomain
 		Bundle:  true,       // Bundle intermediate certs
 	}
 
-	logger.Info("Requesting new certificate from ACME provider", "domain", canonicalDomain, "aliases", strings.Join(aliases, ", "))
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
 		return obtainedDomain, fmt.Errorf("failed to obtain certificate for %s: %w", canonicalDomain, err)
