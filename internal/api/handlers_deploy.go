@@ -45,7 +45,7 @@ func (s *APIServer) handleDeploy() http.HandlerFunc {
 			}
 			defer cli.Close()
 
-			if err := deploy.DeployApp(ctx, cli, req.DeploymentID, req.TargetConfig, req.RawAppConfig, deploymentLogger); err != nil {
+			if err := deploy.DeployApp(ctx, cli, req.DeploymentID, req.TargetConfig, req.RollbackAppConfig, deploymentLogger); err != nil {
 				logging.LogDeploymentFailed(deploymentLogger, req.DeploymentID, req.TargetConfig.Name, "Deployment failed", err)
 				return
 			}
