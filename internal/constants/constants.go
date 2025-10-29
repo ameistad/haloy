@@ -15,7 +15,6 @@ const (
 
 	CertificatesHTTPProviderPort = "8080"
 	APIServerPort                = "9999"
-	DefaultAPIServerURL          = "http://localhost:9999" // Default URL for the haloy API server
 
 	// Environment variables
 	EnvVarAPIToken      = "HALOY_API_TOKEN"

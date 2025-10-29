@@ -121,7 +121,6 @@ func startHAProxy(ctx context.Context, dataDir string) error {
 		"--label", fmt.Sprintf("%s=%s", config.LabelRole, config.HAProxyLabelRole),
 		// Running as root is necessary for privileged ports 80 and 443.
 		"--user", "root",
-		"--user", "root",
 		"--restart", "unless-stopped",
 		"--network", constants.DockerNetwork,
 		fmt.Sprintf("haproxy:%s", constants.HAProxyVersion),
@@ -199,14 +198,6 @@ func startServices(ctx context.Context, dataDir, configDir string, devMode, rest
 		return err
 	}
 
-	ui.Info("Waiting for HAProxy to become ready...")
-	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer waitCancel()
-
-	if err := waitForHAProxyReady(waitCtx, 30*time.Second); err != nil {
-		return fmt.Errorf("HAProxy failed to become ready: %w", err)
-	}
-
 	return nil
 }
 
@@ -278,24 +269,7 @@ func ensureNetwork(ctx context.Context) error {
 }
 
 // streamHaloydInitLogs waits for the API to become available and streams initialization logs
-func streamHaloydInitLogs(ctx context.Context, token string) error {
-	apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
-	api, err := apiclient.New(apiURL, token)
-	if err != nil {
-		return fmt.Errorf("Failed to create API client: %w", err)
-	}
-
-	ui.Info("Connecting to haloyd API...")
-
-	waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer waitCancel()
-
-	if err := waitForAPI(waitCtx, api); err != nil {
-		return fmt.Errorf("Haloyd API not available: %w", err)
-	}
-
-	ui.Info("Streaming haloyd initialization logs...")
-
+func streamHaloydInitLogs(ctx context.Context, api *apiclient.APIClient) error {
 	streamHandler := func(data string) bool {
 		var logEntry logging.LogEntry
 		if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
@@ -318,7 +292,7 @@ func waitForAPI(ctx context.Context, api *apiclient.APIClient) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("timeout waiting for API to become ready: %w", ctx.Err())
 		case <-ticker.C:
 			// Try to check API health (without auth since health endpoint is public)
 			healthCtx, healthCancel := context.WithTimeout(ctx, 2*time.Second)
@@ -334,21 +308,16 @@ func waitForAPI(ctx context.Context, api *apiclient.APIClient) error {
 	}
 }
 
-// waitForHAProxyReady polls HAProxy until it's accepting connections on port 80
-func waitForHAProxyReady(ctx context.Context, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// waitForHAProxy polls HAProxy until it's accepting connections on port 80
+func waitForHAProxy(ctx context.Context) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("timeout waiting for HAProxy to become ready: %w", ctx.Err())
 		case <-ticker.C:
-			if time.Now().After(deadline) {
-				return fmt.Errorf("timeout waiting for HAProxy to become ready after %v", timeout)
-			}
-
 			// Check if HAProxy container is running and healthy
 			cmd := exec.CommandContext(ctx, "docker", "ps",
 				"--filter", fmt.Sprintf("label=%s=%s", config.LabelRole, config.HAProxyLabelRole),

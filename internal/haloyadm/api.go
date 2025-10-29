@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/helpers"
@@ -127,12 +128,18 @@ func APIDomainCmd() *cobra.Command {
 			}
 
 			ui.Info("Waiting for haloyd API to become available...")
-			token := os.Getenv(constants.EnvVarAPIToken)
-			if token == "" {
+			apiToken := os.Getenv(constants.EnvVarAPIToken)
+			if apiToken == "" {
 				ui.Error("Failed to get API token")
 				return
 			}
-			if err := streamHaloydInitLogs(ctx, token); err != nil {
+			apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
+			api, err := apiclient.New(apiURL, apiToken)
+			if err != nil {
+				ui.Error("Failed to create API client: %v", err)
+				return
+			}
+			if err := streamHaloydInitLogs(ctx, api); err != nil {
 				ui.Warn("Failed to stream haloyd initialization logs: %v", err)
 				ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
 			}

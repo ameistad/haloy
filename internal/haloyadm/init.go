@@ -2,6 +2,7 @@ package haloyadm
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
@@ -9,7 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 
+	"github.com/ameistad/haloy/internal/apiclient"
 	"github.com/ameistad/haloy/internal/config"
 	"github.com/ameistad/haloy/internal/constants"
 	"github.com/ameistad/haloy/internal/embed"
@@ -150,9 +153,30 @@ The data directory can be customized by setting the %s environment variable.`,
 					return
 				}
 
+				waitCtx, waitCancel := context.WithTimeout(ctx, 30*time.Second)
+				defer waitCancel()
+
+				ui.Info("Waiting for HAProxy to become available...")
+				if err := waitForHAProxy(waitCtx); err != nil {
+					ui.Error("HAProxy failed to become ready: %v", err)
+					return
+				}
+
 				if !noLogs {
+					apiURL := fmt.Sprintf("http://localhost:%s", constants.APIServerPort)
+					api, err := apiclient.New(apiURL, apiToken)
+					if err != nil {
+						ui.Error("Failed to create API client: %v", err)
+						return
+					}
 					ui.Info("Waiting for haloyd API to become available...")
-					if err := streamHaloydInitLogs(ctx, apiToken); err != nil {
+					if err := waitForAPI(waitCtx, api); err != nil {
+						ui.Error("Haloyd API not available: %v", err)
+						return
+					}
+
+					ui.Info("Streaming haloyd initialization logs...")
+					if err := streamHaloydInitLogs(ctx, api); err != nil {
 						ui.Warn("Failed to stream haloyd initialization logs: %v", err)
 						ui.Info("haloyd is starting in the background. Check logs with: docker logs haloyd")
 					}
