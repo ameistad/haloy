@@ -46,83 +46,91 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 
 			newDeploymentID := createDeploymentID()
 
+			servers := appconfigloader.TargetsByServer(targets)
+
 			var wg sync.WaitGroup
-
-			for _, target := range targets {
+			for server, targetNames := range servers {
 				wg.Add(1)
-				go func(target config.TargetConfig) {
+				go func(server string, targetNames []string, targets map[string]config.TargetConfig) {
 					defer wg.Done()
-
-					token, err := getToken(&target, target.Server)
-					if err != nil {
-						ui.Error("%v", err)
-						return
-					}
-					ui.Info("Starting rollback for application: %s using server %s", target.Name, target.Server)
-
-					api, err := apiclient.New(target.Server, token)
-					if err != nil {
-						ui.Error("Failed to create API client: %v", err)
-						return
-					}
-					rollbackTargetsResponse, err := getRollbackTargets(ctx, api, target.Name)
-					if err != nil {
-						ui.Error("Failed to get available rollback targets for %s: %v", target.TargetName, err)
-						return
-					}
-					var availableTarget deploytypes.RollbackTarget
-					for _, at := range rollbackTargetsResponse.Targets {
-						if at.DeploymentID == targetDeploymentID {
-							availableTarget = at
+					for _, targetName := range targetNames {
+						targetConfig, exists := targets[targetName]
+						if !exists {
+							ui.Error("Could not find target for %s", targetName)
 						}
-					}
-					if availableTarget.DeploymentID == "" {
-						ui.Error("Deployment ID %s not available not found available rollback targets", targetDeploymentID)
-					}
+						token, err := getToken(&targetConfig, server)
+						if err != nil {
+							ui.Error("%v", err)
+							return
+						}
+						ui.Info("Starting rollback for application: %s using server %s", targetConfig.Name, server)
 
-					if availableTarget.RawAppConfig == nil {
-						ui.Error("Unable to find configuration for rollback")
-						return
-					}
-					newResolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, *availableTarget.RawAppConfig)
-					if err != nil {
-						ui.Error("Unable to resolve secrets for the app config. This usually occurs when secrets names have been changed or deleted between deployments: %v", err)
-						return
-					}
-					newResolvedTargetConfig, err := appconfigloader.MergeToTarget(newResolvedAppConfig, config.TargetConfig{}, newResolvedAppConfig.Name)
-					if err != nil {
-						ui.Error("Failed to merge to target")
-						return
-					}
-					request := apitypes.RollbackRequest{
-						TargetDeploymentID: targetDeploymentID,
-						NewDeploymentID:    newDeploymentID,
-						NewTargetConfig:    newResolvedTargetConfig,
-					}
-					if err := api.Post(ctx, "rollback", request, nil); err != nil {
-						ui.Error("Rollback failed: %v", err)
-						return
-					}
+						api, err := apiclient.New(server, token)
+						if err != nil {
+							ui.Error("Failed to create API client: %v", err)
+							return
+						}
+						rollbackTargetsResponse, err := getRollbackTargets(ctx, api, targetConfig.Name)
+						if err != nil {
+							ui.Error("Failed to get available rollback targets for %s: %v", targetName, err)
+							return
+						}
+						var availableTarget deploytypes.RollbackTarget
+						for _, at := range rollbackTargetsResponse.Targets {
+							if at.DeploymentID == targetDeploymentID {
+								availableTarget = at
+							}
+						}
+						if availableTarget.DeploymentID == "" {
+							ui.Error("Deployment ID %s not available not found available rollback targets", targetDeploymentID)
+							return
+						}
 
-					if !noLogsFlag {
-						streamPath := fmt.Sprintf("deploy/%s/logs", newDeploymentID)
+						if availableTarget.RawAppConfig == nil {
+							ui.Error("Unable to find configuration for rollback")
+							return
+						}
+						newResolvedAppConfig, err := appconfigloader.ResolveSecrets(ctx, *availableTarget.RawAppConfig)
+						if err != nil {
+							ui.Error("Unable to resolve secrets for the app config. This usually occurs when secrets names have been changed or deleted between deployments: %v", err)
+							return
+						}
+						newResolvedTargetConfig, err := appconfigloader.MergeToTarget(newResolvedAppConfig, config.TargetConfig{}, newResolvedAppConfig.Name)
+						if err != nil {
+							ui.Error("Failed to merge to target")
+							return
+						}
+						request := apitypes.RollbackRequest{
+							TargetDeploymentID: targetDeploymentID,
+							NewDeploymentID:    newDeploymentID,
+							NewTargetConfig:    newResolvedTargetConfig,
+						}
+						if err := api.Post(ctx, "rollback", request, nil); err != nil {
+							ui.Error("Rollback failed: %v", err)
+							return
+						}
 
-						streamHandler := func(data string) bool {
-							var logEntry logging.LogEntry
-							if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
-								ui.Error("failed to ummarshal json: %v", err)
-								return false // we don't stop on errors.
+						if !noLogsFlag {
+							streamPath := fmt.Sprintf("deploy/%s/logs", newDeploymentID)
+
+							streamHandler := func(data string) bool {
+								var logEntry logging.LogEntry
+								if err := json.Unmarshal([]byte(data), &logEntry); err != nil {
+									ui.Error("failed to ummarshal json: %v", err)
+									return false // we don't stop on errors.
+								}
+
+								ui.DisplayLogEntry(logEntry, "")
+
+								// If deployment is complete we'll return true to signal stream should stop
+								return logEntry.IsDeploymentComplete
 							}
 
-							ui.DisplayLogEntry(logEntry, "")
-
-							// If deployment is complete we'll return true to signal stream should stop
-							return logEntry.IsDeploymentComplete
+							api.Stream(ctx, streamPath, streamHandler)
 						}
 
-						api.Stream(ctx, streamPath, streamHandler)
 					}
-				}(target)
+				}(server, targetNames, targets)
 			}
 
 			wg.Wait()

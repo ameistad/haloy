@@ -103,10 +103,10 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 			}
 
-			targetsGroupedByServer := appconfigloader.GroupTargetNamesByServer(rawTargets)
+			servers := appconfigloader.TargetsByServer(rawTargets)
 
 			var wg sync.WaitGroup
-			for server, targetNames := range targetsGroupedByServer {
+			for server, targetNames := range servers {
 				wg.Add(1)
 				go func(server string, targetNames []string, rawTargets, resolvedTargets map[string]config.TargetConfig) {
 					defer wg.Done()
@@ -131,8 +131,8 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 						}
 
 						prefix := ""
-						if len(server) > 1 {
-							prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", server))
+						if len(rawTargets) > 1 {
+							prefix = lipgloss.NewStyle().Bold(true).Foreground(ui.White).Render(fmt.Sprintf("%s ", targetName))
 						}
 
 						deployTarget(

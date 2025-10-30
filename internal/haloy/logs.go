@@ -41,13 +41,20 @@ The logs are streamed in real-time and will continue until interrupted (Ctrl+C).
 					return
 				}
 
+				servers := appconfigloader.TargetsByServer(targets)
+
 				var wg sync.WaitGroup
-				for _, target := range targets {
+				for server, targetNames := range servers {
+					targetConfig, exists := targets[targetNames[0]]
+					if !exists {
+						ui.Error("Failed to find target config for server")
+						return
+					}
 					wg.Add(1)
-					go func(targetConfig config.TargetConfig) {
+					go func(server string, targetConfig config.TargetConfig) {
 						defer wg.Done()
-						streamLogs(ctx, &targetConfig, target.Server)
-					}(target)
+						streamLogs(ctx, &targetConfig, server)
+					}(server, targetConfig)
 				}
 
 				wg.Wait()
