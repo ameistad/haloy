@@ -71,11 +71,6 @@ func (dm *DeploymentManager) BuildDeployments(ctx context.Context, logger *slog.
 			continue
 		}
 
-		if !IsAppContainer(container) {
-			logger.Debug("Container not eligible for haloy management", "name", container.Name, "container_id", containerSummary.ID)
-			continue
-		}
-
 		labels, err := config.ParseContainerLabels(container.Config.Labels)
 		if err != nil {
 			logger.Error("Error parsing labels for container", "container_id", containerSummary.ID, "error", err)

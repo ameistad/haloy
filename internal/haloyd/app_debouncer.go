@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/ameistad/haloy/internal/config"
+	"github.com/ameistad/haloy/internal/constants"
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/events"
 )
 
@@ -15,6 +17,7 @@ type debouncedAppEvent struct {
 	Domains            []config.Domain
 	EventAction        events.Action
 	CapturedStartEvent bool
+	IsOnNetwork        bool // indicates that the container is started on the haloy docker network.
 }
 
 type appDebouncer struct {
@@ -83,6 +86,7 @@ func (d *appDebouncer) signalDone(appName string) {
 		Domains:            latestEvent.Labels.Domains,
 		EventAction:        latestEvent.Event.Action,
 		CapturedStartEvent: capturedStartEvent,
+		IsOnNetwork:        isOnNetwork(latestEvent.Container),
 	}
 
 	d.output <- debouncedEvent
@@ -101,4 +105,13 @@ func (d *appDebouncer) stop() {
 	}
 	d.timers = make(map[string]*time.Timer)
 	d.capturedEvents = make(map[string][]ContainerEvent)
+}
+
+func isOnNetwork(container container.InspectResponse) bool {
+	for netName := range container.NetworkSettings.Networks {
+		if netName == constants.DockerNetwork {
+			return true
+		}
+	}
+	return false
 }

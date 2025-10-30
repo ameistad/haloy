@@ -168,6 +168,38 @@ func Run(debug bool) {
 			go func() {
 				deploymentLogger := logging.NewDeploymentLogger(de.DeploymentID, logLevel, logBroker)
 
+				// we also support apps that has no domains configured.
+				if de.CapturedStartEvent && (len(de.Domains) == 0 || !de.IsOnNetwork) {
+					var message string
+					var reasons []string
+
+					// Determine the specific reasons for skipping full deployment processing
+					if len(de.Domains) == 0 {
+						reasons = append(reasons, "no domains configured")
+					}
+
+					if !de.IsOnNetwork {
+						reasons = append(reasons, fmt.Sprintf("not on the %s network", constants.DockerNetwork))
+					}
+
+					// Create an appropriate message based on the reasons
+					switch len(reasons) {
+					case 1:
+						message = fmt.Sprintf("Container %s started successfully (%s). Skipped health checks, HAProxy updates, and domain handling.",
+							de.AppName, reasons[0])
+					case 2:
+						message = fmt.Sprintf("Container %s started successfully (%s and %s). Skipped health checks, HAProxy updates, and domain handling.",
+							de.AppName, reasons[0], reasons[1])
+					default:
+						message = fmt.Sprintf("Container %s started successfully. Skipped health checks, HAProxy updates, and domain handling.",
+							de.AppName)
+					}
+
+					logging.LogDeploymentComplete(deploymentLogger, []string{}, de.DeploymentID, de.AppName, message)
+
+					return
+				}
+
 				updateCtx, cancelUpdate := context.WithTimeout(ctx, updateTimeout)
 				defer cancelUpdate()
 
@@ -182,6 +214,7 @@ func Run(debug bool) {
 					deploymentLogger.Error("App data not valid", "error", err)
 					return
 				}
+
 				if err := updater.Update(updateCtx, deploymentLogger, TriggerReasonAppUpdated, app); err != nil {
 					logging.LogDeploymentFailed(deploymentLogger, de.DeploymentID, de.AppName,
 						"Deployment failed", err)
@@ -280,10 +313,10 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 						"error", err)
 					continue
 				}
-				eligible := IsAppContainer(container)
 
-				// We'll only process events for containers that have been marked with haloy labels.
-				if eligible {
+				// We'll only process events for containers that have been marked with haloy app label.
+				isHaloyApp := container.Config.Labels[config.LabelRole] == config.AppLabelRole
+				if isHaloyApp {
 					labels, err := config.ParseContainerLabels(container.Config.Labels)
 					if err != nil {
 						logger.Error("Error parsing container labels", "error", err)
@@ -320,23 +353,4 @@ func listenForDockerEvents(ctx context.Context, cli *client.Client, eventsChan c
 			return
 		}
 	}
-}
-
-// IsAppContainer checks if a container should be handled by haloy.
-func IsAppContainer(container container.InspectResponse) bool {
-	if container.Config.Labels[config.LabelRole] != config.AppLabelRole {
-		return false
-	}
-
-	isOnNetwork := isOnNetworkCheck(container, constants.DockerNetwork)
-	return isOnNetwork
-}
-
-func isOnNetworkCheck(container container.InspectResponse, networkName string) bool {
-	for netName := range container.NetworkSettings.Networks {
-		if netName == networkName {
-			return true
-		}
-	}
-	return false
 }
