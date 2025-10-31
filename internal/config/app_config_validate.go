@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/ameistad/haloy/internal/helpers"
@@ -34,6 +35,13 @@ func (tc *TargetConfig) Validate(format string) error {
 	if tc.Image != nil {
 		if err := tc.Image.Validate(format); err != nil {
 			return fmt.Errorf("invalid image: %w", err)
+		}
+	}
+
+	if tc.DeploymentStrategy != "" {
+		validStrategies := []DeploymentStrategy{DeploymentStrategyRolling, DeploymentStrategyReplace}
+		if !slices.Contains(validStrategies, tc.DeploymentStrategy) {
+			return fmt.Errorf("deployment_strategy must be 'rolling' or 'replace', got '%s'", tc.DeploymentStrategy)
 		}
 	}
 

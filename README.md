@@ -210,6 +210,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `image` | object | **Yes** | Docker image configuration (see [Image Configuration](#image-configuration)) |
 | `server` | string | No | Haloy server API URL |
 | `api_token` | object | No | API token configuration (see [Set Token In App Configuration](#set-token-in-app-configuration)) |
+| `deployment_strategy` | string | No | Deployment strategy: "rolling" (default) or "replace" |
 | `domains` | array | No | Domain configuration |
 | `acme_email` | string | No | Let's Encrypt email (required with domains) |
 | `replicas` | integer | No | Number of container instances (default: 1) |
@@ -223,7 +224,7 @@ Haloy supports YAML, JSON, and TOML formats:
 | `global_post_deploy` | array | No | Commands to run once after all deployments (multi-target only) |
 | `targets` | object | No | Multiple deployment targets with overrides (see [Multi-Server Deployments](#multi-server-deployments)) |
 | `secret_providers` | object | No | Secret provider configuration for external secret management (see [Secret Providers](#secret-providers)) |
-| `network_mode` | string | No | The Docker network mode for the container. Defaults to Haloy's private network (`haloy-public`) |
+| `network` | string | No | The Docker network for the container. Defaults to Haloy's private network (`haloy-public`) |
 
 #### Image Configuration
 
@@ -505,7 +506,7 @@ When using multi-target deployments, each target can override any of the base co
 | `volumes` | array | Override volume mounts |
 | `pre_deploy` | array | Override pre-deploy hooks |
 | `post_deploy` | array | Override post-deploy hooks |
-| `network_mode` | string | Override network mode |
+| `network` | string | Override docker network |
 
 **Target Inheritance Rules:**
 - Base configuration provides defaults for all targets

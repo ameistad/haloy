@@ -27,6 +27,13 @@ func DeployApp(ctx context.Context, cli *client.Client, deploymentID string, tar
 		return fmt.Errorf("failed to tag image: %w", err)
 	}
 
+	if targetConfig.DeploymentStrategy == config.DeploymentStrategyReplace {
+		_, err := docker.StopContainers(ctx, cli, logger, targetConfig.Name, "")
+		if err != nil {
+			return fmt.Errorf("failed to stop containers before starting new deployment: %w", err)
+		}
+	}
+
 	runResult, err := docker.RunContainer(ctx, cli, deploymentID, newImageRef, targetConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {

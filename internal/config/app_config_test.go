@@ -94,7 +94,7 @@ func TestTargetConfig_Validate_Comprehensive(t *testing.T) {
 				HealthCheckPath: "/health",
 				Port:            "8080",
 				Replicas:        helpers.IntPtr(2),
-				NetworkMode:     "bridge",
+				Network:         "bridge",
 				Volumes:         []string{"/host:/container"},
 				PreDeploy:       []string{"echo pre"},
 				PostDeploy:      []string{"echo post"},

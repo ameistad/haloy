@@ -162,8 +162,8 @@ func MergeToTarget(appConfig config.AppConfig, targetConfig config.TargetConfig,
 		tc.Replicas = appConfig.Replicas
 	}
 
-	if tc.NetworkMode == "" {
-		tc.NetworkMode = appConfig.NetworkMode
+	if tc.Network == "" {
+		tc.Network = appConfig.Network
 	}
 
 	if tc.Volumes == nil {
@@ -191,6 +191,10 @@ func normalizeTargetConfig(tc *config.TargetConfig) {
 			Strategy: config.HistoryStrategyLocal,
 			Count:    &defaultCount,
 		}
+	}
+
+	if tc.DeploymentStrategy == "" {
+		tc.DeploymentStrategy = config.DeploymentStrategyRolling
 	}
 
 	if tc.HealthCheckPath == "" {

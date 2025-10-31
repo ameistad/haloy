@@ -45,12 +45,12 @@ func RunContainer(ctx context.Context, cli *client.Client, deploymentID, imageRe
 		envVars = append(envVars, fmt.Sprintf("%s=%s", envVar.Name, envVar.Value))
 	}
 
-	networkMode := container.NetworkMode(constants.DockerNetwork)
-	if targetConfig.NetworkMode != "" {
-		networkMode = container.NetworkMode(targetConfig.NetworkMode)
+	network := container.NetworkMode(constants.DockerNetwork)
+	if targetConfig.Network != "" {
+		network = container.NetworkMode(targetConfig.Network)
 	}
 	hostConfig := &container.HostConfig{
-		NetworkMode:   networkMode,
+		NetworkMode:   network,
 		RestartPolicy: container.RestartPolicy{Name: "unless-stopped"},
 		Binds:         targetConfig.Volumes,
 	}
