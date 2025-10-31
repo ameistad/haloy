@@ -44,7 +44,7 @@ Use 'haloy rollback-targets' to list available deployment IDs.`,
 				return
 			}
 
-			newDeploymentID := createDeploymentID()
+			newDeploymentID := appconfigloader.CreateDeploymentID()
 
 			servers := appconfigloader.TargetsByServer(targets)
 

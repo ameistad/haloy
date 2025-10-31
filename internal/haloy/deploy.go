@@ -92,8 +92,6 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 				}
 			}
 
-			deploymentID := createDeploymentID()
-
 			if len(rawAppConfig.GlobalPreDeploy) > 0 {
 				for _, hookCmd := range rawAppConfig.GlobalPreDeploy {
 					if err := cmdexec.RunCommand(ctx, hookCmd, getHooksWorkDir(*configPath)); err != nil {
@@ -105,22 +103,41 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 
 			servers := appconfigloader.TargetsByServer(rawTargets)
 
+			// Create deployment IDs per app name
+			deploymentIDs := make(map[string]string)
+			for _, target := range resolvedTargets {
+				if _, exists := deploymentIDs[target.Name]; !exists {
+					deploymentIDs[target.Name] = createDeploymentID()
+				}
+			}
+
 			var wg sync.WaitGroup
 			for server, targetNames := range servers {
 				wg.Add(1)
-				go func(server string, targetNames []string, rawTargets, resolvedTargets map[string]config.TargetConfig) {
+				go func(
+					server string,
+					targetNames []string,
+					rawTargets, resolvedTargets map[string]config.TargetConfig,
+					deploymentIDs map[string]string,
+				) {
 					defer wg.Done()
 					for _, targetName := range targetNames {
 
 						rawTargetConfig, rawTargetExists := rawTargets[targetName]
 						if !rawTargetExists {
-							ui.Error("Could not find resolved target for %s", targetName)
+							ui.Error("Could not find raw target for %s", targetName)
 							return
 
 						}
 						resolvedTargetConfig, resolvedTargetExists := resolvedTargets[targetName]
 						if !resolvedTargetExists {
 							ui.Error("Could not find resolved target for %s", targetName)
+							return
+						}
+
+						deploymentID, deploymentIDExists := deploymentIDs[resolvedTargetConfig.Name]
+						if !deploymentIDExists {
+							ui.Error("Could not find deployment ID for app '%s'", resolvedTargetConfig.Name)
 							return
 						}
 
@@ -146,7 +163,7 @@ func DeployAppCmd(configPath *string, flags *appCmdFlags) *cobra.Command {
 						)
 
 					}
-				}(server, targetNames, rawTargets, resolvedTargets)
+				}(server, targetNames, rawTargets, resolvedTargets, deploymentIDs)
 			}
 
 			wg.Wait()

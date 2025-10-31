@@ -107,7 +107,6 @@ func MergeImage(targetConfig config.TargetConfig, images map[string]*config.Imag
 	return nil, fmt.Errorf("no image specified for target")
 }
 
-// WIP: should replace config.ResolveTarget and return TargetConfig instead
 func MergeToTarget(appConfig config.AppConfig, targetConfig config.TargetConfig, targetName string) (config.TargetConfig, error) {
 	var tc config.TargetConfig
 	if err := copier.Copy(&tc, &targetConfig); err != nil {
